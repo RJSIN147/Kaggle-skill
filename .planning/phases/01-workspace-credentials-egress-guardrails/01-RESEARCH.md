@@ -441,21 +441,26 @@ __pycache__/
 | A6 | `deniedDomains` support may be incomplete/under-development | Egress | Don't rely on it; allowlist-only design is unaffected. LOW. |
 | A7 | pytest/ruff not needed at runtime; stdlib-only scripts suffice | Stack | If a script needs a non-stdlib lib, the stdlib-only constraint is violated — design must avoid. LOW. |
 
-## Open Questions
+## Open Questions (RESOLVED)
+
+All three questions below are operationalized by the Phase 1 plans; each carries a pointer to the plan/task that closes it. No question remains open as a blocker to execution.
 
 1. **Exact `kaggle` CLI exit code + stderr text on 401 vs command-not-found vs perms warning.**
    - Known: CLI raises on auth failure; endpoint is `www.kaggle.com/api/v1`.
    - Unclear: precise exit codes / message strings (kaggle not installed this session).
-   - Recommendation: during 01-01, install `kaggle` in a throwaway env and capture real outputs to harden the remediation `case` branches; keep the branch structure but treat string matches as best-effort.
+   - Recommendation: install `kaggle` in a throwaway env and capture real outputs to harden the remediation `case` branches; keep the branch structure but treat string matches as best-effort.
+   - **RESOLVED: captured live during 01-04 Task 2** (executor installs kaggle with consent, triggers a real 401 + command-not-found, and hardens the branch matches with the real exit codes/stderr; branch structure kept, string matches best-effort).
 
 2. **Hard-block vs prompt for off-allowlist egress in a non-managed workspace.**
    - Known: managed `allowManagedDomainsOnly: true` hard-blocks; a project file prompts.
    - Unclear: whether the user wants a hard gate (would need managed settings or `failIfUnavailable`) or is satisfied with prompt-not-silent.
-   - Recommendation: implement allowlist + `sandbox.enabled: true`; document that a true hard-block is an org/managed-settings concern; surface this as a discuss-phase confirmation if criterion 5 is read strictly as "blocked."
+   - Recommendation: implement allowlist + `sandbox.enabled: true`; document that a true hard-block is an org/managed-settings concern.
+   - **RESOLVED: documented as the residual caveat in 01-03 Task 3** (workspace-level `.claude/settings.json` deny-by-default *refuses/prompts* off-allowlist — satisfies criterion 5's "refused, not silently allowed"; a true no-prompt hard block is an org/managed-settings concern and out of Phase 1 scope, consistent with D-09's locked workspace-level choice).
 
 3. **`socat` install as a plan step vs documented prerequisite.**
    - Known: Linux sandbox proxy needs socat (missing here); without it egress isn't enforced.
    - Recommendation: `init` detects socat and, on absence, prints the install command + a warning that egress is unenforced until installed (consent-based, never silent).
+   - **RESOLVED: detect + instruct (consent-based) in 01-03 Task 1** (`init` detects socat; on absence prints the install command and warns that egress is unenforced until installed — never silent).
 
 ## Environment Availability
 
