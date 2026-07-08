@@ -31,11 +31,13 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. The framework validates the Kaggle credential with a live call and reports a clear pass/fail, giving exact remediation for each common failure (wrong env var, missing chmod 600, 401, command-not-found).
   4. Credentials are chmod 600 and never echoed, logged, or committed (.gitignore covers .env/kaggle.json/access_token); a credential-leak check passes.
   5. Network egress is restricted to a Kaggle + package-source allowlist in .claude/settings.json — an off-allowlist fetch is refused, not silently allowed.
-**Plans**: TBD (suggested 2)
+**Plans**: 4 plans
 
 Plans:
-- [ ] 01-01: Skill skeleton, egress allowlist (settings.json), credential checker/auto-mapper + live validation + leak guards
-- [ ] 01-02: Workspace scaffolder (init_workspace.py), config.json schema (incl. execution target), context-file stubs, git init, .gitignore
+- [ ] 01-01-PLAN.md — Skill package skeleton + Nyquist Wave 0 test harness (SKILL.md guided-init orchestration contract, pytest live marker, RED suite)
+- [ ] 01-02-PLAN.md — Workspace scaffolder (init_workspace.py): D-10 layout, control-plane, docs/.env/pyproject stubs, execution-target + setter, safe-merge idempotency
+- [ ] 01-03-PLAN.md — Egress allowlist (sandbox.network.allowedDomains) + secret-aware .gitignore + stdlib leak-guard hook + git init + scanned initial commit + portability doc
+- [ ] 01-04-PLAN.md — Kaggle credential connect + live exit-code validation + four remediation branches + chmod-600/no-echo hardening
 
 ### Phase 2: Competition Context & Data
 **Goal**: Before any experiment is authored, the workspace holds a correct, machine-derived competition "constitution" and the data needed to run locally — with the UI-only Kaggle gates cleared and all ingested Kaggle text treated as untrusted.
@@ -112,7 +114,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Workspace, Credentials & Egress Guardrails | 0/2 | Not started | - |
+| 1. Workspace, Credentials & Egress Guardrails | 0/4 | Not started | - |
 | 2. Competition Context & Data | 0/3 | Not started | - |
 | 3. Local Experiment Loop, Ledger & Strategy | 0/4 | Not started | - |
 | 4. Kaggle Kernel Execution (GPU Path) | 0/2 | Not started | - |
