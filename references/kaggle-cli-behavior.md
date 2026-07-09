@@ -86,6 +86,19 @@ like every other fabricated input). `check_credentials.py` keeps detecting the l
 pair (D-04 env-canonical, and the unit contract exercises it) but the live truth source
 is the exit code, not the source label.
 
+**Checker `detect_source` ordering (WR-03).** `check_credentials.py` now ranks the
+sources `KAGGLE_API_TOKEN` env → `KAGGLE_USERNAME`/`KAGGLE_KEY` env →
+`~/.kaggle/access_token` → `~/.kaggle/kaggle.json`, i.e. **env ahead of the
+`access_token` file**. This matches the CLI's own guidance for `KAGGLE_API_TOKEN`
+(foregrounded above `access_token`, **VERIFIED**) and keeps the module's
+"env-canonical (D-04)" label honest; the pre-fix order ranked the `access_token`
+file *first* and could mis-report the ACTIVE source when both a file and env vars
+were present. **Caveat (honest):** the legacy `USERNAME`/`KEY` pair's precedence
+*relative to the `access_token` file* is **UNVERIFIED** — the CLI's guidance never
+lists the pair — so for a user who has BOTH a real `access_token` file AND a real
+env pair, the reported source label is a best-effort guess; validation itself is by
+**exit code only** and is unaffected.
+
 ## How `check_credentials.py` uses these facts
 
 - `shutil.which("kaggle") is None` → skip the call; write `credentials=UNVALIDATED`;
