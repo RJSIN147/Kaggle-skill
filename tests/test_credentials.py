@@ -28,14 +28,25 @@ def _write_kaggle_json(home, username="kaggleuser", key=SECRET_KEY, mode=0o600):
 
 
 def test_precedence(seeded_workspace, tmp_path, run_script, clean_kaggle_env):
-    """SETUP-03 (D-04): env KAGGLE_USERNAME/KAGGLE_KEY takes precedence over a kaggle.json."""
+    """SETUP-03 (D-04): env KAGGLE_USERNAME/KAGGLE_KEY takes precedence over a kaggle.json.
+
+    HERMETIC (WR-06): PATH is scrubbed to an empty dir so shutil.which("kaggle")
+    is None and the live-validation branch is skipped — this test only exercises
+    source detection, so it must never make a network round-trip against a real
+    kaggle CLI (which the 01-04 Task 3 checkpoint installs) with fabricated creds.
+    """
     ws = seeded_workspace
     home = tmp_path / "home"
     _write_kaggle_json(home, username="fileuser", key="f" * 32)
+    empty_bin = tmp_path / "empty-bin"   # no `kaggle` -> which() -> None (offline-safe)
+    empty_bin.mkdir()
 
     res = run_script(
         "check_credentials.py", "--workspace", ws, cwd=ws,
-        extra_env={"HOME": str(home), "KAGGLE_USERNAME": "envuser", "KAGGLE_KEY": SECRET_KEY},
+        extra_env={
+            "PATH": str(empty_bin),
+            "HOME": str(home), "KAGGLE_USERNAME": "envuser", "KAGGLE_KEY": SECRET_KEY,
+        },
     )
     out = (res.stdout + res.stderr).lower()
     assert "environment" in out           # env is canonical and wins over the file
@@ -71,26 +82,39 @@ def test_kaggle_missing(seeded_workspace, tmp_path, run_script, clean_kaggle_env
 
 
 def test_chmod_600(seeded_workspace, tmp_path, run_script, clean_kaggle_env):
-    """SETUP-04: a group/world-readable kaggle.json is self-healed to 0o600 (with consent)."""
+    """SETUP-04: a group/world-readable kaggle.json is self-healed to 0o600 (with consent).
+
+    HERMETIC (WR-06): PATH scrubbed to an empty dir -> no live kaggle call; this
+    test only exercises the chmod self-heal.
+    """
     ws = seeded_workspace
     home = tmp_path / "home"
     kj = _write_kaggle_json(home, mode=0o644)
+    empty_bin = tmp_path / "empty-bin"
+    empty_bin.mkdir()
 
     run_script(
         "check_credentials.py", "--workspace", ws, "--yes", cwd=ws,
-        extra_env={"HOME": str(home)},
+        extra_env={"PATH": str(empty_bin), "HOME": str(home)},
     )
     assert (kj.stat().st_mode & 0o777) == 0o600
 
 
 def test_chmod_600_requires_consent(seeded_workspace, tmp_path, run_script, clean_kaggle_env):
-    """D-03/D-06a: without --yes the chmod fix is only reported; with --yes it applies."""
+    """D-03/D-06a: without --yes the chmod fix is only reported; with --yes it applies.
+
+    HERMETIC (WR-06): PATH scrubbed to an empty dir -> no live kaggle call on
+    either invocation; the test only exercises the consent-gated chmod.
+    """
     ws = seeded_workspace
     home = tmp_path / "home"
     kj = _write_kaggle_json(home, mode=0o644)
+    empty_bin = tmp_path / "empty-bin"
+    empty_bin.mkdir()
 
     res = run_script(
-        "check_credentials.py", "--workspace", ws, cwd=ws, extra_env={"HOME": str(home)}
+        "check_credentials.py", "--workspace", ws, cwd=ws,
+        extra_env={"PATH": str(empty_bin), "HOME": str(home)},
     )
     assert (kj.stat().st_mode & 0o777) == 0o644                     # untouched without consent
     reported = (res.stdout + res.stderr).lower()
@@ -98,22 +122,29 @@ def test_chmod_600_requires_consent(seeded_workspace, tmp_path, run_script, clea
 
     run_script(
         "check_credentials.py", "--workspace", ws, "--yes", cwd=ws,
-        extra_env={"HOME": str(home)},
+        extra_env={"PATH": str(empty_bin), "HOME": str(home)},
     )
     assert (kj.stat().st_mode & 0o777) == 0o600                     # self-healed with consent
 
 
 def test_env_population_requires_consent(seeded_workspace, tmp_path, run_script, clean_kaggle_env):
-    """D-06b: .env is populated from kaggle.json only with consent; offered otherwise; no secret printed."""
+    """D-06b: .env is populated from kaggle.json only with consent; offered otherwise; no secret printed.
+
+    HERMETIC (WR-06): PATH scrubbed to an empty dir -> no live kaggle call on
+    either invocation; the test only exercises the consent-gated .env population.
+    """
     ws = seeded_workspace
     home = tmp_path / "home"
     _write_kaggle_json(home, username="kaggleuser", key=SECRET_KEY)
     env_file = ws / ".env"
     env_file.write_text("KAGGLE_USERNAME=\nKAGGLE_KEY=\n")
+    empty_bin = tmp_path / "empty-bin"
+    empty_bin.mkdir()
 
     # Without consent: only offered, .env unchanged, no raw secret in output.
     res = run_script(
-        "check_credentials.py", "--workspace", ws, cwd=ws, extra_env={"HOME": str(home)}
+        "check_credentials.py", "--workspace", ws, cwd=ws,
+        extra_env={"PATH": str(empty_bin), "HOME": str(home)},
     )
     assert env_file.read_text() == "KAGGLE_USERNAME=\nKAGGLE_KEY=\n"
     assert SECRET_KEY not in (res.stdout + res.stderr)
@@ -121,7 +152,7 @@ def test_env_population_requires_consent(seeded_workspace, tmp_path, run_script,
     # With consent: populated from kaggle.json.
     run_script(
         "check_credentials.py", "--workspace", ws, "--yes", cwd=ws,
-        extra_env={"HOME": str(home)},
+        extra_env={"PATH": str(empty_bin), "HOME": str(home)},
     )
     populated = env_file.read_text()
     assert "kaggleuser" in populated and SECRET_KEY in populated
