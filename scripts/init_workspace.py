@@ -11,21 +11,23 @@ Portability (CLAUDE.md §Stack Patterns): the script resolves its own directory 
 ``Path(__file__)`` for template access and takes an explicit ``--workspace`` path;
 it never relies on ``${CLAUDE_SKILL_DIR}`` / ``${CLAUDE_PROJECT_DIR}``.
 
-Ownership boundary — what plan 01-03 layers on top of this:
-  * ``git init -b main`` + the ``chore: scaffold workspace`` commit,
-  * the pre-commit credential-leak guard (``core.hooksPath``),
-  * the egress allowlist DEEP-MERGE into ``.claude/settings.json`` (D-08/D-09).
-This plan (01-02) only lays the *static* files. To keep the D-10 layout complete
-for the layout contract, it also writes a create-if-absent ``.gitignore`` (final
-D-12/D-13 content) and an EMPTY ``.claude/settings.json`` stub that 01-03
-deep-merges the real allowlist into. Nothing here runs git or writes an egress
-policy.
+Guardrails added in plan 01-03 (this file now owns them):
+  * ``git init -b main`` (portable fallback) + the idempotent, scaffold-scoped
+    ``chore: scaffold workspace`` commit,
+  * the pre-commit credential-leak guard (``leak_scan.py`` copied to
+    ``.githooks/pre-commit``, wired via ``core.hooksPath``),
+  * the egress allowlist DEEP-MERGE into ``.claude/settings.json`` (D-08/D-09) —
+    unions the required hosts into any existing settings, fail-clear on a corrupt
+    one, and warns (never installs) when ``socat`` is missing so the operator
+    knows sandbox egress is inert until it is present.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import shutil
+import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -33,8 +35,28 @@ from string import Template
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 TEMPLATES = SCRIPT_DIR / "templates"
+LEAK_SCANNER = SCRIPT_DIR / "leak_scan.py"
 
 EXECUTION_TARGETS = ("local", "kernel")
+
+# Scaffold-owned paths staged for the initial commit (D-02 / git-staging scope):
+# ONLY these are `git add --`'d — never `git add -A` — so a stray user file is
+# never swept into the scaffold commit. `.env` is deliberately absent (secret,
+# gitignored). Paths are workspace-relative; missing/ignored ones are skipped.
+SCAFFOLD_COMMIT_PATHS = (
+    "control/config.json",
+    "control/state.json",
+    "control/ledger.jsonl",
+    "competition.md",
+    "strategy.md",
+    "README.md",
+    ".gitignore",
+    ".claude/settings.json",
+    "pyproject.toml",
+    ".githooks/pre-commit",
+)
+
+SCAFFOLD_COMMIT_MESSAGE = "chore: scaffold workspace"
 
 # (template filename, output path relative to the workspace). Text templates are
 # create-if-absent (D-02): an existing file is never overwritten.
@@ -130,6 +152,116 @@ def write_control_json(path: Path, desired: dict) -> str:
     return "skip"
 
 
+def _union_list(base: list, additions) -> list:
+    """Return ``base`` with each of ``additions`` appended iff not already present.
+
+    Order-preserving, de-duplicating union: the user's existing entries stay first
+    and in place; the required entries are added only when missing (D-09 UNION).
+    """
+    result = list(base)
+    seen = set(result)
+    for item in additions:
+        if item not in seen:
+            result.append(item)
+            seen.add(item)
+    return result
+
+
+def merge_settings(current: dict, template: dict) -> dict:
+    """Deep-merge the egress allowlist into an existing settings dict (D-09).
+
+    Idempotent and non-destructive:
+      * ``sandbox.enabled`` is forced True (set if missing/false);
+      * ``sandbox.network.allowedDomains`` is UNIONED with the template's hosts
+        (pre-existing/extra domains preserved, required hosts added, de-duped);
+      * ``permissions.allow`` is UNIONED with the template's entries;
+      * every other user key (e.g. an unrelated ``env`` block) is left untouched.
+
+    A slot whose value is the wrong type (not a dict/list where one is expected)
+    is replaced with the correct container so the allowlist is never silently
+    skipped; the required hosts are always installed. Mutates and returns
+    ``current``.
+    """
+    tmpl_domains = (
+        template.get("sandbox", {}).get("network", {}).get("allowedDomains", [])
+    )
+    sandbox = current.get("sandbox")
+    if not isinstance(sandbox, dict):
+        sandbox = {}
+        current["sandbox"] = sandbox
+    sandbox["enabled"] = True
+    network = sandbox.get("network")
+    if not isinstance(network, dict):
+        network = {}
+        sandbox["network"] = network
+    existing_domains = network.get("allowedDomains")
+    if not isinstance(existing_domains, list):
+        existing_domains = []
+    network["allowedDomains"] = _union_list(existing_domains, tmpl_domains)
+
+    tmpl_allow = template.get("permissions", {}).get("allow", [])
+    permissions = current.get("permissions")
+    if not isinstance(permissions, dict):
+        permissions = {}
+        current["permissions"] = permissions
+    existing_allow = permissions.get("allow")
+    if not isinstance(existing_allow, list):
+        existing_allow = []
+    permissions["allow"] = _union_list(existing_allow, tmpl_allow)
+
+    return current
+
+
+def write_settings_json(path: Path, template: dict) -> str:
+    """Create-or-deep-merge the workspace ``.claude/settings.json`` (D-08/D-09).
+
+    * absent            -> write the egress ``template`` verbatim.
+    * present & valid   -> deep-merge the allowlist in (``merge_settings``),
+                           preserving all user keys; write back.
+    * present & corrupt -> raise ``MalformedControlJSON`` (fail-clear; bytes
+                           intact) — the SAME guarantee the control-plane JSON
+                           gets in 01-02, so a broken settings file is never
+                           clobbered.
+    """
+    if not path.exists():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(template, indent=2) + "\n")
+        return "create"
+
+    raw = path.read_text()
+    try:
+        current = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise MalformedControlJSON(path, exc) from exc
+
+    merge_settings(current, template)
+    path.write_text(json.dumps(current, indent=2) + "\n")
+    return "merge"
+
+
+def warn_if_socat_missing() -> bool:
+    """Detect ``socat`` and, on absence, print the consent-based install command.
+
+    On Linux the Claude Code sandbox network proxy needs both ``bubblewrap`` AND
+    ``socat``; without ``socat`` the sandbox silently degrades to unsandboxed and
+    ``sandbox.network.allowedDomains`` is INERT (egress unenforced). Detect via
+    ``shutil.which`` and instruct — NEVER auto-install (D-03, CLAUDE.md §What NOT
+    to Use). Returns True when socat is present.
+    """
+    if shutil.which("socat") is not None:
+        return True
+    print(
+        "warning: `socat` is not installed. The egress allowlist in "
+        ".claude/settings.json (sandbox.network.allowedDomains) is INERT until "
+        "socat is present — the sandbox silently falls back to UNSANDBOXED and "
+        "network egress is NOT enforced. Install it (with consent):\n"
+        "    sudo apt-get install socat\n"
+        "This scaffolder will NOT install it for you.",
+        file=sys.stderr,
+    )
+    return False
+
+
 def _load_config_template(slug: str, execution_target: str, created: str) -> dict:
     cfg = json.loads((TEMPLATES / "config.json.tmpl").read_text())
     cfg["competition_slug"] = slug
@@ -166,15 +298,30 @@ def scaffold(ws: Path, slug: str, execution_target: str) -> int:
     for template_name, out_rel in TEXT_TEMPLATES:
         create_if_absent(ws / out_rel, _render_text(template_name, mapping))
 
-    # Empty egress-settings stub so the D-10 layout is complete; 01-03 deep-merges
-    # the real allowlist (D-08/D-09) into it. Minimal valid JSON, create-if-absent.
-    create_if_absent(ws / ".claude" / "settings.json", "{}\n")
+    # Egress allowlist (D-08/D-09): create-or-deep-merge the real
+    # sandbox.network.allowedDomains into .claude/settings.json (NOT create-if-
+    # absent — an existing settings.json is topped up, never skipped; a corrupt
+    # one fails clear via MalformedControlJSON).
+    settings_tmpl = json.loads((TEMPLATES / "settings.json.tmpl").read_text())
+    write_settings_json(ws / ".claude" / "settings.json", settings_tmpl)
 
     # Workspace directories.
     for d in WORKSPACE_DIRS:
         (ws / d).mkdir(parents=True, exist_ok=True)
 
+    # git init + leak guard + idempotent scaffold-scoped commit (SETUP-01, D-15).
+    git_init_and_commit(ws)
+
+    # Surface the socat gap so the operator knows egress is unenforced until it is
+    # installed — consent-based instruction, never a silent install.
+    warn_if_socat_missing()
+
     return 0
+
+
+def git_init_and_commit(ws: Path) -> None:
+    """Placeholder — implemented in Task 2 (git init + leak guard + commit)."""
+    return None
 
 
 def build_parser() -> argparse.ArgumentParser:
