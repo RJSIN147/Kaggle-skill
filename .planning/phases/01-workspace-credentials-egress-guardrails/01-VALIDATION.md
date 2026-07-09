@@ -14,7 +14,7 @@ revised: 2026-07-09
 > Derived from `01-RESEARCH.md` §"Validation Architecture". Task IDs are wired to
 > plans by the planner; rows below are keyed to requirements + concrete test files.
 > Revised 2026-07-09 to add the cross-AI-review pins (D-01 slug gate, D-02 deep-merge/malformed,
-> D-09 settings merge, D-03/D-06 consent, git-staging scope, leak-scanner content-scan).
+> D-09 settings merge + settings fail-clear, D-03/D-06 consent, git-staging scope, leak-scanner content-scan).
 
 ---
 
@@ -67,6 +67,7 @@ Review-driven pins (NEW — all authored RED in 01-01 Wave 0, turned GREEN in th
 | 01-02 | 2 | SETUP-01 | D-02 | Malformed control JSON is not overwritten; fail-clear (non-zero exit, bytes intact) | `uv run pytest tests/test_init_workspace.py::test_safe_merge_malformed_json_fails_clearly -x` | ❌ W0 | ⬜ pending |
 | 01-02 | 2 | SETUP-02 | D-02 | Only `--set-execution-target` overwrites; a plain re-run never resets a manual change | `uv run pytest tests/test_config.py::test_no_overwrite_outside_setter -x` | ❌ W0 | ⬜ pending |
 | 01-03 | 3 | SETUP-04 | D-09 | Existing `.claude/settings.json` is deep-merged (user key preserved, hosts unioned), not skipped | `uv run pytest tests/test_settings.py::test_egress_allowlist_merges_existing -x` | ❌ W0 | ⬜ pending |
+| 01-03 | 3 | SETUP-04 | D-02/D-09 | Malformed pre-existing `.claude/settings.json` is not overwritten; fail-clear (non-zero exit, bytes intact) — same guarantee config.json gets | `uv run pytest tests/test_settings.py::test_egress_allowlist_malformed_fails_clearly -x` | ❌ W0 | ⬜ pending |
 | 01-03 | 3 | SETUP-01/04 | D-02 | Scaffold commit stages only scaffold-owned paths; a stray user file is not swept in | `uv run pytest tests/test_init_workspace.py::test_scaffold_commit_excludes_stray_files -x` | ❌ W0 | ⬜ pending |
 | 01-03 | 3 | SETUP-04 | D-15 | Broadened dotenv patterns (export/quoted/spaced/lowercase) are blocked | `uv run pytest tests/test_leak_scan.py::test_blocks_export_quoted_dotenv -x` | ❌ W0 | ⬜ pending |
 | 01-03 | 3 | SETUP-04 | D-15 | Bare 32-hex NOT in a `"key":` JSON field does not false-positive | `uv run pytest tests/test_leak_scan.py::test_ignores_unrelated_32hex_json -x` | ❌ W0 | ⬜ pending |
@@ -89,7 +90,7 @@ Nine files total in `tests/` (`conftest.py` + 8 `test_*.py`). New review-driven 
 - [ ] `tests/test_credentials_live.py` — `-m live` integration (real token)
 - [ ] `tests/test_no_credential_leak.py` — SETUP-04 no-echo scan (port exemplar's pattern, reimplemented)
 - [ ] `tests/test_gitignore.py` — SETUP-04 secrets ignored
-- [ ] `tests/test_settings.py` — SETUP-04 egress allowlist shape; **+ test_egress_allowlist_merges_existing** (D-09 merge)
+- [ ] `tests/test_settings.py` — SETUP-04 egress allowlist shape; **+ test_egress_allowlist_merges_existing** (D-09 merge)**, + test_egress_allowlist_malformed_fails_clearly** (D-02/D-09 fail-clear)
 - [ ] `tests/test_leak_scan.py` — SETUP-04 pre-commit scanner blocks/passes; **+ test_blocks_export_quoted_dotenv, test_ignores_unrelated_32hex_json**
 - [ ] Framework install: `uv pip install pytest` + `[tool.pytest.ini_options]` with a `live` marker
 
