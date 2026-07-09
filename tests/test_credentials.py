@@ -127,6 +127,33 @@ def test_env_population_requires_consent(seeded_workspace, tmp_path, run_script,
     assert "kaggleuser" in populated and SECRET_KEY in populated
 
 
+def test_malformed_state_json_fail_clear(seeded_workspace, tmp_path, run_script, clean_kaggle_env):
+    """WR-02 (D-02): a corrupt control/state.json is NOT clobbered; next_exp_id never reset.
+
+    Mirrors init_workspace's fail-clear contract: the offending path is named,
+    the exit is non-zero, and the corrupt bytes are preserved byte-for-byte.
+    HERMETIC: PATH scrubbed to an empty dir so the write-state path is reached
+    deterministically (no live API / no dependence on an installed kaggle).
+    """
+    ws = seeded_workspace
+    corrupt = b"{ not valid json"
+    state = Path(ws) / "control" / "state.json"
+    state.write_bytes(corrupt)
+
+    empty_bin = tmp_path / "empty-bin"
+    empty_bin.mkdir()
+    empty_home = tmp_path / "empty-home"
+    empty_home.mkdir()
+
+    res = run_script(
+        "check_credentials.py", "--workspace", ws, cwd=ws,
+        extra_env={"PATH": str(empty_bin), "HOME": str(empty_home)},
+    )
+    assert res.returncode != 0                                   # fail-clear
+    assert "state.json" in (res.stdout + res.stderr)             # offending path named
+    assert state.read_bytes() == corrupt                        # byte-for-byte unchanged
+
+
 def test_subprocess_output_no_secret(seeded_workspace, tmp_path, run_script, clean_kaggle_env):
     """D-04/V7: captured `kaggle` subprocess stderr is never surfaced raw (token-shaped string masked/omitted)."""
     ws = seeded_workspace
