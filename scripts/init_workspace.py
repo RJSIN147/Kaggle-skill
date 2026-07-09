@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -319,9 +320,125 @@ def scaffold(ws: Path, slug: str, execution_target: str) -> int:
     return 0
 
 
+def _git(ws: Path, *args: str, check: bool = True) -> subprocess.CompletedProcess:
+    """Run a git subcommand inside ``ws`` (captured, text)."""
+    return subprocess.run(
+        ["git", *args],
+        cwd=str(ws),
+        capture_output=True,
+        text=True,
+        check=check,
+    )
+
+
+def _git_init_main(ws: Path) -> None:
+    """``git init`` on branch ``main``, portably.
+
+    Prefer ``git init -b main``; fall back for an older git that lacks ``-b`` by
+    running plain ``git init`` then pointing HEAD at ``refs/heads/main`` before the
+    first commit (so the default ``master`` is never left behind).
+    """
+    result = subprocess.run(
+        ["git", "init", "-b", "main"],
+        cwd=str(ws),
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode == 0:
+        return
+    _git(ws, "init")
+    _git(ws, "symbolic-ref", "HEAD", "refs/heads/main")
+
+
+def _install_leak_hook(ws: Path) -> None:
+    """Copy ``leak_scan.py`` -> ``.githooks/pre-commit`` (0755) and set core.hooksPath.
+
+    Commit-after-hook-install (D-15): the guard is in place BEFORE the scaffold
+    commit, so the baseline commit is itself scanned. The hook body IS the copied
+    scanner (self-contained ``git show :<path>`` staged-content scan).
+    """
+    hooks_dir = ws / ".githooks"
+    hooks_dir.mkdir(parents=True, exist_ok=True)
+    hook = hooks_dir / "pre-commit"
+    shutil.copyfile(LEAK_SCANNER, hook)
+    hook.chmod(0o755)
+    _git(ws, "config", "core.hooksPath", ".githooks")
+
+
+def _ensure_git_identity(ws: Path) -> None:
+    """Set a repo-local git identity only if none resolves, so the commit can't fail.
+
+    Real use inherits the user's global identity; a bare CI/test env may have none.
+    A repo-local default is harmless — ``GIT_AUTHOR_*`` / ``GIT_COMMITTER_*`` env
+    vars still take precedence for authorship when present.
+    """
+    email = _git(ws, "config", "user.email", check=False).stdout.strip()
+    env_identity = os.environ.get("GIT_COMMITTER_EMAIL") or os.environ.get(
+        "GIT_AUTHOR_EMAIL"
+    )
+    if not email and not env_identity:
+        _git(ws, "config", "user.email", "kaggle-exp@localhost")
+        _git(ws, "config", "user.name", "kaggle-exp")
+
+
+def _scaffold_commit_exists(ws: Path) -> bool:
+    """True iff a prior ``chore: scaffold workspace`` commit already exists."""
+    result = _git(
+        ws,
+        "log",
+        "--all",
+        f"--grep={SCAFFOLD_COMMIT_MESSAGE}",
+        "--fixed-strings",
+        "--pretty=format:%H",
+        check=False,
+    )
+    return bool(result.stdout.strip())
+
+
+def _stage_scaffold_paths(ws: Path) -> None:
+    """``git add --`` ONLY the scaffold-owned paths that exist (never ``git add -A``).
+
+    Staging an explicit path list is the second HIGH-confirmed fix: a stray user
+    file present before init must not be swept into the scaffold commit. Gitignored
+    paths (e.g. a present ``.env``) are refused by ``git add`` and simply skipped.
+    """
+    present = [rel for rel in SCAFFOLD_COMMIT_PATHS if (ws / rel).exists()]
+    if not present:
+        return
+    _git(ws, "add", "--", *present)
+
+
+def _has_staged_changes(ws: Path) -> bool:
+    """True iff there is anything staged to commit."""
+    return _git(ws, "diff", "--cached", "--quiet", check=False).returncode != 0
+
+
 def git_init_and_commit(ws: Path) -> None:
-    """Placeholder — implemented in Task 2 (git init + leak guard + commit)."""
-    return None
+    """Init the workspace repo, install the leak guard, make the scaffold commit.
+
+    Idempotent and scaffold-scoped (SETUP-01, D-15):
+      * ``git init`` is skipped when ``.git`` already exists (D-02);
+      * the leak-guard hook is (re)installed BEFORE any commit;
+      * the ``chore: scaffold workspace`` commit is made ONLY when no prior scaffold
+        commit exists AND there is something staged — so a re-run never creates a
+        second scaffold commit and never sweeps the user's later edits into one.
+    """
+    if not (ws / ".git").exists():
+        _git_init_main(ws)
+
+    _install_leak_hook(ws)
+    _ensure_git_identity(ws)
+
+    # Re-run guard: a prior scaffold commit means init already ran here. Do not
+    # stage or re-commit (would risk sweeping the user's subsequent edits into a
+    # duplicate scaffold commit).
+    if _scaffold_commit_exists(ws):
+        return
+
+    _stage_scaffold_paths(ws)
+    if _has_staged_changes(ws):
+        # Runs the just-installed pre-commit leak guard against the baseline.
+        _git(ws, "commit", "-m", SCAFFOLD_COMMIT_MESSAGE)
 
 
 def build_parser() -> argparse.ArgumentParser:
