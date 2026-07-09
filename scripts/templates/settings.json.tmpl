@@ -1,0 +1,28 @@
+{
+  "sandbox": {
+    "enabled": true,
+    "network": {
+      "allowedDomains": [
+        "www.kaggle.com",
+        "kaggle.com",
+        "storage.googleapis.com",
+        "*.storage.googleapis.com",
+        "pypi.org",
+        "files.pythonhosted.org",
+        "github.com",
+        "raw.githubusercontent.com",
+        "codeload.github.com",
+        "repo.anaconda.com",
+        "conda.anaconda.org"
+      ]
+    }
+  },
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:www.kaggle.com)",
+      "Bash(kaggle *)",
+      "Bash(uv run *)",
+      "Bash(git *)"
+    ]
+  }
+}
