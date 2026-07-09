@@ -1,0 +1,29 @@
+# $slug — Kaggle experimentation workspace
+
+Scaffolded by the **kaggle-exp** skill. This folder is a self-contained,
+git-tracked workspace for running a well-documented Kaggle experiment loop:
+propose an idea → run it (local by default, or a Kaggle Kernel for GPU) → capture
+the result and a written verdict → version it in the ledger → update the strategy.
+
+## Layout
+
+```
+competition.md   strategy.md   README.md   # human docs (tracked)
+.env                                        # Kaggle credentials stub (gitignored)
+.gitignore                                  # tracks code+ledger+docs; ignores secrets+data
+.claude/settings.json                       # network egress allowlist (populated by init)
+pyproject.toml                              # minimal env stub (ML deps arrive in Phase 3)
+control/
+  config.json    # competition slug, execution target, CV defaults (machine state)
+  state.json     # credential status, next experiment id
+  ledger.jsonl   # append-only experiment history (one JSON object per line)
+data/                                       # competition data (gitignored)
+experiments/
+  exp-001/  exp-002/  …                     # one dir per experiment (exp-NNN, D-11)
+```
+
+## Conventions
+- **Experiment ids** are zero-padded and sequential: `exp-001`, `exp-002`, … (D-11).
+- **Execution target** (`local` | `kernel`) lives in `control/config.json`; change it
+  with `init_workspace.py --workspace . --set-execution-target kernel`.
+- **Never commit credentials.** `.env`, `kaggle.json`, and `access_token` are gitignored.
