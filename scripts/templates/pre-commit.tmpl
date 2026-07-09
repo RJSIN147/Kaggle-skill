@@ -1,0 +1,15 @@
+#!/bin/sh
+# Portable pre-commit shim (SETUP-04 / D-15) — ALTERNATIVE hook wiring.
+#
+# init_workspace.py installs the leak guard by copying scripts/leak_scan.py
+# verbatim to <workspace>/.githooks/pre-commit (the hook body IS the stdlib
+# scanner, so it self-contains the `git show :<path>` staged-content scan).
+#
+# This shim is the documented alternative for a runtime/host that prefers a thin
+# shell hook that delegates to a scanner kept alongside it. To use it instead:
+#   1. place leak_scan.py next to this file inside .githooks/
+#   2. install this file as .githooks/pre-commit (chmod +x)
+#   3. wire it: git config core.hooksPath .githooks
+#
+# Escape hatch for a genuine false positive: git commit --no-verify
+exec python3 "$(dirname "$0")/leak_scan.py" "$@"
