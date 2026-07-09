@@ -6,8 +6,14 @@
 # Do not confuse the two: this file configures the skill's dev/test tooling;
 # the .tmpl file configures a scaffolded competition workspace.
 #
-# The skill's own runtime scripts are stdlib-only (D-14); pytest is a dev/test
-# dependency only, never a runtime dependency.
+# The skill's own runtime scripts are stdlib-only (D-14); pytest and kaggle are
+# dev/test dependencies only, never runtime dependencies. `kaggle` is required by
+# the `-m live` credential test (tests/test_credentials_live.py) which shells out
+# to the real CLI — declaring it here keeps that test reproducible from a clean
+# checkout (per CLAUDE.md: "Declare deps; let uv/the user install"; no bare
+# runtime pip installs). check_credentials.py itself never imports kaggle — it
+# only invokes the CLI via subprocess when present (D-07 degrades gracefully if
+# absent), so this is purely a dev/live-test dependency.
 
 [project]
 name = "kaggle-exp"
@@ -18,6 +24,7 @@ requires-python = ">=3.11"
 [dependency-groups]
 dev = [
     "pytest>=8.0",
+    "kaggle>=2.2",  # dev/live-only: exercised by tests/test_credentials_live.py -m live
 ]
 
 # This project is a skill package, not an installable Python distribution:
