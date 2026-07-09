@@ -173,6 +173,9 @@ def merge_settings(current: dict, template: dict) -> dict:
 
     Idempotent and non-destructive:
       * ``sandbox.enabled`` is forced True (set if missing/false);
+      * ``sandbox.failIfUnavailable`` is forced from the template (fail-closed:
+        the sandbox refuses to run unsandboxed when socat/bubblewrap are absent,
+        mitigating T-01-09 natively rather than by an advisory warning alone);
       * ``sandbox.network.allowedDomains`` is UNIONED with the template's hosts
         (pre-existing/extra domains preserved, required hosts added, de-duped);
       * ``permissions.allow`` is UNIONED with the template's entries;
@@ -183,14 +186,17 @@ def merge_settings(current: dict, template: dict) -> dict:
     skipped; the required hosts are always installed. Mutates and returns
     ``current``.
     """
-    tmpl_domains = (
-        template.get("sandbox", {}).get("network", {}).get("allowedDomains", [])
-    )
+    tmpl_sandbox = template.get("sandbox", {})
+    tmpl_domains = tmpl_sandbox.get("network", {}).get("allowedDomains", [])
     sandbox = current.get("sandbox")
     if not isinstance(sandbox, dict):
         sandbox = {}
         current["sandbox"] = sandbox
     sandbox["enabled"] = True
+    # Fail-closed hardening: force the template's failIfUnavailable so a merged
+    # (pre-existing) settings.json also refuses to silently degrade to unsandboxed.
+    if "failIfUnavailable" in tmpl_sandbox:
+        sandbox["failIfUnavailable"] = tmpl_sandbox["failIfUnavailable"]
     network = sandbox.get("network")
     if not isinstance(network, dict):
         network = {}
@@ -244,18 +250,25 @@ def warn_if_socat_missing() -> bool:
     """Detect ``socat`` and, on absence, print the consent-based install command.
 
     On Linux the Claude Code sandbox network proxy needs both ``bubblewrap`` AND
-    ``socat``; without ``socat`` the sandbox silently degrades to unsandboxed and
-    ``sandbox.network.allowedDomains`` is INERT (egress unenforced). Detect via
+    ``socat``. When either is absent, Claude Code WARNS and (by default) falls
+    back to running commands UNSANDBOXED — so ``sandbox.network.allowedDomains``
+    is INERT and egress is unenforced. The scaffolded settings.json sets
+    ``sandbox.failIfUnavailable: true`` (fail-closed), which converts that
+    fallback into a HARD FAILURE instead of a silent degrade, so a missing socat
+    surfaces loudly rather than leaving egress quietly open. Detect via
     ``shutil.which`` and instruct — NEVER auto-install (D-03, CLAUDE.md §What NOT
     to Use). Returns True when socat is present.
+    (See https://code.claude.com/docs/en/sandboxing.md.)
     """
     if shutil.which("socat") is not None:
         return True
     print(
         "warning: `socat` is not installed. The egress allowlist in "
         ".claude/settings.json (sandbox.network.allowedDomains) is INERT until "
-        "socat is present — the sandbox silently falls back to UNSANDBOXED and "
-        "network egress is NOT enforced. Install it (with consent):\n"
+        "socat is present. Claude Code will WARN and, without the fail-closed "
+        "guard, fall back to running commands UNSANDBOXED (egress NOT enforced); "
+        "the scaffolded `sandbox.failIfUnavailable: true` instead makes sandboxed "
+        "commands FAIL until socat is installed. Install it (with consent):\n"
         "    sudo apt-get install socat\n"
         "This scaffolder will NOT install it for you.",
         file=sys.stderr,
