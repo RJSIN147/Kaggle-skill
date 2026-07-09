@@ -42,11 +42,29 @@ def test_precedence(seeded_workspace, tmp_path, run_script, clean_kaggle_env):
     assert SECRET_KEY not in (res.stdout + res.stderr)   # raw key value never printed
 
 
-def test_kaggle_missing(seeded_workspace, run_script, clean_kaggle_env):
-    """SETUP-03 (D-07): kaggle CLI absent -> UNVALIDATED + install remediation."""
+def test_kaggle_missing(seeded_workspace, tmp_path, run_script, clean_kaggle_env):
+    """SETUP-03 (D-07): kaggle CLI absent -> UNVALIDATED + install remediation.
+
+    HERMETIC: the command-not-found branch must be exercised deterministically,
+    regardless of whether a `kaggle` binary happens to be installed on the host.
+    (The 01-04 Task 3 checkpoint explicitly installs `kaggle`; relying on its
+    ambient absence — as an earlier version did — is a false green that flips to
+    FAIL the moment the CLI is present, taking the auth-failure branch instead.)
+
+    We scrub the subprocess PATH to an empty dir so the script's own
+    ``shutil.which("kaggle")`` returns None, and point HOME at an empty dir so the
+    detection never depends on (or reads) the developer's real ~/.kaggle. The
+    assertions below are UNCHANGED — still UNVALIDATED + install remediation.
+    """
     ws = seeded_workspace
-    # kaggle CLI is not installed in this environment (command-not-found branch).
-    res = run_script("check_credentials.py", "--workspace", ws, cwd=ws)
+    empty_bin = tmp_path / "empty-bin"   # contains no `kaggle` -> which() -> None
+    empty_bin.mkdir()
+    empty_home = tmp_path / "empty-home"  # no ~/.kaggle -> no real-cred dependence
+    empty_home.mkdir()
+    res = run_script(
+        "check_credentials.py", "--workspace", ws, cwd=ws,
+        extra_env={"PATH": str(empty_bin), "HOME": str(empty_home)},
+    )
     assert _state(ws)["credentials"] == "UNVALIDATED"
     out = (res.stdout + res.stderr).lower()
     assert "install" in out and "kaggle" in out          # remediation shown
