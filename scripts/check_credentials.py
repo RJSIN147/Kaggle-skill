@@ -102,29 +102,57 @@ def detect_source(home: Path, env) -> tuple[str, str | None]:
     return ("none", None)
 
 
+# Each label states — accurately — whether THIS tool reads the credential value.
+#   * access_token file: NEVER read by this tool (only the kaggle CLI reads it),
+#     independent of --yes — so a fixed "not read" claim is always true.
+#   * env sources: the value IS read into memory (to classify + mask it, printed
+#     masked on the following line), never shown raw — so the label says so.
+#   * kaggle.json: read-status DEPENDS on consent (see _kaggle_json_label) — the
+#     content is read only under --yes (to populate .env); without --yes it is not
+#     read at all. A fixed "not read" claim would be FALSE under --yes.
 _SOURCE_LABELS = {
     "access_token": (
         "[credentials] source: access_token file (~/.kaggle/access_token) "
-        "— value not read (security); the kaggle CLI validates it."
+        "— value not read by this tool (security); the kaggle CLI reads + validates it."
     ),
     "env_token": (
         "[credentials] source: environment (KAGGLE_API_TOKEN) "
-        "— env takes precedence over any kaggle.json (D-04)."
+        "— env takes precedence over any kaggle.json (D-04); "
+        "value read to classify + mask it, never shown raw."
     ),
     "env_pair": (
         "[credentials] source: environment (KAGGLE_USERNAME/KAGGLE_KEY) "
-        "— env takes precedence over any kaggle.json (D-04)."
-    ),
-    "kaggle_json": (
-        "[credentials] source: kaggle.json (~/.kaggle/kaggle.json) "
-        "— value not read without --yes."
+        "— env takes precedence over any kaggle.json (D-04); "
+        "value read to classify + mask it, never shown raw."
     ),
     "none": "[credentials] source: NONE detected.",
 }
 
 
-def report_source(source: str, active_value: str | None) -> None:
-    print(_SOURCE_LABELS[source])
+def _kaggle_json_label(consent: bool) -> str:
+    """kaggle.json source line — read-status is honest about the --yes consent gate.
+
+    Without ``--yes`` the file content is never read (existence-only detection);
+    with ``--yes`` it IS read to populate ``.env`` (never printed). A single fixed
+    "value not read" line would assert something FALSE in the consent case.
+    """
+    if consent:
+        return (
+            "[credentials] source: kaggle.json (~/.kaggle/kaggle.json) "
+            "— value read under your --yes consent (to populate the workspace .env); "
+            "never printed."
+        )
+    return (
+        "[credentials] source: kaggle.json (~/.kaggle/kaggle.json) "
+        "— value not read (no --yes); re-run with --yes to populate .env from it."
+    )
+
+
+def report_source(source: str, active_value: str | None, consent: bool) -> None:
+    if source == "kaggle_json":
+        print(_kaggle_json_label(consent))
+    else:
+        print(_SOURCE_LABELS[source])
     if active_value:
         ttype = _detect_token_type(active_value)
         # NOTE: uses _mask(...) — output is masked; the raw value never appears.
@@ -352,7 +380,7 @@ def main(argv=None) -> int:
     home = _home(env)
 
     source, active_value = detect_source(home, env)
-    report_source(source, active_value)
+    report_source(source, active_value, consent)
 
     handle_chmod(home, consent)
     handle_env_population(ws, home, env, consent)
