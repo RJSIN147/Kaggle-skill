@@ -1,0 +1,33 @@
+# SKILL PACKAGE pyproject.toml (repo root).
+#
+# This is the kaggle-exp SKILL's OWN package metadata + test config. It is
+# DISTINCT from scripts/templates/pyproject.toml.tmpl — the minimal WORKSPACE
+# stub that `init_workspace.py` scaffolds into a competition folder (D-14).
+# Do not confuse the two: this file configures the skill's dev/test tooling;
+# the .tmpl file configures a scaffolded competition workspace.
+#
+# The skill's own runtime scripts are stdlib-only (D-14); pytest is a dev/test
+# dependency only, never a runtime dependency.
+
+[project]
+name = "kaggle-exp"
+version = "0.1.0"
+description = "Kaggle competition experimentation skill — guided workspace init, credential validation, egress guardrails, and a git-backed experiment ledger."
+requires-python = ">=3.11"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+]
+
+# This project is a skill package, not an installable Python distribution:
+# there is no build backend and no importable top-level package. Tell uv not to
+# try to build/install the project itself — only manage the (dev) environment.
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "live: requires a real Kaggle API token (excluded from default runs)",
+]
