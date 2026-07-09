@@ -13,7 +13,7 @@ This roadmap follows a **local-loop-first vertical MVP**: prove the entire reaso
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [x] **Phase 1: Workspace, Credentials & Egress Guardrails** - Empty folder to a validated, git-tracked workspace with locked-down egress (completed 2026-07-09)
+- [ ] **Phase 1: Workspace, Credentials & Egress Guardrails** - Empty folder to a validated, git-tracked workspace with locked-down egress (4/4 plans executed; verification `gaps_found` 4/5 — SETUP-04 egress-enforcement half awaits a live human probe)
 - [ ] **Phase 2: Competition Context & Data** - Machine-derived competition "constitution" plus local data, UI gates cleared
 - [ ] **Phase 3: Local Experiment Loop, Ledger & Strategy** - The full idea-to-verdict-to-ledger-to-strategy cycle, local & CV-only (MVP / core value)
 - [ ] **Phase 4: Kaggle Kernel Execution (GPU Path)** - Run the same experiment on Kaggle GPU compute, silent-failure caught
