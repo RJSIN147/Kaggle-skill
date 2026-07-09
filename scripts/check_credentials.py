@@ -5,10 +5,14 @@ Stdlib-only, self-locating (``Path(__file__)``), ``--workspace``-driven checker
 that the SKILL runs as ``python3 scripts/check_credentials.py --workspace <dir>
 [--yes]``. It:
 
-  * detects which credential source the ``kaggle`` CLI would use, in CLI 2.x
-    precedence order — ``~/.kaggle/access_token`` -> ``KAGGLE_API_TOKEN`` env ->
-    ``KAGGLE_USERNAME``/``KAGGLE_KEY`` env -> ``~/.kaggle/kaggle.json`` — and
-    reports the ACTIVE one (env beats a file; D-04 env-canonical);
+  * detects which credential source the ``kaggle`` CLI would use, in the order
+    documented in references/kaggle-cli-behavior.md — ``KAGGLE_API_TOKEN`` env ->
+    ``KAGGLE_USERNAME``/``KAGGLE_KEY`` env -> ``~/.kaggle/access_token`` ->
+    ``~/.kaggle/kaggle.json`` — and reports the ACTIVE one (env beats a file;
+    D-04 env-canonical). NOTE (WR-03): CLI 2.2.3's guidance foregrounds
+    ``KAGGLE_API_TOKEN`` above ``access_token`` (VERIFIED); the legacy
+    ``USERNAME``/``KEY`` pair's precedence vs the ``access_token`` file is
+    UNVERIFIED — the live truth is the exit code, not this label;
   * reports the token TYPE and a MASKED value — a raw secret value is NEVER
     printed (``_mask`` + env-var-name-only output; T-01-02 / D-04);
   * consent-gates every mutation (D-03/D-06): without ``--yes`` a world/group
@@ -84,19 +88,41 @@ def _kaggle_json_path(home: Path) -> Path:
 
 
 def detect_source(home: Path, env) -> tuple[str, str | None]:
-    """Return ``(source_id, active_env_value_or_None)`` in CLI 2.x precedence.
+    """Return ``(source_id, active_env_value_or_None)`` — env-canonical (D-04, WR-03).
+
+    Ordering, reconciled with references/kaggle-cli-behavior.md so the reported
+    source can't contradict the module's own "env beats a file" claim:
+
+      1. ``KAGGLE_API_TOKEN`` env  — CLI 2.2.3's own auth guidance foregrounds this
+                                     env token ABOVE ``~/.kaggle/access_token``
+                                     (documented order → VERIFIED for this pair).
+      2. ``KAGGLE_USERNAME``+``KAGGLE_KEY``  — legacy env pair; kept for the D-04
+                                     env-canonical contract. Its precedence RELATIVE
+                                     TO the access_token FILE is UNVERIFIED (the
+                                     CLI's guidance does not list the pair at all);
+                                     we rank env ahead of the file to keep the
+                                     "env-canonical" label honest, but the LIVE
+                                     truth is the exit code, not this label.
+      3. ``~/.kaggle/access_token``  — file source; CONFIRMED honored end-to-end
+                                     (01-04 Task 3 checkpoint, exit 0).
+      4. ``~/.kaggle/kaggle.json``  — legacy file, last.
+
+    NOTE (WR-03): the pre-fix order ranked the access_token FILE first — before any
+    env var — which flatly contradicted the "env-canonical" docstring/labels and
+    could mis-report the ACTIVE source (and thus the remediation) when both a file
+    and env vars were present. Ranking env first removes that false certainty.
 
     Files are detected by existence + non-zero size ONLY (their bytes are never
     read here). The env-var VALUE is returned only for the two env sources, so
     the caller can report a masked token type without touching any file.
     """
-    at = _access_token_path(home)
-    if at.is_file() and at.stat().st_size > 0:
-        return ("access_token", None)  # file content deliberately NOT read
     if env.get("KAGGLE_API_TOKEN"):
         return ("env_token", env["KAGGLE_API_TOKEN"])
     if env.get("KAGGLE_USERNAME") and env.get("KAGGLE_KEY"):
         return ("env_pair", env["KAGGLE_KEY"])
+    at = _access_token_path(home)
+    if at.is_file() and at.stat().st_size > 0:
+        return ("access_token", None)  # file content deliberately NOT read
     if _kaggle_json_path(home).is_file():
         return ("kaggle_json", None)  # content read only under --yes (D-06b)
     return ("none", None)
