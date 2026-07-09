@@ -261,16 +261,40 @@ def print_no_credentials_instructions() -> None:
 # --------------------------------------------------------------------------- #
 # state.json (D-07) — flip credentials VALIDATED|UNVALIDATED, preserve keys
 # --------------------------------------------------------------------------- #
+class MalformedStateJSON(Exception):
+    """control/state.json exists but is not parseable — fail-clear (WR-02, D-02).
+
+    Mirrors ``init_workspace.MalformedControlJSON``: a corrupt/partially-written
+    state.json must NOT be silently rewritten, because that resets ``next_exp_id``
+    to 1 (later phases derive ``exp-NNN`` dir names from it — a reset risks
+    colliding with / overwriting existing experiment directories) and discards any
+    other machine keys. The bytes are preserved and the caller exits non-zero.
+    """
+
+    def __init__(self, path: Path, exc: Exception):
+        self.path = path
+        self.exc = exc
+        super().__init__(f"{path}: {exc}")
+
+
 def write_credentials_state(ws: Path, status: str) -> None:
+    """Flip ``credentials`` to ``status`` in control/state.json, preserving keys.
+
+    Fail-clear (WR-02): if an existing state.json is unparseable (JSONDecodeError)
+    or unreadable (OSError), raise ``MalformedStateJSON`` WITHOUT writing — the
+    corrupt bytes are left intact and ``next_exp_id`` is never reset. A missing
+    file is created fresh; a valid dict is topped up (credentials + a default
+    next_exp_id) without clobbering existing keys.
+    """
     state_path = ws / "control" / "state.json"
     data: dict = {}
     if state_path.exists():
         try:
             loaded = json.loads(state_path.read_text())
-            if isinstance(loaded, dict):
-                data = loaded
-        except (json.JSONDecodeError, OSError):
-            data = {}
+        except (json.JSONDecodeError, OSError) as exc:
+            raise MalformedStateJSON(state_path, exc) from exc
+        if isinstance(loaded, dict):
+            data = loaded
     data["credentials"] = status
     data.setdefault("next_exp_id", 1)
     state_path.parent.mkdir(parents=True, exist_ok=True)
@@ -400,22 +424,33 @@ def main(argv=None) -> int:
     if source == "none":
         print_no_credentials_instructions()
 
-    # Live validation guard (D-07): missing CLI degrades to UNVALIDATED, no crash.
-    if shutil.which("kaggle") is None:
-        write_credentials_state(ws, "UNVALIDATED")
-        print_install_remediation()
-        return 1
+    try:
+        # Live validation guard (D-07): missing CLI degrades to UNVALIDATED, no crash.
+        if shutil.which("kaggle") is None:
+            write_credentials_state(ws, "UNVALIDATED")
+            print_install_remediation()
+            return 1
 
-    # Live exit-code validation (SETUP-03): decide STRICTLY by exit code; the
-    # captured CLI output is never surfaced raw (T-01-10 spoofing, T-01-02 leak).
-    returncode, combined = run_kaggle_list()
-    if returncode == 0:
-        write_credentials_state(ws, "VALIDATED")
-        print("[VALIDATED] kaggle credential works (kaggle competitions list exit 0).")
-        return 0
-    write_credentials_state(ws, "UNVALIDATED")
-    branch_remediation(combined, source)
-    return 1
+        # Live exit-code validation (SETUP-03): decide STRICTLY by exit code; the
+        # captured CLI output is never surfaced raw (T-01-10 spoofing, T-01-02 leak).
+        returncode, combined = run_kaggle_list()
+        if returncode == 0:
+            write_credentials_state(ws, "VALIDATED")
+            print("[VALIDATED] kaggle credential works (kaggle competitions list exit 0).")
+            return 0
+        write_credentials_state(ws, "UNVALIDATED")
+        branch_remediation(combined, source)
+        return 1
+    except MalformedStateJSON as err:
+        # Fail-clear (WR-02, D-02): the corrupt state.json was NOT overwritten and
+        # next_exp_id was NOT reset. Name the path and exit non-zero for repair.
+        print(
+            f"[BLOCKED] {err.path} is not valid JSON and was left untouched "
+            f"(fail-clear, D-02): {err.exc}. The credential status was NOT written "
+            "and next_exp_id was NOT reset. Fix or remove the file and re-run.",
+            file=sys.stderr,
+        )
+        return 1
 
 
 if __name__ == "__main__":
