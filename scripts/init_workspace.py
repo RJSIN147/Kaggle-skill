@@ -188,13 +188,54 @@ def build_parser() -> argparse.ArgumentParser:
                     help="Competition slug. REQUIRED on a fresh workspace (D-01).")
     ap.add_argument("--execution-target", choices=EXECUTION_TARGETS, default="local",
                     help="Execution target recorded at creation (default: local).")
+    ap.add_argument("--set-execution-target", choices=EXECUTION_TARGETS, default=None,
+                    help="Change the GLOBAL execution target on an existing workspace. "
+                         "This is the ONLY path allowed to overwrite an existing value "
+                         "(an explicit user change, distinct from safe-merge). Enum-validated.")
     return ap
+
+
+def set_execution_target(config_path: Path, target: str) -> int:
+    """SETUP-02 setter: overwrite ``execution_target`` on an existing config.json.
+
+    This is the ONLY code path allowed to overwrite an existing value, and only
+    the ``execution_target`` key — an explicit user-driven change, never triggered
+    by the scaffold/deep-merge path. The enum is already validated by argparse
+    ``choices`` (a non-enum value is rejected before we get here, with no write).
+    Only the Phase-1 GLOBAL default is owned here; per-experiment override is
+    Phase 3 (out of scope).
+    """
+    if not config_path.exists():
+        print(
+            f"cannot set execution target: no {config_path} — run init first.",
+            file=sys.stderr,
+        )
+        return 1
+    try:
+        cfg = json.loads(config_path.read_text())
+    except json.JSONDecodeError as exc:
+        print(
+            f"cannot set execution target: {config_path.name} is not valid JSON "
+            f"and was left untouched (fail-clear): {exc}.",
+            file=sys.stderr,
+        )
+        return 1
+    cfg["execution_target"] = target
+    config_path.write_text(json.dumps(cfg, indent=2) + "\n")
+    print(f"execution_target set to {target}")
+    return 0
 
 
 def main(argv=None) -> int:
     args = build_parser().parse_args(argv)
     ws = args.workspace.resolve()
     config_path = ws / "control" / "config.json"
+
+    # Setter mode: change the global execution target on an existing workspace and
+    # return. Runs BEFORE the slug gate (no --slug needed for a target change).
+    if args.set_execution_target is not None:
+        return set_execution_target(config_path, args.set_execution_target)
+
     is_fresh = not config_path.exists()
 
     # D-01 mechanical gate: a FRESH workspace refuses to create anything without a
