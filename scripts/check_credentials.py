@@ -297,12 +297,25 @@ def run_kaggle_list() -> tuple[int, str]:
     matching; it is NEVER printed. It can embed a token-shaped string — CLI 2.2.3
     prints its auth guidance to STDOUT (see references/kaggle-cli-behavior.md) —
     so the caller derives secret-free remediation from matches only (T-01-02).
+
+    Bounded by ``timeout=`` (WR-01): references/egress-allowlist.md documents that
+    the sandbox denies off-allowlist egress by STALLING the proxy CONNECT until the
+    client times out, so an indefinite hang is the EXPECTED failure shape here. A
+    ``TimeoutExpired`` is mapped to a non-zero (UNVALIDATED) result with a fixed,
+    secret-free marker; the partial captured output on the exception is NEVER
+    surfaced (it could embed a token-shaped string).
     """
-    proc = subprocess.run(
-        ["kaggle", "competitions", "list"],
-        capture_output=True,
-        text=True,
-    )
+    try:
+        proc = subprocess.run(
+            ["kaggle", "competitions", "list"],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+    except subprocess.TimeoutExpired:
+        # 124 = conventional timeout exit code; the marker is fixed + secret-free
+        # (never the captured partial stdout/stderr carried on the exception).
+        return 124, "kaggle competitions list timed out"
     return proc.returncode, (proc.stdout or "") + "\n" + (proc.stderr or "")
 
 
