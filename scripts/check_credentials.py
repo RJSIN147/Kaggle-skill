@@ -259,6 +259,79 @@ def print_install_remediation() -> None:
 
 
 # --------------------------------------------------------------------------- #
+# Live validation (Task 2) — exit-code only; captured output NEVER surfaced raw
+# --------------------------------------------------------------------------- #
+def run_kaggle_list() -> tuple[int, str]:
+    """Run ``kaggle competitions list``; return ``(returncode, combined_output)``.
+
+    BOTH stdout and stderr are captured to buffers (never inherited to the
+    terminal). The combined text is used ONLY for the exit-code decision + pattern
+    matching; it is NEVER printed. It can embed a token-shaped string — CLI 2.2.3
+    prints its auth guidance to STDOUT (see references/kaggle-cli-behavior.md) —
+    so the caller derives secret-free remediation from matches only (T-01-02).
+    """
+    proc = subprocess.run(
+        ["kaggle", "competitions", "list"],
+        capture_output=True,
+        text=True,
+    )
+    return proc.returncode, (proc.stdout or "") + "\n" + (proc.stderr or "")
+
+
+def branch_remediation(combined: str, source: str) -> None:
+    """Print secret-free remediation for a failed live call (four branches).
+
+    ``combined`` (captured stdout+stderr) is MATCHED but NEVER echoed. Observed
+    signatures — kaggle CLI 2.2.3, references/kaggle-cli-behavior.md:
+      * auth failure -> exit 1 + 'Authentication required to call the Kaggle API'
+        on stdout (stderr empty); an unauth'd request gets HTTP 401 server-side.
+    The command-not-found branch is handled earlier by the ``shutil.which`` guard.
+    """
+    low = combined.lower()
+    auth_fail = (
+        "401" in combined
+        or "403" in combined
+        or "unauthorized" in low
+        or "forbidden" in low
+        or "authentication required" in low
+    )
+    readable = (
+        "world-readable" in low
+        or "group-readable" in low
+        or "insecure" in low
+        or "permission" in low
+    )
+    if readable:
+        # Branch: missing chmod 600 (kaggle warns a credential file is readable).
+        print(
+            "[UNVALIDATED] kaggle reports your ~/.kaggle credential file is "
+            "group/world-readable. Re-run with --yes to chmod 600, or run: "
+            "chmod 600 ~/.kaggle/kaggle.json (or ~/.kaggle/access_token)."
+        )
+    elif source == "none":
+        # Branch: wrong/missing env var (no credential detected at all).
+        print(
+            "[UNVALIDATED] no Kaggle credential detected. Set a token, e.g.: "
+            "export KAGGLE_API_TOKEN=<token>  (or KAGGLE_USERNAME + KAGGLE_KEY, "
+            "or save it to ~/.kaggle/access_token), then re-run."
+        )
+    elif auth_fail:
+        # Branch: 401 / Unauthorized (a credential is present but rejected).
+        print(
+            "[UNVALIDATED] 401 / authentication rejected — the Kaggle token is "
+            "invalid or expired. Regenerate one at kaggle.com/settings/api "
+            '("Generate New Token") and re-run.'
+        )
+    else:
+        # Fall-through: unknown non-zero exit (output withheld to avoid a leak).
+        print(
+            "[UNVALIDATED] kaggle validation failed (non-zero exit). The CLI's "
+            "output is withheld to avoid leaking a secret; see "
+            "references/kaggle-cli-behavior.md for observed failure signatures."
+        )
+
+
+# --------------------------------------------------------------------------- #
 # Entry point
 # --------------------------------------------------------------------------- #
 def _parse_args(argv):
@@ -292,8 +365,16 @@ def main(argv=None) -> int:
         print_install_remediation()
         return 1
 
-    # Live exit-code validation is implemented in Task 2.
-    return 0
+    # Live exit-code validation (SETUP-03): decide STRICTLY by exit code; the
+    # captured CLI output is never surfaced raw (T-01-10 spoofing, T-01-02 leak).
+    returncode, combined = run_kaggle_list()
+    if returncode == 0:
+        write_credentials_state(ws, "VALIDATED")
+        print("[VALIDATED] kaggle credential works (kaggle competitions list exit 0).")
+        return 0
+    write_credentials_state(ws, "UNVALIDATED")
+    branch_remediation(combined, source)
+    return 1
 
 
 if __name__ == "__main__":

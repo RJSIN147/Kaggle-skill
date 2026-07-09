@@ -32,3 +32,11 @@ def test_live_validation(seeded_workspace, run_script):
 
     state = json.loads((Path(ws) / "control" / "state.json").read_text())
     assert state["credentials"] == "VALIDATED"
+
+    # SETUP-04 / T-01-02: even on the success path, no raw credential VALUE may
+    # appear in the transcript (masked or env-var-name only). Guards against a
+    # regression where a token leaks via the checker's own output.
+    transcript = res.stdout + res.stderr
+    for secret in (os.environ.get("KAGGLE_KEY"), os.environ.get("KAGGLE_API_TOKEN")):
+        if secret:
+            assert secret not in transcript, "credential value leaked to output"
