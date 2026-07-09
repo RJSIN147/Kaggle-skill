@@ -37,6 +37,10 @@ def test_egress_allowlist(tmp_workspace, run_script):
     settings, domains = _domains(ws / ".claude" / "settings.json")
     assert REQUIRED_HOSTS <= domains                # exact-host superset (incl. the GCS gotcha)
     assert settings["sandbox"]["enabled"] is True
+    # WR-05: the fail-closed flag must be written on a fresh scaffold — dropping it
+    # would silently reopen the "socat/bubblewrap absent -> unsandboxed, egress
+    # open" hole while the rest of the suite stays green.
+    assert settings["sandbox"]["failIfUnavailable"] is True
 
 
 def test_egress_allowlist_merges_existing(tmp_workspace, run_script):
@@ -61,6 +65,9 @@ def test_egress_allowlist_merges_existing(tmp_workspace, run_script):
     assert "example.com" in domains                 # pre-existing entry kept
     assert REQUIRED_HOSTS <= domains                # required hosts unioned in
     assert settings["sandbox"]["enabled"] is True
+    # WR-05: merge_settings must FORCE the fail-closed flag on even when merging
+    # onto a pre-existing settings.json that lacked it (fail-closed hardening).
+    assert settings["sandbox"]["failIfUnavailable"] is True
 
 
 def test_egress_allowlist_malformed_fails_clearly(tmp_workspace, run_script):
