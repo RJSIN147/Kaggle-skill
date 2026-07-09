@@ -13,8 +13,22 @@ commit on a hit. It is both:
 
 Why staged CONTENT, not just the unified diff: a secret can hide in a renamed
 file, a multiline blob, or a line the diff does not surface. We enumerate every
-staged path (``git diff --cached --name-only --diff-filter=ACM``) and read each
-staged blob via ``git show :<path>``, then scan the full text.
+staged path (``git -c core.quotePath=false diff --cached --name-only -z
+--diff-filter=ACMR``) and read each staged blob via ``git show :<path>``, then
+scan the full text. ``ACMR`` includes renames (matching the "renamed file"
+rationale above); the destination path is a real index entry, so ``git show``
+reads it.
+
+FAIL CLOSED (CR-01): this is the last automated secret defense for any file not
+covered by ``.gitignore``, so it must never treat its OWN failure as "clean":
+
+  * paths are enumerated NUL-delimited with ``core.quotePath=false`` so a
+    non-ASCII / space / newline filename is returned as its RAW bytes — git's
+    default ``core.quotePath=true`` C-quotes such names (e.g. ``"caf\303\251.env"``),
+    which is not a usable pathspec and silently skipped the blob (fail-open);
+  * a non-zero return from the path enumeration OR from reading any staged blob
+    raises ``SystemExit(1)`` (block the commit) — an error is NEVER "no secrets";
+  * the ONLY exit-0 path is "every staged blob was read, scanned, and none matched".
 
 Patterns (stdlib ``re``) — pattern NAMES only are ever printed, never the value:
   * OAuth access/refresh tokens (``kag`` a/r ``t_…``),
@@ -49,26 +63,50 @@ PATTERNS = [
 ]
 
 
-def staged_files() -> list[str]:
-    """Return the workspace-relative paths staged for commit (added/copied/modified)."""
-    result = subprocess.run(
-        ["git", "diff", "--cached", "--name-only", "--diff-filter=ACM"],
-        capture_output=True,
-        text=True,
+def _fail_closed(message: str) -> None:
+    """Block the commit on any scanner error — a failure is NEVER treated as clean."""
+    print(
+        f"[BLOCKED] {message} — refusing the commit (fail-closed). Fix the issue, "
+        "or override a genuine false positive with `git commit --no-verify`.",
+        file=sys.stderr,
     )
-    return [line for line in result.stdout.splitlines() if line]
+    raise SystemExit(1)
+
+
+def staged_files() -> list[str]:
+    """Return the RAW staged paths (added/copied/modified/renamed) — fail closed on error.
+
+    ``-z`` + ``core.quotePath=false`` yields NUL-delimited, UN-quoted paths, so a
+    non-ASCII / space / newline filename round-trips as its real bytes (decoded
+    with ``surrogateescape`` so it re-encodes byte-for-byte when handed back to
+    ``git show``). A non-zero git return (e.g. not a repo, corrupt index) BLOCKS
+    the commit rather than yielding an empty list that would exit 0 (fail-open).
+    """
+    result = subprocess.run(
+        ["git", "-c", "core.quotePath=false",
+         "diff", "--cached", "--name-only", "-z", "--diff-filter=ACMR"],
+        capture_output=True,
+    )
+    if result.returncode != 0:
+        _fail_closed("could not enumerate staged files from the git index")
+    out = result.stdout.decode("utf-8", errors="surrogateescape")
+    return [p for p in out.split("\0") if p]
 
 
 def staged_blob(path: str) -> str:
-    """Return the STAGED content of ``path`` (index version) as text.
+    """Return the STAGED content of ``path`` (index version) as text — fail closed on error.
 
-    Reads bytes and decodes with ``errors='ignore'`` so a binary-ish staged blob
-    never crashes the scan. An unreadable path (e.g. a delete) yields ``""``.
+    ``path`` is a RAW pathspec from :func:`staged_files` passed as a distinct argv
+    element (never shell-interpolated), so spaces/newlines/non-ASCII are literal.
+    Bytes are decoded with ``errors='replace'`` so a binary / non-UTF-8 blob never
+    crashes the scan (any embedded ASCII assignment is still matched). A blob that
+    cannot be read (non-zero git return) BLOCKS the commit — an ACMR path we could
+    not read is never silently skipped (deletes are excluded by the filter).
     """
     result = subprocess.run(["git", "show", f":{path}"], capture_output=True)
     if result.returncode != 0:
-        return ""
-    return result.stdout.decode("utf-8", errors="ignore")
+        _fail_closed(f"could not read the staged blob for {path!r}")
+    return result.stdout.decode("utf-8", errors="replace")
 
 
 def scan_text(text: str) -> list[str]:
