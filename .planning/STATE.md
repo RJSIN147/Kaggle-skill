@@ -4,13 +4,13 @@ milestone: v1.0
 milestone_name: milestone
 status: executing
 stopped_at: Phase 1 context gathered
-last_updated: "2026-07-09T19:18:47.096Z"
+last_updated: "2026-07-09T22:24:53.043Z"
 last_activity: 2026-07-09
 progress:
   total_phases: 5
   completed_phases: 0
   total_plans: 4
-  completed_plans: 2
+  completed_plans: 3
   percent: 0
 ---
 
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-07-09)
 ## Current Position
 
 Phase: 01 (workspace-credentials-egress-guardrails) — EXECUTING
-Plan: 3 of 4
+Plan: 4 of 4
 Status: Ready to execute
 Last activity: 2026-07-09
 
-Progress: [█████░░░░░] 50%
+Progress: [████████░░] 75%
 
 ## Performance Metrics
 
@@ -54,6 +54,7 @@ Progress: [█████░░░░░] 50%
 *Updated after each plan completion*
 | Phase 01 P01-01 | ~15min | 3 tasks | 13 files |
 | Phase 01 P01-02 | ~25min | 2 tasks | 9 files |
+| Phase 01 P01-03 | ~35min | 3 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -70,6 +71,8 @@ Recent decisions affecting current work:
 - [Phase 01]: 01-01: Nyquist Wave 0 RED suite (25 nodes) pins all locked Phase-1 decisions before implementation; SETUP-01..04 go GREEN in 01-02/03/04.
 - [Phase ?]: 01-02: init_workspace.py scaffolder — D-01 slug gate + D-02 create-if-absent/deep-merge safe-merge, stdlib-only, self-locating
 - [Phase ?]: 01-02: test_full_layout forced .gitignore + .claude/settings.json creation; wrote final .gitignore + empty {} settings stub, keeping 01-03 settings/git/leak nodes RED
+- [Phase ?]: 01-03: egress enforced via sandbox.network.allowedDomains (OS-level, constrains CLI subprocesses) + fail-closed sandbox.failIfUnavailable=true; NOT WebFetch theater
+- [Phase ?]: 01-03: criterion 5 split — Half A (generated settings) MET, Half B (host enforcement) PARTIALLY demonstrated (example.com off-list reached origin, UNVERIFIED); criterion 5 + SETUP-04 NOT fully validated
 
 ### Pending Todos
 
@@ -82,6 +85,7 @@ Research flags to resolve during phase planning:
 - Phase 4: exact `kaggle kernels status` output shape unconfirmed; verify against a live run before finalizing the poller. Known API bugs #473/#509.
 - Phase 5: code-competition submission path (notebook-only, no CSV-via-CLI) needs validation for the target competition type; may need a competition-type flag captured in Phase 2.
 - Phase 2: `competitions download --unzip` reliability on CLI 2.x needs direct verification.
+- Outstanding human verification (01-03): run discriminating egress probe (example.org/example.net/wikipedia.org/google.com/httpbin.org, declining prompts) to settle whether an undocumented pre-allowed set exists for the local CLI sandbox — the example.com anomaly
 
 ## Deferred Items
 
@@ -93,6 +97,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-09T19:18:33.217Z
+Last session: 2026-07-09T22:24:07.011Z
 Stopped at: Phase 1 context gathered
 Resume file: None

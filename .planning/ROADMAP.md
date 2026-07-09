@@ -48,7 +48,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 01-03-PLAN.md — Egress allowlist (sandbox.network.allowedDomains) + secret-aware .gitignore + stdlib leak-guard hook + git init + scanned initial commit + portability doc
+- [x] 01-03-PLAN.md — Egress allowlist (sandbox.network.allowedDomains) + secret-aware .gitignore + stdlib leak-guard hook + git init + scanned initial commit + portability doc
 - [ ] 01-04-PLAN.md — Kaggle credential connect + live exit-code validation + four remediation branches + chmod-600/no-echo hardening
 
 ### Phase 2: Competition Context & Data
@@ -142,7 +142,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Workspace, Credentials & Egress Guardrails | 2/4 | In Progress|  |
+| 1. Workspace, Credentials & Egress Guardrails | 3/4 | In Progress|  |
 | 2. Competition Context & Data | 0/3 | Not started | - |
 | 3. Local Experiment Loop, Ledger & Strategy | 0/4 | Not started | - |
 | 4. Kaggle Kernel Execution (GPU Path) | 0/2 | Not started | - |
