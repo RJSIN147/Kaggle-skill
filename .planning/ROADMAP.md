@@ -13,7 +13,7 @@ This roadmap follows a **local-loop-first vertical MVP**: prove the entire reaso
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Workspace, Credentials & Egress Guardrails** - Empty folder to a validated, git-tracked workspace with locked-down egress
+- [x] **Phase 1: Workspace, Credentials & Egress Guardrails** - Empty folder to a validated, git-tracked workspace with locked-down egress (completed 2026-07-09)
 - [ ] **Phase 2: Competition Context & Data** - Machine-derived competition "constitution" plus local data, UI gates cleared
 - [ ] **Phase 3: Local Experiment Loop, Ledger & Strategy** - The full idea-to-verdict-to-ledger-to-strategy cycle, local & CV-only (MVP / core value)
 - [ ] **Phase 4: Kaggle Kernel Execution (GPU Path)** - Run the same experiment on Kaggle GPU compute, silent-failure caught
@@ -49,7 +49,7 @@ Plans:
 **Wave 3** *(blocked on Wave 2 completion)*
 
 - [x] 01-03-PLAN.md — Egress allowlist (sandbox.network.allowedDomains) + secret-aware .gitignore + stdlib leak-guard hook + git init + scanned initial commit + portability doc
-- [ ] 01-04-PLAN.md — Kaggle credential connect + live exit-code validation + four remediation branches + chmod-600/no-echo hardening
+- [x] 01-04-PLAN.md — Kaggle credential connect + live exit-code validation + four remediation branches + chmod-600/no-echo hardening
 
 ### Phase 2: Competition Context & Data
 
@@ -142,7 +142,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Workspace, Credentials & Egress Guardrails | 3/4 | In Progress|  |
+| 1. Workspace, Credentials & Egress Guardrails | 4/4 | Complete   | 2026-07-09 |
 | 2. Competition Context & Data | 0/3 | Not started | - |
 | 3. Local Experiment Loop, Ledger & Strategy | 0/4 | Not started | - |
 | 4. Kaggle Kernel Execution (GPU Path) | 0/2 | Not started | - |
