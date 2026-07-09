@@ -40,7 +40,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 Plans:
 **Wave 1**
 
-- [ ] 01-01-PLAN.md — Skill package skeleton + Nyquist Wave 0 test harness (SKILL.md guided-init orchestration contract, pytest live marker, RED suite)
+- [x] 01-01-PLAN.md — Skill package skeleton + Nyquist Wave 0 test harness (SKILL.md guided-init orchestration contract, pytest live marker, RED suite)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -142,7 +142,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Workspace, Credentials & Egress Guardrails | 0/4 | Not started | - |
+| 1. Workspace, Credentials & Egress Guardrails | 1/4 | In Progress|  |
 | 2. Competition Context & Data | 0/3 | Not started | - |
 | 3. Local Experiment Loop, Ledger & Strategy | 0/4 | Not started | - |
 | 4. Kaggle Kernel Execution (GPU Path) | 0/2 | Not started | - |

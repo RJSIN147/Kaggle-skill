@@ -4,13 +4,13 @@ milestone: v1.0
 milestone_name: milestone
 status: executing
 stopped_at: Phase 1 context gathered
-last_updated: "2026-07-09T18:29:18.947Z"
-last_activity: 2026-07-09 -- Phase 01 planning complete
+last_updated: "2026-07-09T19:03:09.495Z"
+last_activity: 2026-07-09
 progress:
   total_phases: 5
   completed_phases: 0
   total_plans: 4
-  completed_plans: 0
+  completed_plans: 1
   percent: 0
 ---
 
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-09)
 
 **Core value:** One clean end-to-end experiment cycle — empty folder to an idea run, its result and reasoning logged to the ledger, and the strategy doc updated.
-**Current focus:** Phase 1 — Workspace, Credentials & Egress Guardrails
+**Current focus:** Phase 01 — workspace-credentials-egress-guardrails
 
 ## Current Position
 
-Phase: 1 of 5 (Workspace, Credentials & Egress Guardrails)
-Plan: 0 of 2 in current phase
+Phase: 01 (workspace-credentials-egress-guardrails) — EXECUTING
+Plan: 2 of 4
 Status: Ready to execute
-Last activity: 2026-07-09 -- Phase 01 planning complete
+Last activity: 2026-07-09
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [███░░░░░░░] 25%
 
 ## Performance Metrics
 
@@ -52,6 +52,7 @@ Progress: [░░░░░░░░░░] 0%
 - Trend: -
 
 *Updated after each plan completion*
+| Phase 01 P01-01 | ~15min | 3 tasks | 13 files |
 
 ## Accumulated Context
 
@@ -64,6 +65,8 @@ Recent decisions affecting current work:
 - Roadmap: The machine-checked result contract (tooling writes scores, never the AI) is established in Phase 3 and only extended for kernels in Phase 4 — never re-derived.
 - Roadmap: Security guardrails thread through phases — egress + credential hygiene (Phase 1), untrusted-content wrapping + zip-slip (Phase 2).
 - Roadmap: v2 AI-loop hardening/analysis (ANLY-*) deliberately excluded from the v1 roadmap.
+- [Phase 01]: 01-01: pytest declared as a dev-dependency-group (uv.lock committed) for reproducible test runs; skill scripts stay stdlib-only (D-14).
+- [Phase 01]: 01-01: Nyquist Wave 0 RED suite (25 nodes) pins all locked Phase-1 decisions before implementation; SETUP-01..04 go GREEN in 01-02/03/04.
 
 ### Pending Todos
 
@@ -87,6 +90,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-08T21:42:54.716Z
+Last session: 2026-07-09T19:01:14.161Z
 Stopped at: Phase 1 context gathered
-Resume file: .planning/phases/01-workspace-credentials-egress-guardrails/01-CONTEXT.md
+Resume file: None
