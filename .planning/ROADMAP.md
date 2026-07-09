@@ -44,7 +44,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 01-02-PLAN.md — Workspace scaffolder (init_workspace.py): D-10 layout, control-plane, docs/.env/pyproject stubs, execution-target + setter, safe-merge idempotency
+- [x] 01-02-PLAN.md — Workspace scaffolder (init_workspace.py): D-10 layout, control-plane, docs/.env/pyproject stubs, execution-target + setter, safe-merge idempotency
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
@@ -142,7 +142,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Workspace, Credentials & Egress Guardrails | 1/4 | In Progress|  |
+| 1. Workspace, Credentials & Egress Guardrails | 2/4 | In Progress|  |
 | 2. Competition Context & Data | 0/3 | Not started | - |
 | 3. Local Experiment Loop, Ledger & Strategy | 0/4 | Not started | - |
 | 4. Kaggle Kernel Execution (GPU Path) | 0/2 | Not started | - |

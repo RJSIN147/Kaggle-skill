@@ -4,13 +4,13 @@ milestone: v1.0
 milestone_name: milestone
 status: executing
 stopped_at: Phase 1 context gathered
-last_updated: "2026-07-09T19:03:09.495Z"
+last_updated: "2026-07-09T19:18:47.096Z"
 last_activity: 2026-07-09
 progress:
   total_phases: 5
   completed_phases: 0
   total_plans: 4
-  completed_plans: 1
+  completed_plans: 2
   percent: 0
 ---
 
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-07-09)
 ## Current Position
 
 Phase: 01 (workspace-credentials-egress-guardrails) — EXECUTING
-Plan: 2 of 4
+Plan: 3 of 4
 Status: Ready to execute
 Last activity: 2026-07-09
 
-Progress: [███░░░░░░░] 25%
+Progress: [█████░░░░░] 50%
 
 ## Performance Metrics
 
@@ -53,6 +53,7 @@ Progress: [███░░░░░░░] 25%
 
 *Updated after each plan completion*
 | Phase 01 P01-01 | ~15min | 3 tasks | 13 files |
+| Phase 01 P01-02 | ~25min | 2 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -67,6 +68,8 @@ Recent decisions affecting current work:
 - Roadmap: v2 AI-loop hardening/analysis (ANLY-*) deliberately excluded from the v1 roadmap.
 - [Phase 01]: 01-01: pytest declared as a dev-dependency-group (uv.lock committed) for reproducible test runs; skill scripts stay stdlib-only (D-14).
 - [Phase 01]: 01-01: Nyquist Wave 0 RED suite (25 nodes) pins all locked Phase-1 decisions before implementation; SETUP-01..04 go GREEN in 01-02/03/04.
+- [Phase ?]: 01-02: init_workspace.py scaffolder — D-01 slug gate + D-02 create-if-absent/deep-merge safe-merge, stdlib-only, self-locating
+- [Phase ?]: 01-02: test_full_layout forced .gitignore + .claude/settings.json creation; wrote final .gitignore + empty {} settings stub, keeping 01-03 settings/git/leak nodes RED
 
 ### Pending Todos
 
@@ -90,6 +93,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-09T19:01:14.161Z
+Last session: 2026-07-09T19:18:33.217Z
 Stopped at: Phase 1 context gathered
 Resume file: None
