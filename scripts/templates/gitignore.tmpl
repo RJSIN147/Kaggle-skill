@@ -1,0 +1,29 @@
+# Secrets — CRITICAL (D-12). Never commit real credentials.
+.env
+*.env
+.env.*
+!.env.example
+kaggle.json
+**/kaggle.json
+access_token
+**/access_token
+
+# Data + heavy artifacts (D-12)
+data/
+
+# Phase 3 experiment artifacts — declared now so .gitignore isn't rewritten later (D-13)
+experiments/*/artifacts/
+experiments/*/*.csv
+experiments/*/*.zip
+experiments/*/*.pkl
+experiments/*/*.parquet
+# Tracked-but-anticipated exceptions: keep experiment code + meta.json (Phase 3)
+!experiments/*/*.py
+!experiments/*/*.ipynb
+!experiments/*/meta.json
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/

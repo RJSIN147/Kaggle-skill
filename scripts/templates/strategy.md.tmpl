@@ -1,0 +1,19 @@
+# Strategy — $slug
+
+> The living strategy doc. The AI rewrites this each experiment cycle: current
+> best, what has been tried, and the queue of next hypotheses. Kept in sync with
+> `control/ledger.jsonl`.
+
+## Current best
+_None yet — no experiments have been run._
+
+## Hypothesis queue
+1. _TODO: first idea to try (e.g. a LightGBM baseline with a leakage-safe CV split)._
+
+## Log of moves
+- Experiments are recorded in `control/ledger.jsonl`, one line each, with a
+  written verdict at `experiments/exp-NNN/VERDICT.md`.
+- Experiment ids are zero-padded and sequential: `exp-001`, `exp-002`, …  (D-11).
+
+## Notes
+_Discipline: CV-first. Track the CV→LB gap; ration submissions against CV signal._

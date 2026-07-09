@@ -1,0 +1,20 @@
+# Competition WORKSPACE pyproject stub (D-14).
+#
+# This is the scaffolded COMPETITION workspace's pyproject — NOT the kaggle-exp
+# skill's own repo-root pyproject.toml. It exists only to establish the Python
+# env contract (>=3.11 floor + a uv-compatible skeleton).
+#
+# The full ML dependency stack (lightgbm, scikit-learn, pandas, numpy, xgboost,
+# catboost, ...) is declared in Phase 3, when the local runner needs it — versions
+# are deliberately NOT pinned before they are exercised. Keep `dependencies` empty
+# here.
+[project]
+name = "kaggle-competition-workspace"
+version = "0.0.0"
+description = "Kaggle competition experimentation workspace (scaffolded by kaggle-exp init)."
+requires-python = ">=3.11"
+dependencies = []
+
+[tool.uv]
+# The workspace is an environment, not a distributable package.
+package = false
