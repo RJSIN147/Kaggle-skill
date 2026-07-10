@@ -239,12 +239,15 @@ def test_unresolved_pair_degrades_to_skipped(seeded_workspace, run_script):
 # analyze_data.py — set_config_field cv.scheme + competition.md rationale (D-05).
 # --------------------------------------------------------------------------- #
 def test_analyze_lands_nonnull_cv_scheme_and_rationale(seeded_workspace, run_script):
+    """The AI's explicit --cv-scheme lands a NON-null enum via set_config_field (D-05)."""
     ws = seeded_workspace
     build_pair(ws / "data", "grouped")
     # Precondition: cv.scheme present AND null (the write_control_json merge-skip trap).
     assert _read_cfg(ws)["cv"]["scheme"] is None
 
-    r = run_script("analyze_data.py", "--workspace", ws, cwd=ws)
+    r = run_script(
+        "analyze_data.py", "--workspace", ws, "--cv-scheme", "GroupKFold", cwd=ws
+    )
     assert r.returncode == 0, r.stderr
 
     # NON-null enum LANDED → proves set_config_field, not the add-missing-only merge.
@@ -257,6 +260,31 @@ def test_analyze_lands_nonnull_cv_scheme_and_rationale(seeded_workspace, run_scr
     assert "GroupKFold" in cv_section
     assert "_TODO (Phase 2)_" not in cv_section
     assert len(cv_section.strip()) > len("GroupKFold") + 5  # a non-empty rationale too
+
+
+def test_analyze_no_cv_scheme_leaves_null_pending(seeded_workspace, run_script):
+    """D-05: WITHOUT --cv-scheme the framework NEVER picks the value — cv.scheme stays
+    null, the CV section is decision-pending naming the advisory hint, and the status
+    tells the AI it must choose. AV/schema still run on this path."""
+    ws = seeded_workspace
+    build_pair(ws / "data", "grouped")  # advisory hint would be GroupKFold
+    assert _read_cfg(ws)["cv"]["scheme"] is None
+
+    r = run_script("analyze_data.py", "--workspace", ws, cwd=ws)
+    assert r.returncode == 0, r.stderr
+
+    # The mechanical hint is NOT auto-committed — cv.scheme is left reserved-null.
+    assert _read_cfg(ws)["cv"]["scheme"] is None
+
+    md = (ws / "competition.md").read_text()
+    cv_section = md.split("## Cross-validation scheme", 1)[1].split("\n## ", 1)[0]
+    # Decision-pending body: names the advisory hint + instructs a --cv-scheme re-run.
+    assert "--cv-scheme" in cv_section
+    assert "cv-evidence.json" in cv_section
+    assert "GroupKFold" in cv_section  # the advisory hint is surfaced, not committed
+
+    status = (r.stdout + r.stderr).lower()
+    assert "not committed" in status or "must choose" in status
 
 
 def test_analyze_cv_scheme_flag_overrides_recommendation(seeded_workspace, run_script):
@@ -290,7 +318,9 @@ def test_analyze_independent_of_capture(seeded_workspace, run_script):
     build_pair(ws / "data", "temporal")
     assert not (ws / "competition.md").exists()  # capture never ran
 
-    r = run_script("analyze_data.py", "--workspace", ws, cwd=ws)
+    r = run_script(
+        "analyze_data.py", "--workspace", ws, "--cv-scheme", "TimeSeriesSplit", cwd=ws
+    )
     assert r.returncode == 0, r.stderr
 
     # cv.scheme + evidence still land despite no capture.
