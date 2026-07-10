@@ -133,15 +133,35 @@ needs *no data*, analysis does), re-running any one safely as needed:
    Runs a cheap rules-gate preflight, then downloads the single `<slug>.zip` (CLI 2.2.3 has
    **no `--unzip`**) and extracts it into `data/` with zip-slip protection.
 
-3. **Analyze** — needs `data/`; run LAST:
+3. **Analyze** — needs `data/`; run LAST. `cv.scheme` is an **AI decision, not a mechanical
+   default** — the framework NEVER auto-picks it (D-05). Follow the two-step flow:
+
+   **Step 1 — surface the evidence (no `--cv-scheme`):**
 
    ```bash
    python3 scripts/analyze_data.py --workspace <cwd>
    ```
 
-   Emits schema + CV evidence to `control/raw/cv-evidence.json` and sets `config.json`
-   `cv.scheme`. It runs **real** adversarial validation under the workspace ML env; if that
-   env is absent it still exits 0 and records `AV: SKIPPED` in `competition.md` (run
+   Emits schema + structural CV evidence to `control/raw/cv-evidence.json`, runs adversarial
+   validation, and leaves `config.json` `cv.scheme` **uncommitted** (reserved-null). The
+   `## Cross-validation scheme` section is left DECISION-PENDING.
+
+   **Step 2 — the AI reasons, then commits its choice:**
+
+   Read `control/raw/cv-evidence.json` and reason over the structural signals —
+   `group_candidates`, `datetime_columns`, class balance, `id_overlap`. Treat the emitted
+   `recommend` as a **NON-authoritative advisory hint** only (it can be wrong — e.g. it is not
+   the arbiter of a group vs. a continuous feature). Decide the correct enum ∈
+   {`GroupKFold`, `TimeSeriesSplit`, `StratifiedKFold`, `KFold`}, then re-invoke so tooling
+   persists **your** validated choice:
+
+   ```bash
+   python3 scripts/analyze_data.py --workspace <cwd> --cv-scheme <enum>
+   ```
+
+   The AI decides; tooling writes (enum-validated by argparse `choices`). Adversarial
+   validation runs on both invocations: it uses **real** AV under the workspace ML env; if
+   that env is absent it still exits 0 and records `AV: SKIPPED` in `competition.md` (run
    `uv sync` in the workspace to enable real AV).
 
 ### Gate protocol — the SKILL is the only waiter (D-10)
@@ -197,8 +217,8 @@ verification, so nothing busy-loops (criterion 3):
 | `scripts/kaggle_gateway.py` | COMP-* the one Kaggle CLI gateway (D-16): timeout-bounded, no-echo, gate classification, reserved exit codes 77/78 |
 | `scripts/capture_competition.py` | COMP-01/02 capture the constitution (metric/rules/limit/type) → `competition.md` + `config.json`; quarantines raw prose (no data needed) |
 | `scripts/download_data.py` | COMP-02/03 rules-gate preflight → download `<slug>.zip` → zip-slip-safe extract into `data/` (needs VALIDATED creds) |
-| `scripts/analyze_data.py` | COMP-01 schema + CV evidence + real adversarial validation (degrades to `AV: SKIPPED` when the workspace ML env is absent) |
-| `scripts/cv_evidence.py` | COMP-01 stdlib structural CV evidence (group/datetime/target-balance/id-overlap) feeding the AI's CV-scheme choice |
+| `scripts/analyze_data.py` | COMP-01 schema + CV evidence + real adversarial validation (degrades to `AV: SKIPPED` when the workspace ML env is absent). Persists `cv.scheme` ONLY from the AI's explicit `--cv-scheme`; never auto-picks it (D-05) |
+| `scripts/cv_evidence.py` | COMP-01 stdlib structural CV evidence (group/datetime/target-balance/id-overlap) + a NON-authoritative advisory `recommend` hint the AI reasons over; never commits `cv.scheme` |
 
 Read `references/egress-allowlist.md` (egress hosts + portability) and
 `references/kaggle-cli-behavior.md` (observed CLI exit-codes / precedence) only when needed.
