@@ -4,16 +4,25 @@
 # skill's own repo-root pyproject.toml. It exists only to establish the Python
 # env contract (>=3.11 floor + a uv-compatible skeleton).
 #
-# The full ML dependency stack (lightgbm, scikit-learn, pandas, numpy, xgboost,
-# catboost, ...) is declared in Phase 3, when the local runner needs it — versions
-# are deliberately NOT pinned before they are exercised. Keep `dependencies` empty
-# here.
+# The data-analysis floors `pandas` + `scikit-learn` are declared HERE (D-06): Phase 2's
+# analyze_data.py runs REAL adversarial validation under `uv run` in this workspace env
+# (LogisticRegression train-vs-test, roc_auc). The skill NEVER runtime-installs — the
+# operator runs `uv sync`; if the env is absent, analyze degrades to AV: SKIPPED.
+#
+# FLOORS, not newest majors (CLAUDE.md §Version Compatibility — Kaggle-image parity):
+# pandas 3.0 is a breaking major and numpy 2.5.1 needs Python ≥3.12 while the floor is
+# 3.11, so pin `pandas>=2.2` / `scikit-learn>=1.5` (numpy>=1.26 comes transitively).
+# The remaining ML stack (lightgbm, xgboost, catboost, ...) is declared in Phase 3 when
+# the local runner needs it — those versions are not pinned before they are exercised.
 [project]
 name = "kaggle-competition-workspace"
 version = "0.0.0"
 description = "Kaggle competition experimentation workspace (scaffolded by kaggle-exp init)."
 requires-python = ">=3.11"
-dependencies = []
+dependencies = [
+    "pandas>=2.2",
+    "scikit-learn>=1.5",
+]
 
 [tool.uv]
 # The workspace is an environment, not a distributable package.
