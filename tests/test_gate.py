@@ -134,6 +134,85 @@ def test_unclassified_403_fails_closed_naming_both_urls(seeded_workspace, monkey
 
 
 # --------------------------------------------------------------------------- #
+# WR-01 Gap 2: rc==127 (kaggle CLI missing) gets the install-CLI remediation and
+# returns 127 — NOT the exit-77 UI-gate "accept the rules" misreport. Mirrors
+# capture_competition._gateway_failure. No sleep/poll — never-busy-loop holds.
+# --------------------------------------------------------------------------- #
+def test_missing_cli_rc127_reports_install_not_ui_gate(seeded_workspace, monkeypatch, capsys):
+    dd = _dd()
+    _set_credentials(seeded_workspace, "VALIDATED")
+    # preflight indeterminate (None) → falls through to the download call.
+    monkeypatch.setattr(gw, "preflight_entered", lambda slug: None)
+
+    slept = {"n": 0}
+    monkeypatch.setattr(time, "sleep", lambda *a, **k: slept.__setitem__("n", slept["n"] + 1))
+
+    monkeypatch.setattr(gw, "run_kaggle", lambda *a, **k: (127, "kaggle CLI not found on PATH"))
+
+    # The 127/124 markers are fixed + secret-free — they are NOT quarantined, so
+    # dump_last_error / classify_gate must not run for these codes.
+    def boom_dump(*a, **k):
+        raise AssertionError("127 must not be quarantined/echoed via dump_last_error")
+
+    def boom_classify(*a, **k):
+        raise AssertionError("127 must not hit the UI-gate classify_gate branch")
+
+    monkeypatch.setattr(gw, "dump_last_error", boom_dump)
+    monkeypatch.setattr(gw, "classify_gate", boom_classify)
+
+    rc = dd.main(["--workspace", str(seeded_workspace)])
+    cap = capsys.readouterr()
+    combined = (cap.out + cap.err).lower()
+
+    assert rc == 127
+    assert rc != gw.UI_GATE
+    assert "not found on path" in combined
+    assert "install" in combined
+    # NOT the rules-acceptance / UI-gate misreport.
+    assert RULES_URL not in (cap.out + cap.err)
+    assert "accept the rules" not in combined
+    assert "[ui_gate]" not in combined
+    assert slept["n"] == 0                 # nothing ever slept (no busy-loop)
+
+
+# --------------------------------------------------------------------------- #
+# WR-01 Gap 2: rc==124 (timeout / stalled egress) gets the timeout/egress
+# remediation and returns 124 — NOT exit 77. No sleep/poll.
+# --------------------------------------------------------------------------- #
+def test_timeout_rc124_reports_egress_not_ui_gate(seeded_workspace, monkeypatch, capsys):
+    dd = _dd()
+    _set_credentials(seeded_workspace, "VALIDATED")
+    monkeypatch.setattr(gw, "preflight_entered", lambda slug: None)
+
+    slept = {"n": 0}
+    monkeypatch.setattr(time, "sleep", lambda *a, **k: slept.__setitem__("n", slept["n"] + 1))
+
+    monkeypatch.setattr(gw, "run_kaggle", lambda *a, **k: (124, "kaggle timed out"))
+
+    def boom_dump(*a, **k):
+        raise AssertionError("124 must not be quarantined/echoed via dump_last_error")
+
+    def boom_classify(*a, **k):
+        raise AssertionError("124 must not hit the UI-gate classify_gate branch")
+
+    monkeypatch.setattr(gw, "dump_last_error", boom_dump)
+    monkeypatch.setattr(gw, "classify_gate", boom_classify)
+
+    rc = dd.main(["--workspace", str(seeded_workspace)])
+    cap = capsys.readouterr()
+    combined = (cap.out + cap.err).lower()
+
+    assert rc == 124
+    assert rc != gw.UI_GATE
+    assert "timed out" in combined
+    assert "egress" in combined
+    assert RULES_URL not in (cap.out + cap.err)
+    assert "accept the rules" not in combined
+    assert "[ui_gate]" not in combined
+    assert slept["n"] == 0
+
+
+# --------------------------------------------------------------------------- #
 # Phase 1 D-07: download refuses unless credentials == VALIDATED, BEFORE any probe.
 # --------------------------------------------------------------------------- #
 def test_refuses_without_validated_credentials(seeded_workspace, monkeypatch, capsys):
