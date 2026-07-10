@@ -224,5 +224,21 @@ Both gaps have a concrete, scoped fix (tighten the group-candidate heuristic + a
 
 ---
 
+## Gap Closure Direction (operator decision, 2026-07-10)
+
+Recorded for `/gsd:plan-phase 2 --gaps`:
+
+- **Gap 1 (CV false-positive):** Fix depth = **tighten detection + test on real data**.
+  Fix `cv_evidence.detect_group_candidates` so ordinary continuous numeric features
+  (e.g. titanic `Age`/`Fare`) no longer read as group ids, and add a titanic-shaped
+  fixture to `tests/cv_fixtures.py` so the regression is pinned. Keep the "tooling writes,
+  AI never hand-writes" posture — an AI-override prompt in SKILL.md was explicitly NOT
+  chosen for this pass.
+- **Gap 2 (download exit-code classification / WR-01):** mirror the branch logic
+  `capture_competition._gateway_failure` already uses — surface 127 (CLI missing) and
+  124 (timeout) distinctly instead of collapsing them into the exit-77 UI-gate path.
+
+---
+
 _Verified: 2026-07-10T16:37:21Z_
 _Verifier: Claude (gsd-verifier)_
