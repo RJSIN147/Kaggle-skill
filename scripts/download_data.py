@@ -167,6 +167,29 @@ def main(argv=None) -> int:
     # 4) entered (True) or indeterminate (None) → attempt the download. CLI 2.2.3
     #    has no --unzip, so this pulls a single <slug>.zip.
     rc, combined = gw.run_kaggle("competitions", "download", slug, "-p", str(data_dir))
+
+    # 4a) Reserved gateway codes get their OWN correct remediation BEFORE the 403
+    #     UI-gate fallthrough (WR-01 Gap 2). 127 (missing CLI) / 124 (timeout) are
+    #     NOT UI gates — routing them through classify_gate misreports "accept the
+    #     rules" and loops the human forever. Mirrors capture_competition
+    #     ._gateway_failure: their run_kaggle markers are fixed + secret-free, so
+    #     they are NOT quarantined (no dump_last_error/classify_gate) and NOTHING
+    #     sleeps — the never-busy-loop guarantee (COMP-02 C3) still holds.
+    if rc == 127:
+        print(
+            "[BLOCKED] the kaggle CLI was not found on PATH. Install it "
+            "(`uv pip install kaggle`) and re-run.",
+            file=sys.stderr,
+        )
+        return rc
+    if rc == 124:
+        print(
+            "[BLOCKED] the kaggle CLI timed out (a stalled/blocked egress). "
+            "Check the egress allowlist and re-run.",
+            file=sys.stderr,
+        )
+        return rc
+
     if rc != 0:
         # A 403 that survives an entered/indeterminate state is UNCLASSIFIABLE →
         # fail closed (D-12): name BOTH gates, quarantine the raw output (D-11).
