@@ -73,8 +73,8 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1)*
 
-- [ ] 02-02-PLAN.md — Competition-context capture (metric, rules, provenance-tagged limit, competition.type) + untrusted-content boundary (fence + no-derived-execution)
-- [ ] 02-03-PLAN.md — Local data download + gate flow (exit-77, never busy-loops) + zip-slip-protected extraction (no `--unzip`)
+- [x] 02-02-PLAN.md — Competition-context capture (metric, rules, provenance-tagged limit, competition.type) + untrusted-content boundary (fence + no-derived-execution)
+- [x] 02-03-PLAN.md — Local data download + gate flow (exit-77, never busy-loops) + zip-slip-protected extraction (no `--unzip`)
 
 **Wave 3** *(blocked on Wave 2)*
 
@@ -155,7 +155,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Workspace, Credentials & Egress Guardrails | 4/4 | Complete   | 2026-07-09 |
-| 2. Competition Context & Data | 1/5 | In Progress|  |
+| 2. Competition Context & Data | 3/5 | In Progress|  |
 | 3. Local Experiment Loop, Ledger & Strategy | 0/4 | Not started | - |
 | 4. Kaggle Kernel Execution (GPU Path) | 0/2 | Not started | - |
 | 5. Submission & Leaderboard Tracking | 0/3 | Not started | - |
