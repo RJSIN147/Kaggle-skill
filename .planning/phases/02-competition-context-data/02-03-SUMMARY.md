@@ -123,6 +123,11 @@ Per plan `user_setup`: Kaggle's rules-acceptance (and phone-verification) gates 
 - `data/` is populated with safely-extracted competition CSVs, ready for `analyze_data.py` (plan 02-02's schema/CV-evidence step) and Phase 3's experiment loop.
 - No blockers introduced. Note: the plan's `<interfaces>` calls out the egress finding that `api.kaggle.com` must be on the allowlist for live CLI calls — that allowlist migration is plan 02-02's scope (touches `settings.json.tmpl`), not this plan's; this plan is verified via mock-backed unit tests and does not modify egress config.
 
+## Self-Check: PASSED
+
+- Files verified on disk: `scripts/safe_extract.py`, `scripts/download_data.py`, `tests/test_extract.py`, `tests/test_gate.py`, `02-03-SUMMARY.md`.
+- Commits verified in git: `7382935` (test), `7469369` (feat), `737a3fc` (feat), `5149283` (docs).
+
 ---
 *Phase: 02-competition-context-data*
 *Completed: 2026-07-10*
