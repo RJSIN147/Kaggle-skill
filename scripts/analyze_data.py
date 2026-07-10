@@ -9,13 +9,15 @@ sections so success criterion 1 holds end to end.
 
 Two postures make this script distinctive:
 
-  * **Tooling writes, the AI never hand-writes (D-05).** The committed scheme is an
-    enum ∈ {GroupKFold, TimeSeriesSplit, StratifiedKFold, KFold}. It reaches
-    ``config.json`` ``cv.scheme`` through the direct ``set_config_field`` setter —
-    ``write_control_json``'s merge-add-missing CANNOT overwrite the reserved-``null``
-    key. The AI's committed choice flows through a choices-validated ``--cv-scheme``
-    flag, defaulting to ``cv_evidence.recommend_cv``. The human-readable rationale
-    goes to ``competition.md`` via the shared ``competition_doc.replace_section``.
+  * **The AI decides, tooling writes (D-05).** The committed scheme is an enum ∈
+    {GroupKFold, TimeSeriesSplit, StratifiedKFold, KFold}. It reaches ``config.json``
+    ``cv.scheme`` through the direct ``set_config_field`` setter — ``write_control_json``'s
+    merge-add-missing CANNOT overwrite the reserved-``null`` key. The scheme is persisted
+    ONLY from the AI's explicit, choices-validated ``--cv-scheme`` flag; the framework
+    NEVER auto-picks it. With no ``--cv-scheme`` the key stays reserved-``null`` and
+    ``competition.md`` gets a decision-pending section that surfaces the NON-authoritative
+    ``cv_evidence.recommend`` advisory hint. The human-readable rationale goes to
+    ``competition.md`` via the shared ``competition_doc.replace_section``.
 
   * **The ONE ML step, behind ``uv run`` (D-06).** Real adversarial validation
     (LogisticRegression on train=0/test=1, ``roc_auc_score``) needs pandas +
@@ -246,20 +248,42 @@ def _cv_driver(evidence: dict) -> str:
     return "no group/temporal/classification signal → plain KFold"
 
 
-def _cv_section_body(scheme: str, committed: str, evidence: dict) -> str:
-    override = ""
+def _cv_section_body(scheme: str, evidence: dict) -> str:
+    """The committed-scheme body. ``scheme`` is ALWAYS the AI's explicit --cv-scheme
+    value; the mechanical recommendation is only ever a non-authoritative advisory hint."""
     recommend = evidence.get("recommend")
-    if committed and committed != recommend:
-        override = (f" Committed **{committed}** — an AI override of the mechanical "
-                    f"recommendation ({recommend}).")
+    if recommend and scheme != recommend:
+        rel = (f" The mechanical advisory hint was {recommend} (non-authoritative); the "
+               f"AI committed {scheme} instead.")
     else:
-        override = f" Committed **{scheme}** (matches the mechanical recommendation)."
+        rel = (f" The mechanical advisory hint ({recommend}) is non-authoritative; the "
+               f"AI committed {scheme}.")
     return (
-        f"**Cross-validation scheme:** {scheme}\n\n"
-        f"Derivation (mechanical, D-05 tooling-recommends → AI-commits → tooling-writes): "
-        f"{_cv_driver(evidence)}.{override} "
+        f"**Cross-validation scheme:** {scheme} (the AI's decision — D-05: the AI reasons "
+        f"over the evidence, tooling persists the enum-validated choice)\n\n"
+        f"Derivation signal (mechanical, advisory only): {_cv_driver(evidence)}.{rel} "
         f"Target column: {evidence.get('target', {}).get('column')!r} "
         f"(derived: columns(train) − columns(test) − id)."
+    )
+
+
+def _cv_section_pending(evidence: dict) -> str:
+    """The no-choice body: the framework surfaces the evidence + advisory hint and leaves
+    the decision to the AI. It NEVER auto-picks cv.scheme (D-05)."""
+    hint = evidence.get("recommend")
+    note = evidence.get("recommend_note", "")
+    hint_txt = f"**{hint}**" if hint else "(none — no tabular structure detected)"
+    return (
+        "**Cross-validation scheme:** DECISION PENDING — the AI has not committed a "
+        "scheme; cv.scheme is left reserved-null.\n\n"
+        f"Advisory hint (mechanical, NON-authoritative): {hint_txt} — "
+        f"{_cv_driver(evidence)}. {note}\n\n"
+        "The framework NEVER auto-picks cv.scheme (D-05). Review the structural evidence "
+        "in `control/raw/cv-evidence.json` (group_candidates, datetime, class balance, id "
+        "overlap), decide the scheme, and re-run:\n\n"
+        "```bash\n"
+        "python3 scripts/analyze_data.py --workspace <cwd> --cv-scheme <enum>\n"
+        "```"
     )
 
 
@@ -362,8 +386,10 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--workspace", type=Path, default=Path.cwd(),
                     help="Target workspace directory (default: cwd).")
     ap.add_argument("--cv-scheme", choices=cve.CV_SCHEMES, default=None,
-                    help="The AI's committed CV scheme enum. Defaults to the mechanical "
-                         "recommend_cv() value. The AI never hand-writes the field — it "
+                    help="The AI's committed CV scheme enum — the ONLY path that persists "
+                         "config.json cv.scheme. Omit it to leave cv.scheme uncommitted and "
+                         "surface the advisory evidence; the framework never auto-picks the "
+                         "value. The AI reads control/raw/cv-evidence.json, decides, then "
                          "passes this choices-validated flag and tooling writes it (D-05).")
     return ap
 
@@ -423,16 +449,21 @@ def main(argv=None) -> int:
     target = evidence.get("target", {}).get("column")
     id_col = evidence.get("target", {}).get("id_column")
 
-    # D-05 tooling-writes: the AI's committed value (or the mechanical default) via the
-    # DIRECT setter — write_control_json's merge-add-missing cannot fill the null.
+    # D-05 tooling-writes: cv.scheme is persisted ONLY from the AI's explicit, enum-validated
+    # --cv-scheme (via the DIRECT setter — write_control_json's merge-add-missing cannot fill
+    # the null). With NO --cv-scheme the framework never picks the value: it leaves cv.scheme
+    # reserved-null and surfaces a decision-pending section + the advisory hint.
     committed = args.cv_scheme
-    scheme = committed or evidence["recommend"]
-    rc = set_config_field(config_path, ("cv", "scheme"), scheme)
-    if rc != 0:
-        return rc
+    if committed is not None:
+        rc = set_config_field(config_path, ("cv", "scheme"), committed)
+        if rc != 0:
+            return rc
+        md_text = replace_section(md_text, "Cross-validation scheme",
+                                  _cv_section_body(committed, evidence))
+    else:
+        md_text = replace_section(md_text, "Cross-validation scheme",
+                                  _cv_section_pending(evidence))
 
-    md_text = replace_section(md_text, "Cross-validation scheme",
-                              _cv_section_body(scheme, committed, evidence))
     md_text = replace_section(md_text, "Data schema",
                               _schema_section_body(evidence, train_path, test_path))
 
@@ -448,9 +479,16 @@ def main(argv=None) -> int:
         av_msg = f"AV SKIPPED ({av['reason']})"
 
     comp_md.write_text(md_text)
+    if committed is not None:
+        cv_msg = f"cv.scheme={committed} (AI-committed, enum-validated)"
+    else:
+        cv_msg = (
+            "cv.scheme NOT committed — the AI must choose. Review "
+            "control/raw/cv-evidence.json and re-run with --cv-scheme <enum> "
+            f"(advisory hint: {evidence.get('recommend')})"
+        )
     print(
-        f"analyze '{slug}': cv.scheme={scheme} "
-        f"({'AI-committed' if committed else 'mechanical'}); {av_msg}. "
+        f"analyze '{slug}': {cv_msg}; {av_msg}. "
         "competition.md constitution complete."
     )
     return 0
