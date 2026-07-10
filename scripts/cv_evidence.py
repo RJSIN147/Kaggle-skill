@@ -43,6 +43,22 @@ SKIP_REASON = (
     "config.json cv.scheme manually"
 )
 
+# The recommendation is a NON-authoritative advisory hint (D-05). It is emitted so the
+# AI has structural evidence to reason over; it is NEVER auto-committed. The AI decides
+# the scheme and persists it via ``analyze_data.py --cv-scheme <enum>``.
+RECOMMEND_ADVISORY_NOTE = (
+    "advisory hint only — a NON-AUTHORITATIVE mechanical suggestion. The AI decides the "
+    "cross-validation scheme and commits it via `analyze_data.py --cv-scheme <enum>`; the "
+    "framework never auto-picks or auto-commits this value."
+)
+
+# Emitted (with ``recommend = None``) when the resolved pair has no analyzable tabular
+# structure — no shared train/test columns, or an empty frame. No scheme is asserted.
+NON_TABULAR_NOTE = (
+    "no tabular structure detected (no shared train/test feature columns or an empty "
+    "frame) — nothing recommended; the AI decides the CV scheme."
+)
+
 # A classification target is assumed to have few distinct labels; above this it is
 # treated as regression (→ plain KFold). Discretionary cap (D-05 / Claude's discretion).
 _MAX_CLASS_LABELS = 20
@@ -156,16 +172,48 @@ def detect_id_column(train_header, test_header, train_rows) -> tuple[str | None,
     return None, "none"
 
 
+def _looks_continuous_numeric(vals: list[str]) -> bool:
+    """True iff a column is a continuous numeric FEATURE, not a repeated-entity id.
+
+    A genuine group id is an integer/categorical LABEL that repeats. A continuous
+    numeric measure (``Age``, ``Fare``) carries fractional values — that is the signal
+    the old detector missed, letting Titanic's Age/Fare (n_unique >= 10, avg group >= 2)
+    masquerade as group ids. Predicate: EVERY non-empty value parses as a float AND a
+    meaningful fraction carry a real decimal part. Kept conservative (fractional-only,
+    not raw value-density) so a pure-integer group id is NEVER excluded here.
+    """
+    parsed = []
+    for v in vals:
+        s = str(v).strip()
+        if s == "":
+            continue
+        try:
+            parsed.append(float(s))
+        except ValueError:
+            return False  # any non-numeric token → not a continuous-numeric column
+    if not parsed:
+        return False
+    n_noninteger = sum(1 for f in parsed if not float(f).is_integer())
+    return n_noninteger / len(parsed) >= 0.05
+
+
 def detect_group_candidates(
     header, rows, id_column, target, datetime_columns
 ) -> list[str]:
     """Repeated-entity (group) column candidates from the TRAIN frame.
 
     A group-leakage column is a *high-cardinality repeated identifier*: values repeat
-    (avg group size >= 2) AND there are MANY distinct entities. The many-entities
-    guard (``n_unique >= 10`` or ``>= 10% of rows``) is what separates a genuine group
-    id (e.g. 20 users × 3 rows) from a low-cardinality categorical FEATURE (e.g. a
-    binary flag with 2 huge groups) — the latter must NOT trigger GroupKFold.
+    (avg group size >= 2) AND there are MANY distinct entities. Three guards keep a
+    continuous numeric feature or a mostly-empty column from masquerading as a group id
+    (the Gap-1 Titanic false positive on Age/Fare/Cabin):
+
+      * a mostly-EMPTY column (> 50% missing) is not a reliable repeated-entity id;
+      * a continuous-numeric feature (fractional values — ``Age``/``Fare``) is a
+        measurement, not a group label (see :func:`_looks_continuous_numeric`);
+      * the many-entities guard (``n_unique >= 10`` or ``>= 10% of rows``) still
+        separates a genuine group id from a low-cardinality categorical FEATURE.
+
+    The fixture's integer ``group_id`` (no fractional values, no missing) stays flagged.
     """
     n_rows = len(rows)
     excluded = {id_column, target, *datetime_columns}
@@ -173,12 +221,22 @@ def detect_group_candidates(
     for col in header:
         if col in excluded:
             continue
-        vals = _column_values(rows, col)
+        raw_vals = _column_values(rows, col)
+        vals = [v for v in raw_vals if str(v).strip() != ""]
+        n_nonempty = len(vals)
+        if n_nonempty == 0:
+            continue
+        # A mostly-empty column is not a dependable repeated-entity identifier.
+        if n_rows > 0 and (n_rows - n_nonempty) / n_rows > 0.5:
+            continue
+        # A continuous numeric feature (fractional) is a measurement, not a group id.
+        if _looks_continuous_numeric(vals):
+            continue
         n_unique = len(set(vals))
-        if n_unique <= 1 or n_unique >= n_rows:
+        if n_unique <= 1 or n_unique >= n_nonempty:
             continue  # constant, or all-unique (no repetition) → not a group
-        avg_group = n_rows / n_unique
-        many_entities = n_unique >= 10 or n_unique >= 0.1 * n_rows
+        avg_group = n_nonempty / n_unique
+        many_entities = n_unique >= 10 or n_unique >= 0.1 * n_nonempty
         if avg_group >= 2 and many_entities:
             out.append(col)
     return out
@@ -285,6 +343,23 @@ def build_evidence(ws: Path) -> dict:
     train_header, train_rows = _read_csv(train_path)
     test_header, test_rows = _read_csv(test_path)
 
+    # No analyzable tabular structure (no shared columns, or an empty frame) → degrade
+    # to a "no tabular structure" sentinel: recommend None, never assert a scheme.
+    shared = [c for c in train_header if c in set(test_header)]
+    if not shared or not train_rows or not test_rows:
+        return {
+            "status": "ok",
+            "train_file": train_path.name,
+            "test_file": test_path.name,
+            "n_train_rows": len(train_rows),
+            "n_test_rows": len(test_rows),
+            "non_tabular": True,
+            "recommend": None,
+            "recommend_is_hint": True,
+            "recommend_note": NON_TABULAR_NOTE,
+            "generated": _iso_now(),
+        }
+
     id_column, id_method = detect_id_column(train_header, test_header, train_rows)
 
     # D-07 target derivation: columns(train) − columns(test) − id_column.
@@ -326,6 +401,10 @@ def build_evidence(ws: Path) -> dict:
         "generated": _iso_now(),
     }
     evidence["recommend"] = recommend_cv(evidence)
+    # Label the recommendation a NON-authoritative advisory hint (D-05): the AI decides
+    # and commits the scheme via analyze_data.py --cv-scheme; this is never auto-committed.
+    evidence["recommend_is_hint"] = True
+    evidence["recommend_note"] = RECOMMEND_ADVISORY_NOTE
     return evidence
 
 
@@ -381,10 +460,17 @@ def main(argv=None) -> int:
         )
         return 0  # flag-don't-abort (Phase 1 D-07): a recorded status, not a crash.
 
+    if evidence.get("non_tabular"):
+        print(
+            f"cv_evidence: no tabular structure detected — nothing recommended "
+            f"(evidence → {out.relative_to(ws)}; the AI decides cv.scheme via analyze_data.py)."
+        )
+        return 0
+
     print(
         f"cv_evidence: target={evidence['target']['column']!r} "
-        f"recommend={evidence['recommend']} "
-        f"(evidence → {out.relative_to(ws)}; the AI commits cv.scheme via analyze_data.py)."
+        f"recommend={evidence['recommend']} (advisory HINT — the AI commits cv.scheme "
+        f"via analyze_data.py --cv-scheme; evidence → {out.relative_to(ws)})."
     )
     return 0
 
