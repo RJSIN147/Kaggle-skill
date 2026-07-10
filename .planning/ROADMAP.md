@@ -64,7 +64,7 @@ Plans:
   3. On a 403, the framework detects the UI-only gate (rules acceptance / phone verification), surfaces one clear browser instruction with the exact URL, and verifies acceptance with a probe before proceeding — it never busy-loops the download.
   4. Competition data downloads locally and is extracted with zip-slip-protected extraction, so no file can escape the data directory.
 
-**Plans**: 5 plans
+**Plans**: 5 plans + 2 gap-closure
 
 Plans:
 **Wave 1**
@@ -83,6 +83,11 @@ Plans:
 **Wave 4** *(blocked on Wave 3)*
 
 - [x] 02-05-PLAN.md — SKILL.md three-stage flow + gate protocol + opt-in live CLI-shape verification + rules/phone human-action gate
+
+**Gap closure (Wave 1 — parallel; from 02-VERIFICATION.md gaps_found 2026-07-10)**
+
+- [ ] 02-06-PLAN.md — Gap 1 (COMP-01): cv.scheme becomes an enum-validated AI decision (remove auto-commit), label the mechanical recommendation an advisory hint, tighten detect_group_candidates + pin a titanic fixture, wire the D-05 flow into SKILL.md
+- [ ] 02-07-PLAN.md — Gap 2 (COMP-02 / WR-01): mirror capture_competition._gateway_failure's rc==127/rc==124 branches into download_data.py so a missing CLI / timeout gets correct remediation instead of the misleading exit-77 UI-gate instruction (no busy-loop)
 
 ### Phase 3: Local Experiment Loop, Ledger & Strategy
 
