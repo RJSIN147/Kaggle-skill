@@ -78,7 +78,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2)*
 
-- [ ] 02-04-PLAN.md — Analyze data: CV scheme (tooling-written enum) + adversarial validation (uv run, graceful SKIPPED)
+- [x] 02-04-PLAN.md — Analyze data: CV scheme (tooling-written enum) + adversarial validation (uv run, graceful SKIPPED)
 
 **Wave 4** *(blocked on Wave 3)*
 
@@ -155,7 +155,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Workspace, Credentials & Egress Guardrails | 4/4 | Complete   | 2026-07-09 |
-| 2. Competition Context & Data | 3/5 | In Progress|  |
+| 2. Competition Context & Data | 4/5 | In Progress|  |
 | 3. Local Experiment Loop, Ledger & Strategy | 0/4 | Not started | - |
 | 4. Kaggle Kernel Execution (GPU Path) | 0/2 | Not started | - |
 | 5. Submission & Leaderboard Tracking | 0/3 | Not started | - |
