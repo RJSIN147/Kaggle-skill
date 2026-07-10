@@ -64,13 +64,25 @@ Plans:
   3. On a 403, the framework detects the UI-only gate (rules acceptance / phone verification), surfaces one clear browser instruction with the exact URL, and verifies acceptance with a probe before proceeding — it never busy-loops the download.
   4. Competition data downloads locally and is extracted with zip-slip-protected extraction, so no file can escape the data directory.
 
-**Plans**: TBD (suggested 3)
+**Plans**: 5 plans
 
 Plans:
+**Wave 1**
 
-- [ ] 02-01: Kaggle Gateway competition ops + rules/phone-verification 403 preflight with one-time browser instruction
-- [ ] 02-02: Competition-context capture (metric, schema, limits, CV scheme, adversarial validation) with untrusted-content wrapping
-- [ ] 02-03: Local data download + safe (zip-slip-protected) extraction, handling no-`--unzip` CLI quirk
+- [ ] 02-01-PLAN.md — Egress unblock (api.kaggle.com) + Kaggle Gateway (D-16: run_kaggle/preflight/classify_gate, fail-closed 403)
+
+**Wave 2** *(blocked on Wave 1)*
+
+- [ ] 02-02-PLAN.md — Competition-context capture (metric, rules, provenance-tagged limit, competition.type) + untrusted-content boundary (fence + no-derived-execution)
+- [ ] 02-03-PLAN.md — Local data download + gate flow (exit-77, never busy-loops) + zip-slip-protected extraction (no `--unzip`)
+
+**Wave 3** *(blocked on Wave 2)*
+
+- [ ] 02-04-PLAN.md — Analyze data: CV scheme (tooling-written enum) + adversarial validation (uv run, graceful SKIPPED)
+
+**Wave 4** *(blocked on Wave 3)*
+
+- [ ] 02-05-PLAN.md — SKILL.md three-stage flow + gate protocol + opt-in live CLI-shape verification + rules/phone human-action gate
 
 ### Phase 3: Local Experiment Loop, Ledger & Strategy
 
@@ -143,7 +155,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Workspace, Credentials & Egress Guardrails | 4/4 | Complete   | 2026-07-09 |
-| 2. Competition Context & Data | 0/3 | Not started | - |
+| 2. Competition Context & Data | 0/5 | Not started | - |
 | 3. Local Experiment Loop, Ledger & Strategy | 0/4 | Not started | - |
 | 4. Kaggle Kernel Execution (GPU Path) | 0/2 | Not started | - |
 | 5. Submission & Leaderboard Tracking | 0/3 | Not started | - |
