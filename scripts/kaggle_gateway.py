@@ -48,7 +48,10 @@ UI_GATE = 77
 LIMIT_NEEDS_USER = 78
 
 # Human-facing UI-gate URL for phone verification (framework constant, D-02).
-_PHONE_URL = "https://www.kaggle.com/settings/phone"
+# HUMAN-CONFIRMED (2026-07-10, A3 resolved): `/settings/phone` returns 404; the
+# working phone-verification settings page is `/settings`. Surfaced to a user on an
+# unclassifiable 403, so it must not be a dead link. See references/kaggle-cli-behavior.md.
+_PHONE_URL = "https://www.kaggle.com/settings"
 
 
 def _rules_url(slug: str) -> str:
@@ -96,6 +99,28 @@ def run_kaggle(*argv: str, timeout: int = 60) -> tuple[int, str]:
 # --------------------------------------------------------------------------- #
 # Cheap rules-gate preflight (D-10) — a single `list --search`, no busy-loop.
 # --------------------------------------------------------------------------- #
+def _parse_json_array(text: str):
+    """Parse a JSON array from CLI output, tolerating a leading banner line.
+
+    CLI 2.2.3 **pretty-prints** the array across MANY lines (VERIFIED-LIVE: a
+    ``competitions list --search titanic --format json`` result is 162 lines,
+    ``[`` … ``]``), so a last-line-only parse fails on the closing ``]``. Parse the
+    WHOLE payload; if that fails because a banner precedes the array, retry from the
+    first ``[``. Returns the list, or ``None`` when no JSON array can be recovered.
+    """
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError:
+        start = text.find("[")
+        if start == -1:
+            return None
+        try:
+            parsed = json.loads(text[start:])
+        except json.JSONDecodeError:
+            return None
+    return parsed if isinstance(parsed, list) else None
+
+
 def preflight_entered(slug: str) -> bool | None:
     """Return the exact-slug ``userHasEntered`` flag: ``True`` | ``False`` | ``None``.
 
@@ -118,12 +143,11 @@ def preflight_entered(slug: str) -> bool | None:
     stripped = out.strip()
     if not stripped:
         return None
-    # The JSON array is on the LAST non-empty line (the CLI may print a leading
-    # banner line); parse that line only.
-    try:
-        rows = json.loads(stripped.splitlines()[-1])
-    except (json.JSONDecodeError, IndexError):
-        return None
+    # CLI 2.2.3 PRETTY-PRINTS the array across many lines (VERIFIED-LIVE), so a
+    # last-line-only parse would fail on the closing ``]`` and wrongly return None
+    # for EVERY slug — defeating the whole rules-gate classifier. Parse the full
+    # payload (banner-tolerant) instead.
+    rows = _parse_json_array(stripped)
     if not isinstance(rows, list):
         return None
     for row in rows:

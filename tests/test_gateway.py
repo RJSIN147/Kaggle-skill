@@ -107,7 +107,7 @@ def test_classify_gate_fails_closed_names_both_urls(monkeypatch):
 
     msg = gw.classify_gate(GENERIC_403, "titanic")
     assert "https://www.kaggle.com/competitions/titanic/rules" in msg
-    assert "https://www.kaggle.com/settings/phone" in msg
+    assert "https://www.kaggle.com/settings" in msg
     # D-12: states plainly it could not be classified.
     assert "could not" in msg.lower() or "not be classified" in msg.lower()
 
