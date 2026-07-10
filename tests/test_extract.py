@@ -123,9 +123,16 @@ def test_benign_archive_extracts_cleanly(tmp_path):
 
 
 def test_module_is_stdlib_and_avoids_unpack_archive():
-    """safe_extract uses zipfile/os/stat and NEVER shutil.unpack_archive (no reject hook)."""
+    """safe_extract uses zipfile/os/stat and NEVER imports shutil (no unpack_archive path).
+
+    ``shutil.unpack_archive`` has no per-member reject hook, so it cannot make
+    refusal assertable. The strongest, non-brittle guarantee that it is never used
+    is that the module does not import ``shutil`` at all — checked against the
+    imported module object's namespace (a prose mention in the docstring, which
+    explains WHY shutil is avoided, must not trip this check).
+    """
     se = _se()
-    src = __import__("inspect").getsource(se)
-    assert "shutil.unpack_archive" not in src
+    # shutil is not imported into the module namespace → unpack_archive is unreachable.
+    assert not hasattr(se, "shutil")
     for mod in ("zipfile", "os", "stat"):
-        assert mod in src
+        assert hasattr(se, mod)
