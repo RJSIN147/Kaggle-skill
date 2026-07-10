@@ -14,7 +14,7 @@ This roadmap follows a **local-loop-first vertical MVP**: prove the entire reaso
 Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Workspace, Credentials & Egress Guardrails** - Empty folder to a validated, git-tracked workspace with locked-down egress (completed 2026-07-10)
-- [ ] **Phase 2: Competition Context & Data** - Machine-derived competition "constitution" plus local data, UI gates cleared (verification gaps_found 2026-07-10 — gap closure pending)
+- [x] **Phase 2: Competition Context & Data** - Machine-derived competition "constitution" plus local data, UI gates cleared (verification gaps_found 2026-07-10 — gap closure pending) (completed 2026-07-10)
 - [ ] **Phase 3: Local Experiment Loop, Ledger & Strategy** - The full idea-to-verdict-to-ledger-to-strategy cycle, local & CV-only (MVP / core value)
 - [ ] **Phase 4: Kaggle Kernel Execution (GPU Path)** - Run the same experiment on Kaggle GPU compute, silent-failure caught
 - [ ] **Phase 5: Submission & Leaderboard Tracking** - Submit under CV-first discipline with budget gating and CV-to-LB gap tracking
@@ -86,8 +86,8 @@ Plans:
 
 **Gap closure (Wave 1 — parallel; from 02-VERIFICATION.md gaps_found 2026-07-10)**
 
-- [ ] 02-06-PLAN.md — Gap 1 (COMP-01): cv.scheme becomes an enum-validated AI decision (remove auto-commit), label the mechanical recommendation an advisory hint, tighten detect_group_candidates + pin a titanic fixture, wire the D-05 flow into SKILL.md
-- [ ] 02-07-PLAN.md — Gap 2 (COMP-02 / WR-01): mirror capture_competition._gateway_failure's rc==127/rc==124 branches into download_data.py so a missing CLI / timeout gets correct remediation instead of the misleading exit-77 UI-gate instruction (no busy-loop)
+- [x] 02-06-PLAN.md — Gap 1 (COMP-01): cv.scheme becomes an enum-validated AI decision (remove auto-commit), label the mechanical recommendation an advisory hint, tighten detect_group_candidates + pin a titanic fixture, wire the D-05 flow into SKILL.md
+- [x] 02-07-PLAN.md — Gap 2 (COMP-02 / WR-01): mirror capture_competition._gateway_failure's rc==127/rc==124 branches into download_data.py so a missing CLI / timeout gets correct remediation instead of the misleading exit-77 UI-gate instruction (no busy-loop)
 
 ### Phase 3: Local Experiment Loop, Ledger & Strategy
 
@@ -160,7 +160,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Workspace, Credentials & Egress Guardrails | 4/4 | Complete   | 2026-07-09 |
-| 2. Competition Context & Data | 5/5 | Gaps found | - |
+| 2. Competition Context & Data | 7/7 | Complete   | 2026-07-10 |
 | 3. Local Experiment Loop, Ledger & Strategy | 0/4 | Not started | - |
 | 4. Kaggle Kernel Execution (GPU Path) | 0/2 | Not started | - |
 | 5. Submission & Leaderboard Tracking | 0/3 | Not started | - |
