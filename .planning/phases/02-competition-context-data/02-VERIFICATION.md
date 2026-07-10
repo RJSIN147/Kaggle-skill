@@ -224,19 +224,37 @@ Both gaps have a concrete, scoped fix (tighten the group-candidate heuristic + a
 
 ---
 
-## Gap Closure Direction (operator decision, 2026-07-10)
+## Gap Closure Direction (operator decision, 2026-07-10 — REVISED)
 
-Recorded for `/gsd:plan-phase 2 --gaps`:
+Recorded for `/gsd:plan-phase 2 --gaps`. This **supersedes** an earlier
+"just tighten the detector" direction — the root issue is altitude, not the
+detector alone.
 
-- **Gap 1 (CV false-positive):** Fix depth = **tighten detection + test on real data**.
-  Fix `cv_evidence.detect_group_candidates` so ordinary continuous numeric features
-  (e.g. titanic `Age`/`Fare`) no longer read as group ids, and add a titanic-shaped
-  fixture to `tests/cv_fixtures.py` so the regression is pinned. Keep the "tooling writes,
-  AI never hand-writes" posture — an AI-override prompt in SKILL.md was explicitly NOT
-  chosen for this pass.
+**Framework surfaces evidence + an advisory hint; the AI decides; tooling
+persists the AI's chosen value enum-validated.** This enforces D-05's original
+intent ("Tooling recommends → AI reasons → tooling writes"), which the as-built
+`analyze_data.py` violated by auto-committing the mechanical default. See the
+D-05 clarification in `02-CONTEXT.md` and the pending todo
+`2026-07-10-revise-d-05-...`. The Phase 2→3 contract is UNCHANGED: Phase 3 still
+reads `config.json cv.scheme`, now guaranteed to be an AI decision.
+
+- **Gap 1 (CV false-positive → framework-decides overreach):**
+  1. `analyze_data.py` — remove the auto-commit of the mechanical default;
+     write `cv.scheme` ONLY from the AI's explicit enum-validated `--cv-scheme`
+     choice.
+  2. `cv_evidence.py` — keep emitting evidence + a mechanical recommendation, but
+     label the recommendation a **non-authoritative HINT**; degrade to
+     "no tabular structure detected" for non-tabular data.
+  3. `SKILL.md` — document that the AI reads `cv-evidence.json`, reasons, and
+     passes its chosen `--cv-scheme`; the framework never picks the value.
+  4. Still tighten `detect_group_candidates` (so the advisory hint isn't
+     egregiously wrong on continuous features like titanic `Age`/`Fare`) and pin
+     a titanic-shaped fixture in `tests/cv_fixtures.py` — now advisory-quality,
+     not correctness-critical.
 - **Gap 2 (download exit-code classification / WR-01):** mirror the branch logic
-  `capture_competition._gateway_failure` already uses — surface 127 (CLI missing) and
-  124 (timeout) distinctly instead of collapsing them into the exit-77 UI-gate path.
+  `capture_competition._gateway_failure` already uses — surface 127 (CLI missing)
+  and 124 (timeout) distinctly instead of collapsing them into the exit-77
+  UI-gate path.
 
 ---
 

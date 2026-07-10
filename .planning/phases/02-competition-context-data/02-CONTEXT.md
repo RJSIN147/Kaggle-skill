@@ -84,6 +84,17 @@ CLI calls through one shared gateway (D-16):
   **The AI never hand-writes the field.** This mirrors Phase 3's "numeric fields are written only by
   tooling, never hand-written by the AI" posture, applied one phase early to a structural fact.
 
+  > **CLARIFICATION (2026-07-10, operator decision — enforces intent, does not overturn):**
+  > The mechanical recommendation is **advisory / non-authoritative** — a hint, not a decision.
+  > The **AI** reads `cv-evidence.json`, reasons, and chooses the scheme; a tooling call then
+  > persists the AI's *chosen* value to `config.json cv.scheme` enum-validated (so it is never
+  > free-typed). The framework must **NOT** auto-commit the mechanical default without an explicit
+  > AI decision. As-built `analyze_data.py` violated this by defaulting to `recommend_cv()` — that
+  > is the Phase-2 gap (see `02-VERIFICATION.md` Gap 1 and the pending todo). The Phase 2→3 contract
+  > is unchanged: Phase 3 still reads `config.json cv.scheme`, now guaranteed to be an AI decision.
+  > Also: `cv_evidence` is tabular-only; it must degrade to "no tabular structure detected" for
+  > non-tabular data rather than assert a bogus scheme.
+
 - **D-06 (AMENDS Phase 1 D-14 — timing only, not principle): declare the ML floor now, degrade
   gracefully.**
   - The **skill's own plumbing scripts remain stdlib-only** (D-14's principle survives intact):

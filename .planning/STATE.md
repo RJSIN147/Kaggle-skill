@@ -79,7 +79,7 @@ Recent decisions affecting current work:
 
 ### Pending Todos
 
-None yet.
+- **Enforce D-05: AI decides CV scheme, tooling persists it validated** (`.planning/todos/pending/2026-07-10-revise-d-05-framework-surfaces-cv-evidence-ai-decides-scheme.md`) — resolves in Phase 2 gap closure. Framework surfaces evidence + advisory hint; AI decides; tooling persists the AI's validated choice. Reshapes the Gap 1 fix (supersedes "tighten the detector").
 
 ### Blockers/Concerns
 
