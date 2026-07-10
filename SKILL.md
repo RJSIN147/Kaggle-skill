@@ -156,7 +156,7 @@ verification, so nothing busy-loops (criterion 3):
   `download_data.py`** — its `userHasEntered` preflight now passes. There is no API to accept
   rules; a browser is the only way. An unclassifiable 403 (phone-verification or a genuine
   permission error) also exits 77 and names **both** the rules and
-  `https://www.kaggle.com/settings/phone` URLs — never guess which gate it is (D-12).
+  `https://www.kaggle.com/settings` URLs — never guess which gate it is (D-12).
 - **Exit 78 (`LIMIT_NEEDS_USER`)** from `capture_competition.py`: the daily submission limit
   could not be extracted from the rules text (D-13). Ask the user for the number and re-invoke
   with `--daily-limit N`; if they do not know, re-invoke with `--assume-default-limit`

@@ -48,7 +48,10 @@ UI_GATE = 77
 LIMIT_NEEDS_USER = 78
 
 # Human-facing UI-gate URL for phone verification (framework constant, D-02).
-_PHONE_URL = "https://www.kaggle.com/settings/phone"
+# HUMAN-CONFIRMED (2026-07-10, A3 resolved): `/settings/phone` returns 404; the
+# working phone-verification settings page is `/settings`. Surfaced to a user on an
+# unclassifiable 403, so it must not be a dead link. See references/kaggle-cli-behavior.md.
+_PHONE_URL = "https://www.kaggle.com/settings"
 
 
 def _rules_url(slug: str) -> str:

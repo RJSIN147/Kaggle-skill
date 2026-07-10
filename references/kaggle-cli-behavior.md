@@ -145,7 +145,8 @@ it never names *which* gate. So `classify_gate()` positively classifies ONLY the
 (via the cheap `userHasEntered` preflight, which never 403s and never busy-loops). Any 403
 that survives an entered / `userHasEntered == true` (or indeterminate `None`) state is
 **unclassifiable** → fail closed: exit `UI_GATE` (77), name BOTH
-`https://www.kaggle.com/competitions/<slug>/rules` and `https://www.kaggle.com/settings/phone`,
+`https://www.kaggle.com/competitions/<slug>/rules` and `https://www.kaggle.com/settings`
+(the phone-verification settings page — see the confirmed-URL note below),
 and note it may be a genuine permission error. Never pattern-match "phone" into the 403 string —
 it isn't there. The raw combined buffer is quarantined to the **gitignored**
 `control/raw/last-error.txt` (D-11), never the terminal.
@@ -171,11 +172,16 @@ entered), same sanitized-capture posture (no credential value read or recorded).
 tests used a **compact** `json.dumps(rows)` stub, so this multi-line shape only surfaced under a
 real call — a reminder to pin observed CLI shapes live, not just against a hand-built fixture.
 
-### Phone-verification settings URL (assumption A3) — pending human confirmation
+### Phone-verification settings URL (assumption A3) — HUMAN-CONFIRMED (2026-07-10), A3 RESOLVED
 
-The framework constant is `kaggle_gateway._PHONE_URL = "https://www.kaggle.com/settings/phone"`.
-This URL is **assumed** (A3) and named — alongside the rules URL — in the D-12 fail-closed
-message for an unclassifiable 403. It has **not** yet been confirmed against the live site; the
-02-05 human-action checkpoint asks the user to open it and confirm (if it 404s, the working URL
-is likely `https://www.kaggle.com/settings`). The confirmed URL + its provenance will be recorded
-here after that checkpoint resolves.
+**Confirmed at the 02-05 human-action checkpoint (2026-07-10), performed with the user's
+explicit consent in a browser:** `https://www.kaggle.com/settings/phone` **returns 404**. The
+working phone-verification settings page is **`https://www.kaggle.com/settings`**. The framework
+constant is therefore `kaggle_gateway._PHONE_URL = "https://www.kaggle.com/settings"`.
+
+This URL is named — alongside the rules URL — in the D-12 fail-closed message for an
+unclassifiable 403, so it is user-facing and must not be a dead link. Assumption A3 (the exact
+phone-settings URL, deferred by design because it cannot be produced from a verified account, see
+T-02-A1) is now **RESOLVED**. Provenance: human-verified in a browser — no API exists for phone
+verification (that is the whole point of the UI-only gate); no credential value was read or
+recorded during the check.
