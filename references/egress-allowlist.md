@@ -44,8 +44,9 @@ a fresh workspace and re-applied by the deep-merge into a pre-existing
 
 | Host | Why it is required |
 |------|--------------------|
-| `www.kaggle.com` | The Kaggle API endpoint is `https://www.kaggle.com/api/v1` (CLI 2.x). Auth, competition metadata, submissions. **Not** `api.kaggle.com` (that host is stale for the 2.x CLI). |
+| `www.kaggle.com` | OAuth / web-flow login and human-facing web URLs (competition pages, the `/competitions/<slug>/rules` acceptance page, `/settings/phone`). Historically also documented as the `…/api/v1` REST base, but CLI 2.2.3 (kagglesdk) routes its RPC calls to `api.kaggle.com` — see the `api.kaggle.com` row below and [Correction history](#correction-history). |
 | `kaggle.com` | Apex host for redirects / web URLs. |
+| `api.kaggle.com` | **The CLI 2.2.3 API endpoint host — mandatory for Phase 2.** kagglesdk's `KaggleEnv.PROD` builds `https://api.kaggle.com/v1/{service}/{request}`, so `competitions pages`, `competitions files`, `competitions list`, and `competitions download` (before its 302 → `storage.googleapis.com`) all target this host. VERIFIED-LIVE against CLI 2.2.3 by forcing a proxy failure (`https_proxy=http://127.0.0.1:9`) and reading the target host per command, and confirmed in source (`kagglesdk/kaggle_env.py`). Missing it, a properly sandboxed workspace blocks/prompts every Phase 2 CLI call. |
 | `storage.googleapis.com` | **The GCS-backend gotcha (mandatory).** `kaggle competitions download` 302-redirects to signed Google Cloud Storage URLs. An allowlist of just `kaggle.com` silently breaks every competition data download. |
 | `*.storage.googleapis.com` | Covers any virtual-hosted-style (`<bucket>.storage.googleapis.com`) GCS variant in addition to the path-style host above. |
 | `pypi.org` | Python package index metadata (`uv` / `pip` installs). |
@@ -228,6 +229,7 @@ quietly overwritten.
 | 2026-07-10 | An earlier revision asserted the sandbox "silently degrades to unsandboxed" when `socat` is missing. | Official docs: Claude Code emits a **warning** and falls back — visible, not silent. `sandbox.failIfUnavailable: true` was then added to fail closed. |
 | 2026-07-10 | A later revision asserted, as an observed finding, that denial "manifests as a stalled CONNECT, **NOT** a prompt" and that there is "no prompt path for Bash-initiated calls." | The Run 2 discriminating probe: **all five** off-allowlist hosts prompted. The earlier session's missing prompts were being consumed by **auto-accept mode**. One session's behavior had been mistaken for the mechanism. |
 | 2026-07-10 | The `example.com` result was recorded as an UNVERIFIED anomaly possibly indicating an undocumented pre-allowed host set. | Run 2 showed no baseline exists; `example.com` was an auto-accepted prompt, not a bypass. |
+| 2026-07-10 | The `www.kaggle.com` row asserted the API endpoint is `https://www.kaggle.com/api/v1` and that the `api.kaggle.com` host was "stale for the 2.x CLI" and should not be allowlisted. | VERIFIED WRONG for **CLI 2.2.3**: a proxy-failure host probe (`https_proxy=http://127.0.0.1:9`) showed `competitions pages` / `files` / `list` / `download` all target `host='api.kaggle.com'`, confirmed in source (`kagglesdk/kaggle_env.py`: `KaggleEnv.PROD → "https://api.kaggle.com"`; `kaggle_http_client._get_request_url()` builds `https://api.kaggle.com/v1/{service}/{request}`). `api.kaggle.com` was added to the allowlist template and given its own host row; `www.kaggle.com`/`kaggle.com` remain for OAuth + web URLs. Because `write_settings_json` unions `allowedDomains`, re-running `init` retrofits the host onto an existing workspace. |
 
 ## Leak-guard override (the documented escape hatch)
 
