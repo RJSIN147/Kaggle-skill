@@ -802,18 +802,26 @@ stdlib marginal shift.
 | A4 | Floors `pandas>=2.2 / scikit-learn>=1.5 / numpy>=1.26` install on Py3.11 and are ≤ Kaggle image | §Standard Stack | LOW for local AV; Kaggle-image parity check deferred to Phase 4 |
 | A5 | The `size` int and `{name,size,creationDate}` file-manifest keys are stable across competitions | §Kaggle CLI Surface | LOW — VERIFIED across titanic/gemini-3/arc-agi-2 |
 
-## Open Questions
-1. **Phone-verification 403 signature** — What we know: rules-gate 403 is generic on stderr,
-   exit 1. What's unclear: whether phone-verification produces a distinguishable message.
-   Recommendation: implementation-time `-m live` task on a *non-phone-verified* test account, OR
-   accept D-12 fail-closed (name both gates) — which is already the locked design, so this is
-   non-blocking.
-2. **Exact phone-verification settings URL** — Recommendation: confirm
-   `https://www.kaggle.com/settings/phone` at implementation; fall back to
-   `https://www.kaggle.com/settings` if the deep-link 404s.
-3. **`competitions files` on a genuinely rules-gated featured comp** — all un-entered probes here
-   returned files fine; a strict-gated comp *might* 403 on `files`. Recommendation: rely on
-   `userHasEntered` (never on `files` exit) — already the design.
+## Open Questions (RESOLVED)
+
+All three are closed by the locked design or by an assigned plan task. None blocks execution.
+
+1. **Phone-verification 403 signature** — **RESOLVED (by design, D-12).** What we know: rules-gate
+   403 is generic on stderr, exit 1. What's unclear: whether phone-verification produces a
+   distinguishable message. Because D-12 fails closed — exit the gate code, state the gate could not
+   be classified, print *both* URLs, never guess — the answer does not change any behavior. A
+   documented `pytest.skip("cannot trigger phone-gate from a verified account")` placeholder stands
+   in for the untestable branch (02-VALIDATION.md §Manual-Only Verifications).
+2. **Exact phone-verification settings URL** — **RESOLVED (assigned).** Confirmed at implementation
+   by plan `02-05` Task 3 (`checkpoint:human-action`): open
+   `https://www.kaggle.com/settings/phone`, fall back to `https://www.kaggle.com/settings` if the
+   deep-link 404s, then record the confirmed URL as a new row in
+   `references/kaggle-cli-behavior.md` under the honest-provenance convention. Tracked as
+   assumption A3 (MEDIUM).
+3. **`competitions files` on a genuinely rules-gated featured comp** — **RESOLVED (moot by design).**
+   All un-entered probes here returned files fine; a strict-gated comp *might* 403 on `files`. The
+   design relies on `competitions list --search <slug>` → exact-slug `userHasEntered` and **never**
+   on the `files` exit code, so the answer cannot affect the gate probe.
 
 ## Sources
 ### Primary (HIGH — VERIFIED-LIVE this session, 2026-07-10, CLI 2.2.3 in `.venv`)
