@@ -117,3 +117,45 @@ Every capture above was produced with a **fabricated** token
 (`0123…`-style 32-hex / `kagat_ZZ…`) in a throwaway `HOME`. Fabricated values were
 replaced with placeholders before recording. No real credential value appears in this
 file, and none was ever surfaced to a log during capture.
+
+## Phase 2 — observed competition-op signatures (CLI 2.2.3, 2026-07-10)
+
+> **How captured (honest provenance):** the competition-op signatures below were
+> captured VERIFIED-LIVE against the installed CLI `Kaggle CLI 2.2.3` (project `.venv`,
+> Python 3.13) during the Phase 2 research pass. The 403 gate signature was triggered by
+> attempting `kaggle competitions download <slug>` for competitions the test account had
+> **not** entered (`spaceship-titanic`, `gemini-3`, both `userHasEntered=False`); the
+> success/manifest shapes were read from entered competitions. Consistent with the
+> sanitization guarantee above, **no credential value was read, printed, or recorded** —
+> classification is by exit code + generic (secret-free) signature only. `scripts/kaggle_gateway.py`
+> (D-16) consumes these facts the way `check_credentials.py` consumes the credential
+> signatures: MATCH the combined buffer, never echo it.
+
+### Observed 403 UI-gate signature (the `classify_gate` table for Phase 2)
+
+| Gate | How detected | Where the message lands / exit | Signature (sanitized) | Confidence |
+|------|--------------|-------------------------------|-----------------------|------------|
+| **Rules not accepted (preflight)** | `competitions list --search <slug> --format json` → exact-slug `userHasEntered == false` | probe **exit 0**, boolean field | JSON row `{"ref": ".../<slug>", "userHasEntered": false}` | **VERIFIED-LIVE / HIGH** |
+| **Rules not accepted (download attempted)** | `competitions download <un-entered-slug>` | **stderr**, **exit 1**, no files pulled | `403 Client Error: Forbidden for url: https://api.kaggle.com/v1/competitions.CompetitionApiService/DownloadDataFiles` | **VERIFIED-LIVE / HIGH** |
+| **Phone verification required** | Could not trigger live (test account already verified) → presumed the SAME generic 403; **not distinguishable from the message alone** | stderr `403 …` (assumed) | identical generic `403 … DownloadDataFiles` | **UNVERIFIED / LOW** |
+| **Genuine permission / private comp** | Also a generic 403; **not distinguishable** | stderr `403 …` | identical generic `403 … DownloadDataFiles` | **INFERRED / MEDIUM** |
+
+**Load-bearing consequence (D-12 fail-closed):** the download 403 message is **generic** —
+it never names *which* gate. So `classify_gate()` positively classifies ONLY the rules gate
+(via the cheap `userHasEntered` preflight, which never 403s and never busy-loops). Any 403
+that survives an entered / `userHasEntered == true` (or indeterminate `None`) state is
+**unclassifiable** → fail closed: exit `UI_GATE` (77), name BOTH
+`https://www.kaggle.com/competitions/<slug>/rules` and `https://www.kaggle.com/settings/phone`,
+and note it may be a genuine permission error. Never pattern-match "phone" into the 403 string —
+it isn't there. The raw combined buffer is quarantined to the **gitignored**
+`control/raw/last-error.txt` (D-11), never the terminal.
+
+### Two live-verified CLI facts (2026-07-10, CLI 2.2.3)
+
+| Fact | Observation | Consequence |
+|------|-------------|-------------|
+| `competitions pages --content` **exists** | `kaggle competitions pages --content --page-name {description,rules,evaluation} --format json` returns full page content | Competition prose is reachable via the CLI (D-15) — no web scraping; `capture_competition.py` ingests it as untrusted content (D-01/D-02). |
+| `competitions download` has **NO `--unzip`** | CLI 2.2.3 `download` flags are only `-f/-p/-w/-o/-q`; the artifact on disk is a single `<slug>.zip` | `download_data.py` MUST extract manually with a zip-slip guard (COMP-03) — resolving the CLAUDE.md Open Risk that `--unzip` was "unreliable"; it is simply **absent**. |
+
+Both facts were read from the installed CLI 2.2.3 with the same sanitized-capture posture as
+the credential signatures above (no credential value read or recorded).

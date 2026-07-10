@@ -11,6 +11,12 @@ access_token
 # Data + heavy artifacts (D-12)
 data/
 
+# Transient Kaggle CLI error dumps (D-11) — a failed call's raw stdout/stderr may
+# embed a token-shaped string; NEVER commit it. Provenance JSON under control/raw/
+# (competition-pages.json, cv-evidence.json) stays TRACKED (D-03) — only this
+# transient .txt dump is ignored.
+control/raw/last-error.txt
+
 # Phase 3 experiment artifacts — declared now so .gitignore isn't rewritten later (D-13)
 experiments/*/artifacts/
 experiments/*/*.csv
