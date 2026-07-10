@@ -159,3 +159,23 @@ it isn't there. The raw combined buffer is quarantined to the **gitignored**
 
 Both facts were read from the installed CLI 2.2.3 with the same sanitized-capture posture as
 the credential signatures above (no credential value read or recorded).
+
+### `--format json` is PRETTY-PRINTED, not single-line (2026-07-10, CLI 2.2.3) — VERIFIED-LIVE (02-05)
+
+| Fact | Observation | Consequence |
+|------|-------------|-------------|
+| `competitions list --search <slug> --format json` **pretty-prints** the array | A live `--search titanic` result is **162 lines**: `[` on line 1, one field per line, `]` on the last line (NOT a single JSON line, and no leading/trailing banner) | A last-line-only parse (`json.loads(out.splitlines()[-1])`) parses just the closing `]` and raises, wrongly returning `None` for **every** slug — silently defeating the entire `preflight_entered` rules-gate classifier (D-10). `kaggle_gateway.preflight_entered` MUST parse the **full** payload. **Fixed in 02-05** (`_parse_json_array`, banner-tolerant); re-pinned by `tests/test_competition_live.py::test_list_search_exposes_user_has_entered`. |
+
+Observed during 02-05's live verification against the read-only `titanic` slug (account already
+entered), same sanitized-capture posture (no credential value read or recorded). The 02-01 mock
+tests used a **compact** `json.dumps(rows)` stub, so this multi-line shape only surfaced under a
+real call — a reminder to pin observed CLI shapes live, not just against a hand-built fixture.
+
+### Phone-verification settings URL (assumption A3) — pending human confirmation
+
+The framework constant is `kaggle_gateway._PHONE_URL = "https://www.kaggle.com/settings/phone"`.
+This URL is **assumed** (A3) and named — alongside the rules URL — in the D-12 fail-closed
+message for an unclassifiable 403. It has **not** yet been confirmed against the live site; the
+02-05 human-action checkpoint asks the user to open it and confirm (if it 404s, the working URL
+is likely `https://www.kaggle.com/settings`). The confirmed URL + its provenance will be recorded
+here after that checkpoint resolves.
