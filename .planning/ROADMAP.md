@@ -69,7 +69,7 @@ Plans:
 Plans:
 **Wave 1**
 
-- [ ] 02-01-PLAN.md — Egress unblock (api.kaggle.com) + Kaggle Gateway (D-16: run_kaggle/preflight/classify_gate, fail-closed 403)
+- [x] 02-01-PLAN.md — Egress unblock (api.kaggle.com) + Kaggle Gateway (D-16: run_kaggle/preflight/classify_gate, fail-closed 403)
 
 **Wave 2** *(blocked on Wave 1)*
 
@@ -155,7 +155,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Workspace, Credentials & Egress Guardrails | 4/4 | Complete   | 2026-07-09 |
-| 2. Competition Context & Data | 0/5 | Not started | - |
+| 2. Competition Context & Data | 1/5 | In Progress|  |
 | 3. Local Experiment Loop, Ledger & Strategy | 0/4 | Not started | - |
 | 4. Kaggle Kernel Execution (GPU Path) | 0/2 | Not started | - |
 | 5. Submission & Leaderboard Tracking | 0/3 | Not started | - |
