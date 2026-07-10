@@ -472,19 +472,27 @@ def build_parser() -> argparse.ArgumentParser:
     return ap
 
 
-def set_execution_target(config_path: Path, target: str) -> int:
-    """SETUP-02 setter: overwrite ``execution_target`` on an existing config.json.
+def set_config_field(config_path: Path, key_path: tuple[str, ...], value) -> int:
+    """Direct read-mutate-write setter for ONE config.json leaf (the general setter).
 
-    This is the ONLY code path allowed to overwrite an existing value, and only
-    the ``execution_target`` key — an explicit user-driven change, never triggered
-    by the scaffold/deep-merge path. The enum is already validated by argparse
-    ``choices`` (a non-enum value is rejected before we get here, with no write).
-    Only the Phase-1 GLOBAL default is owned here; per-experiment override is
-    Phase 3 (out of scope).
+    This is the write mechanism the Phase-2 machine fields need: ``write_control_json``
+    → ``deep_merge_add_missing`` only ADDS absent keys, so a key that already exists
+    as ``null`` (``cv.scheme``, ``submission.daily_limit``, ``competition.type`` —
+    all reserved by the template) can NEVER be filled by the merge. This setter
+    overwrites the leaf directly: it walks ``key_path``, creating any missing
+    intermediate dicts, and sets the final key to ``value``.
+
+    Same fail-clear posture as before (D-02): a missing ``config.json`` prints an
+    error and returns non-zero with NO write; malformed JSON is left untouched
+    byte-for-byte (MalformedControlJSON posture) and returns non-zero. Returns 0 on
+    success. Enum validation stays at the argparse ``choices`` boundary in every
+    caller, so a non-enum value is rejected before any write — the AI never
+    hand-writes a field; it passes a validated flag and tooling writes.
     """
+    dotted = ".".join(key_path)
     if not config_path.exists():
         print(
-            f"cannot set execution target: no {config_path} — run init first.",
+            f"cannot set {dotted}: no {config_path} — run init first.",
             file=sys.stderr,
         )
         return 1
@@ -492,15 +500,39 @@ def set_execution_target(config_path: Path, target: str) -> int:
         cfg = json.loads(config_path.read_text())
     except json.JSONDecodeError as exc:
         print(
-            f"cannot set execution target: {config_path.name} is not valid JSON "
-            f"and was left untouched (fail-clear): {exc}.",
+            f"cannot set {dotted}: {config_path.name} is not valid JSON and was "
+            f"left untouched (fail-clear, D-02): {exc}.",
             file=sys.stderr,
         )
         return 1
-    cfg["execution_target"] = target
+
+    node = cfg
+    for key in key_path[:-1]:
+        child = node.get(key)
+        if not isinstance(child, dict):
+            child = {}
+            node[key] = child
+        node = child
+    node[key_path[-1]] = value
+
     config_path.write_text(json.dumps(cfg, indent=2) + "\n")
-    print(f"execution_target set to {target}")
     return 0
+
+
+def set_execution_target(config_path: Path, target: str) -> int:
+    """SETUP-02 setter: overwrite ``execution_target`` — a thin enum-validated wrapper.
+
+    No longer *the* overwrite path — it is *an* explicit, enum-validated wrapper over
+    the general :func:`set_config_field`. The enum is validated by argparse
+    ``choices`` (a non-enum value is rejected before we get here, with no write).
+    Only the Phase-1 GLOBAL default is owned here; per-experiment override is
+    Phase 3 (out of scope). ``set_config_field`` supplies the identical fail-clear
+    semantics (missing/corrupt config.json → error + non-zero, no write).
+    """
+    rc = set_config_field(config_path, ("execution_target",), target)
+    if rc == 0:
+        print(f"execution_target set to {target}")
+    return rc
 
 
 def main(argv=None) -> int:
