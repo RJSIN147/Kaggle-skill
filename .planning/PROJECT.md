@@ -21,7 +21,8 @@ the framework exists to serve that loop.
 
 <!-- Shipped and confirmed valuable. -->
 
-(None yet — ship to validate)
+- [x] Capture static competition context — data schema, eval metric, rules, submission limits — in a dedicated file at setup — *Validated in Phase 2: Competition Context & Data (COMP-01, machine-derived "constitution" with provenance-tagged limits and untrusted-content wrapping)*
+- [x] Download competition data for local runs — *Validated in Phase 2: Competition Context & Data (COMP-02, UI-only rules gate cleared, zip-slip-protected extraction, never busy-loops)*
 
 ### Active
 
@@ -29,9 +30,7 @@ the framework exists to serve that loop.
 
 - [ ] Initialize an experiment workspace in an empty folder (directory structure, config, context files)
 - [ ] Connect to the user's Kaggle account via the Kaggle CLI/API (credential setup + validation)
-- [ ] Capture static competition context — data schema, eval metric, rules, submission limits — in a dedicated file at setup
 - [ ] Choose a default execution target (local vs Kaggle Kernel) at init; overridable anytime, globally or per-experiment
-- [ ] Download competition data for local runs
 - [ ] Represent an experiment as an idea + hypothesis, its generated notebook/script, its result, and a written verdict (worked / didn't / why)
 - [ ] AI authors a fresh notebook/script per experiment from a template scaffold
 - [ ] Run an experiment locally (the default path), producing a cross-validation score and artifacts
@@ -103,4 +102,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-07-09 after initialization*
+*Last updated: 2026-07-11 after Phase 2 (Competition Context & Data) complete — machine-derived competition constitution + local data download shipped; CV scheme is AI-decided (D-05), tooling only persists the validated choice.*
