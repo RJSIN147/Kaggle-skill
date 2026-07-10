@@ -161,6 +161,66 @@ def test_cv_evidence_does_not_write_cv_scheme(seeded_workspace, run_script):
     assert _read_cfg(ws)["cv"]["scheme"] is None
 
 
+def test_titanic_shape_recommends_stratified_no_group_falsepos(seeded_workspace, run_script):
+    """Gap-1 regression: a titanic-shaped pair (continuous fractional-repeating Age/Fare,
+    sparse Cabin, binary target, no true group) → StratifiedKFold, with Age/Fare/Cabin
+    NOT flagged as group candidates (the old detector false-flagged them → GroupKFold)."""
+    ws = seeded_workspace
+    build_pair(ws / "data", "titanic")
+
+    r = run_script("cv_evidence.py", "--workspace", ws, cwd=ws)
+    assert r.returncode == 0, r.stderr
+
+    ev = _read_evidence(ws)
+    assert ev["recommend"] == "StratifiedKFold"
+    for col in ("Age", "Fare", "Cabin"):
+        assert col not in ev["group_candidates"], f"{col} false-flagged as a group id"
+    assert ev["group_candidates"] == []
+
+
+def test_grouped_still_flags_group_after_tightening(seeded_workspace, run_script):
+    """No-regression: the tightened detector STILL flags the genuine integer group_id."""
+    ws = seeded_workspace
+    build_pair(ws / "data", "grouped")
+
+    r = run_script("cv_evidence.py", "--workspace", ws, cwd=ws)
+    assert r.returncode == 0, r.stderr
+
+    ev = _read_evidence(ws)
+    assert ev["recommend"] == "GroupKFold"
+    assert "group_id" in ev["group_candidates"]
+
+
+def test_recommendation_labeled_advisory_hint(seeded_workspace, run_script):
+    """cv-evidence.json labels the recommendation a NON-authoritative advisory hint —
+    the AI decides; tooling never auto-commits the value."""
+    ws = seeded_workspace
+    build_pair(ws / "data", "grouped")
+
+    run_script("cv_evidence.py", "--workspace", ws, cwd=ws)
+
+    ev = _read_evidence(ws)
+    assert ev.get("recommend_is_hint") is True
+    note = (ev.get("recommend_note") or "").lower()
+    assert "advisory" in note or "hint" in note
+
+
+def test_non_tabular_pair_degrades_to_no_scheme(seeded_workspace, run_script):
+    """A degenerate non-tabular pair (no shared feature columns) → the 'no tabular
+    structure' sentinel: recommend is None, NEVER a CV_SCHEMES value."""
+    ws = seeded_workspace
+    build_pair(ws / "data", "degenerate")
+
+    r = run_script("cv_evidence.py", "--workspace", ws, cwd=ws)
+    assert r.returncode == 0, r.stderr
+
+    ev = _read_evidence(ws)
+    assert ev["recommend"] not in (
+        "GroupKFold", "TimeSeriesSplit", "StratifiedKFold", "KFold"
+    )
+    assert ev["recommend"] is None
+
+
 def test_unresolved_pair_degrades_to_skipped(seeded_workspace, run_script):
     """data/ lacking train.csv/test.csv → exit 0 + a SKIPPED record, never a crash."""
     ws = seeded_workspace
@@ -179,12 +239,15 @@ def test_unresolved_pair_degrades_to_skipped(seeded_workspace, run_script):
 # analyze_data.py — set_config_field cv.scheme + competition.md rationale (D-05).
 # --------------------------------------------------------------------------- #
 def test_analyze_lands_nonnull_cv_scheme_and_rationale(seeded_workspace, run_script):
+    """The AI's explicit --cv-scheme lands a NON-null enum via set_config_field (D-05)."""
     ws = seeded_workspace
     build_pair(ws / "data", "grouped")
     # Precondition: cv.scheme present AND null (the write_control_json merge-skip trap).
     assert _read_cfg(ws)["cv"]["scheme"] is None
 
-    r = run_script("analyze_data.py", "--workspace", ws, cwd=ws)
+    r = run_script(
+        "analyze_data.py", "--workspace", ws, "--cv-scheme", "GroupKFold", cwd=ws
+    )
     assert r.returncode == 0, r.stderr
 
     # NON-null enum LANDED → proves set_config_field, not the add-missing-only merge.
@@ -197,6 +260,31 @@ def test_analyze_lands_nonnull_cv_scheme_and_rationale(seeded_workspace, run_scr
     assert "GroupKFold" in cv_section
     assert "_TODO (Phase 2)_" not in cv_section
     assert len(cv_section.strip()) > len("GroupKFold") + 5  # a non-empty rationale too
+
+
+def test_analyze_no_cv_scheme_leaves_null_pending(seeded_workspace, run_script):
+    """D-05: WITHOUT --cv-scheme the framework NEVER picks the value — cv.scheme stays
+    null, the CV section is decision-pending naming the advisory hint, and the status
+    tells the AI it must choose. AV/schema still run on this path."""
+    ws = seeded_workspace
+    build_pair(ws / "data", "grouped")  # advisory hint would be GroupKFold
+    assert _read_cfg(ws)["cv"]["scheme"] is None
+
+    r = run_script("analyze_data.py", "--workspace", ws, cwd=ws)
+    assert r.returncode == 0, r.stderr
+
+    # The mechanical hint is NOT auto-committed — cv.scheme is left reserved-null.
+    assert _read_cfg(ws)["cv"]["scheme"] is None
+
+    md = (ws / "competition.md").read_text()
+    cv_section = md.split("## Cross-validation scheme", 1)[1].split("\n## ", 1)[0]
+    # Decision-pending body: names the advisory hint + instructs a --cv-scheme re-run.
+    assert "--cv-scheme" in cv_section
+    assert "cv-evidence.json" in cv_section
+    assert "GroupKFold" in cv_section  # the advisory hint is surfaced, not committed
+
+    status = (r.stdout + r.stderr).lower()
+    assert "not committed" in status or "must choose" in status
 
 
 def test_analyze_cv_scheme_flag_overrides_recommendation(seeded_workspace, run_script):
@@ -230,7 +318,9 @@ def test_analyze_independent_of_capture(seeded_workspace, run_script):
     build_pair(ws / "data", "temporal")
     assert not (ws / "competition.md").exists()  # capture never ran
 
-    r = run_script("analyze_data.py", "--workspace", ws, cwd=ws)
+    r = run_script(
+        "analyze_data.py", "--workspace", ws, "--cv-scheme", "TimeSeriesSplit", cwd=ws
+    )
     assert r.returncode == 0, r.stderr
 
     # cv.scheme + evidence still land despite no capture.
