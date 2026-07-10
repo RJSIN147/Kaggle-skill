@@ -145,7 +145,8 @@ it never names *which* gate. So `classify_gate()` positively classifies ONLY the
 (via the cheap `userHasEntered` preflight, which never 403s and never busy-loops). Any 403
 that survives an entered / `userHasEntered == true` (or indeterminate `None`) state is
 **unclassifiable** → fail closed: exit `UI_GATE` (77), name BOTH
-`https://www.kaggle.com/competitions/<slug>/rules` and `https://www.kaggle.com/settings/phone`,
+`https://www.kaggle.com/competitions/<slug>/rules` and `https://www.kaggle.com/settings`
+(the phone-verification settings page — see the confirmed-URL note below),
 and note it may be a genuine permission error. Never pattern-match "phone" into the 403 string —
 it isn't there. The raw combined buffer is quarantined to the **gitignored**
 `control/raw/last-error.txt` (D-11), never the terminal.
@@ -159,3 +160,28 @@ it isn't there. The raw combined buffer is quarantined to the **gitignored**
 
 Both facts were read from the installed CLI 2.2.3 with the same sanitized-capture posture as
 the credential signatures above (no credential value read or recorded).
+
+### `--format json` is PRETTY-PRINTED, not single-line (2026-07-10, CLI 2.2.3) — VERIFIED-LIVE (02-05)
+
+| Fact | Observation | Consequence |
+|------|-------------|-------------|
+| `competitions list --search <slug> --format json` **pretty-prints** the array | A live `--search titanic` result is **162 lines**: `[` on line 1, one field per line, `]` on the last line (NOT a single JSON line, and no leading/trailing banner) | A last-line-only parse (`json.loads(out.splitlines()[-1])`) parses just the closing `]` and raises, wrongly returning `None` for **every** slug — silently defeating the entire `preflight_entered` rules-gate classifier (D-10). `kaggle_gateway.preflight_entered` MUST parse the **full** payload. **Fixed in 02-05** (`_parse_json_array`, banner-tolerant); re-pinned by `tests/test_competition_live.py::test_list_search_exposes_user_has_entered`. |
+
+Observed during 02-05's live verification against the read-only `titanic` slug (account already
+entered), same sanitized-capture posture (no credential value read or recorded). The 02-01 mock
+tests used a **compact** `json.dumps(rows)` stub, so this multi-line shape only surfaced under a
+real call — a reminder to pin observed CLI shapes live, not just against a hand-built fixture.
+
+### Phone-verification settings URL (assumption A3) — HUMAN-CONFIRMED (2026-07-10), A3 RESOLVED
+
+**Confirmed at the 02-05 human-action checkpoint (2026-07-10), performed with the user's
+explicit consent in a browser:** `https://www.kaggle.com/settings/phone` **returns 404**. The
+working phone-verification settings page is **`https://www.kaggle.com/settings`**. The framework
+constant is therefore `kaggle_gateway._PHONE_URL = "https://www.kaggle.com/settings"`.
+
+This URL is named — alongside the rules URL — in the D-12 fail-closed message for an
+unclassifiable 403, so it is user-facing and must not be a dead link. Assumption A3 (the exact
+phone-settings URL, deferred by design because it cannot be produced from a verified account, see
+T-02-A1) is now **RESOLVED**. Provenance: human-verified in a browser — no API exists for phone
+verification (that is the whole point of the UI-only gate); no credential value was read or
+recorded during the check.

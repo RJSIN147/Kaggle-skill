@@ -25,7 +25,7 @@ from pathlib import Path
 import kaggle_gateway as gw
 
 RULES_URL = "https://www.kaggle.com/competitions/titanic/rules"
-PHONE_URL = "https://www.kaggle.com/settings/phone"
+PHONE_URL = "https://www.kaggle.com/settings"
 
 
 def _dd():
