@@ -35,6 +35,11 @@ package = false
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# Exclude the live suite (real-Kaggle integration) from the DEFAULT run so the
+# mock suite is green offline / credential-free and live conditions can never
+# redden it. Run the live suite explicitly: `uv run pytest -m live tests/...`
+# (a command-line `-m live` overrides this default selection).
+addopts = "-m 'not live'"
 markers = [
     "live: requires a real Kaggle API token (excluded from default runs)",
 ]
