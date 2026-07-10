@@ -102,6 +102,14 @@ def seeded_workspace(tmp_path):
                 "competition_slug": "titanic",
                 "execution_target": "local",
                 "cv": {"scheme": None},
+                # Phase-2 reserved-null machine fields (matches init_workspace.py
+                # output after Phase 2). They exist as `null` BEFORE capture runs —
+                # the exact shape that exposes the write_control_json merge-skip
+                # blocker: a value can only LAND via the direct set_config_field
+                # setter, never via the add-missing-only deep merge. Additive, so
+                # the Phase 1 credential tests are unaffected.
+                "submission": {"daily_limit": None, "limit_provenance": None},
+                "competition": {"type": None},
                 "created": "2026-01-01T00:00:00Z",
             }
         )
