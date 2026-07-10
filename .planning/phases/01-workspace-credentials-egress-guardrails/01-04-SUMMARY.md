@@ -39,7 +39,7 @@ key-files:
 
 key-decisions:
   - "SETUP-03 MET: live exit-code validation proven end-to-end at the Task 3 checkpoint (real ~/.kaggle/access_token file source, exit 0, state.json->VALIDATED, no leak); the previously-UNVERIFIED success path is now VERIFIED in references/kaggle-cli-behavior.md"
-  - "SETUP-04 NOT marked complete: the CREDENTIAL half (never echoed, masked, chmod/.env consent-gated, secrets gitignored) is MET, but the EGRESS half is only PARTIALLY DEMONSTRATED (carried from 01-03: the unexplained example.com off-allowlist result). A compound requirement is not complete on one half."
+  - "SETUP-04 COMPLETE: the CREDENTIAL half (never echoed, masked, chmod/.env consent-gated, secrets gitignored, live exit-code validation) is MET here; the EGRESS half was closed by the 2026-07-10 discriminating probe (5/5 off-allowlist hosts prompted, no silent-allow path — the example.com result was an auto-accepted prompt, not a bypass). Standing caveat: auto-accept mode defeats the allowlist."
   - "Legacy KAGGLE_USERNAME+KAGGLE_KEY end-to-end validation remains UNVERIFIED (the real-token run used the access_token file source; the pair was never tested with a real credential) — recorded honestly, not smoothed over"
   - "kaggle declared as a dev/live-only dependency (not runtime): check_credentials.py never imports kaggle; it invokes the CLI via subprocess and degrades gracefully when absent (D-07). Declaring it keeps the -m live test reproducible without a bare runtime pip install (CLAUDE.md)"
 
@@ -47,7 +47,7 @@ patterns-established:
   - "Exit-code-is-truth: the live source label is advisory; pass/fail is decided strictly by the CLI's exit code"
   - "Nyquist/Wave-0 finding: a pre-authored RED suite can encode a stale assumption that the plan's own field research later refutes — fix the test to match observed reality without weakening its assertion"
 
-requirements-completed: [SETUP-03]  # SETUP-04 deliberately NOT marked — credential half MET, egress half still partial (01-03 carry-forward)
+requirements-completed: [SETUP-03, SETUP-04]  # SETUP-04 credential half MET here; egress half closed by the 2026-07-10 probe (see 01-03-SUMMARY)
 
 # Metrics
 duration: ~40min (across the Task 3 human-verify checkpoint pause)
@@ -114,7 +114,7 @@ This is a genuine Nyquist/Wave-0 finding: the RED suite authored in 01-01 encode
 
 - **SETUP-03 — MET.** Credential connected and live-validated by exit code (real `access_token` file, exit 0, `state.json=VALIDATED`), four secret-free remediation branches, failure flags `UNVALIDATED` without aborting (D-07), observed CLI behavior recorded in `references/kaggle-cli-behavior.md`. Marked complete.
 - **SETUP-04 (credential half) — MET.** Credential never echoed (masked / env-var-name-only output; `test_no_credential_leak.py` + `test_subprocess_output_no_secret` green; live-transcript leak check PASS); world-readable token self-healed to 600 with consent; `.env` normalization consent-gated; secrets gitignored (from 01-03).
-- **SETUP-04 (egress half) — PARTIALLY DEMONSTRATED (carried from 01-03).** The unexplained `example.com` off-allowlist result from 01-03 is NOT resolved. **SETUP-04 is therefore NOT marked complete** — a compound requirement (credentials AND egress) is not satisfied on the strength of the credential half alone.
+- **SETUP-04 (egress half) — MET (closed 2026-07-10, see 01-03-SUMMARY).** The discriminating probe (auto-accept OFF, all prompts declined) had 5/5 off-allowlist hosts prompt for approval and 0 silently allowed, establishing there is no undocumented baseline allowlist and no silent-allow path. The earlier `example.com` result was an auto-accepted prompt, not a bypass. **SETUP-04 is therefore complete** — both halves of the compound requirement (credentials AND egress) are satisfied.
 
 ## Decisions Made
 
@@ -175,7 +175,7 @@ RED suite pre-authored in 01-01 (Nyquist Wave 0); Tasks 1-2 are `tdd="true"`. RE
 
 - **Full non-live suite green** and the `-m live` test now reproducible from a clean checkout (`kaggle>=2.2` declared). A valid credential validates end-to-end (`state.json=VALIDATED`).
 - **Phase 2 (data):** reuses the validated credential + the `storage.googleapis.com` egress already on the 01-03 allowlist for `kaggle competitions download`.
-- **Carry-forward (outstanding human verification, from 01-03):** the discriminating egress probe — `curl` to `example.org`/`example.net`/`wikipedia.org`/`google.com`/`httpbin.org` while declining every prompt — to settle whether an undocumented pre-allowed set exists for the local CLI sandbox (the `example.com` anomaly) and confirm the timeout-vs-prompt denial mechanism. Until settled, **SETUP-04's egress half stays PARTIALLY DEMONSTRATED and SETUP-04 is NOT complete**.
+- **Carry-forward RESOLVED (2026-07-10):** the discriminating egress probe was run — `example.org`, `example.net`, `wikipedia.org`, `google.com`, `httpbin.org`, declining every prompt. **All five prompted; none was silently allowed.** No undocumented pre-allowed set exists for the local CLI sandbox; the `example.com` result was an auto-accepted prompt; denial is a prompt (an unanswered one stalls the CONNECT, which is a deny). **SETUP-04's egress half is MET and SETUP-04 is complete.** What carries forward instead is an operational caveat, not a gap: **auto-accept mode defeats the egress allowlist**, because enforcement for a non-allowlisted host *is* an approval prompt. See `references/egress-allowlist.md`.
 - **Carry-forward (this plan):** legacy `KAGGLE_USERNAME`+`KAGGLE_KEY` end-to-end validation UNVERIFIED; the chmod-600 self-heal did not fire on the real (already-600) credential — covered by unit test + fabricated-token spot-check only.
 
 ## Self-Check: PASSED

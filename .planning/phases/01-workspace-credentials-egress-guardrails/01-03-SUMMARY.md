@@ -48,7 +48,7 @@ patterns-established:
   - "Egress is a blast-radius reducer, not an exfiltration boundary: TLS not terminated (domain fronting), broad hosts (github.com) are themselves exfil paths"
   - "Honest-record discipline: docs-vs-observation contradictions flagged UNVERIFIED rather than smoothed over"
 
-requirements-completed: [SETUP-01]  # SETUP-04 deliberately NOT marked complete — see criterion 5 split + 01-04 dependency
+requirements-completed: [SETUP-01, SETUP-04]  # SETUP-04 egress half MET here (criterion 5 both halves); its credential half is delivered by 01-04
 
 # Metrics
 duration: ~35min (across the Task 3 checkpoint pause)
@@ -169,7 +169,7 @@ Criterion 5 ("off-allowlist fetch refused") is deliberately recorded as two dist
 | Threat ID | Disposition | Status |
 |-----------|-------------|--------|
 | T-01-01 (commit of secrets) | mitigate | ✅ `.gitignore` + content-scanning pre-commit guard over `git show :path`; scaffold-scoped `git add --`; commit after hook install (baseline scanned). |
-| T-01-04 (off-allowlist egress) | mitigate | ⚠️ Generated control correct (deep-merged `sandbox.network.allowedDomains`); host enforcement PARTIALLY demonstrated (example.com anomaly UNVERIFIED). |
+| T-01-04 (off-allowlist egress) | mitigate | ✅ Generated control correct (deep-merged `sandbox.network.allowedDomains`) AND host enforcement verified (2026-07-10 probe: 5/5 off-allowlist hosts prompted, 0 silently allowed; `example.com` explained as an auto-accepted prompt). Residual: auto-accept mode defeats the allowlist; not an exfiltration boundary (T-01-04b). |
 | T-01-04b (TLS not terminated → domain fronting) | accept | ✅ Documented residual caveat + verbatim Anthropic quote; github.com noted as an exfil path. |
 | T-01-05 (silent socat auto-install) | mitigate | ✅ `shutil.which` detect + consent-based install instruction; never auto-installs. |
 | T-01-09 (sandbox silently disabled) | mitigate | ✅ Now fail-closed via `sandbox.failIfUnavailable=true` (hard-fails instead of degrading); checkpoint confirmed socat present on host. |
@@ -188,7 +188,7 @@ RED suite pre-authored in 01-01 (Nyquist Wave 0); Tasks 1-2 are `tdd="true"`. RE
 
 - **01-04 (credentials):** `check_credentials.py` (+ install `kaggle` behind its consent gate) turns the last 8 RED nodes GREEN. SETUP-04 becomes fully claimable only once 01-04 lands AND the host-enforcement probe is settled. `leak_scan.py` from this plan also feeds `test_no_credential_leak.py::test_scripts_exist`.
 - **Phase 2 (data):** relies on `storage.googleapis.com` (+ `*.`) already on the allowlist — `kaggle competitions download` egress is pre-scoped.
-- **Outstanding human verification (carry forward):** the discriminating egress probe (see criterion 5 split) to settle the `example.com` anomaly and the timeout-vs-prompt denial mechanism.
+- **Human verification COMPLETE (2026-07-10):** the discriminating egress probe was run (auto-accept OFF, all prompts declined). All 5 off-allowlist hosts prompted; no silent-allow path. This settled the `example.com` result (an auto-accepted prompt, not a bypass) and the denial mechanism (a prompt; an unanswered prompt stalls the CONNECT, which is a deny). Criterion 5 both halves MET. Standing operational caveat recorded instead: auto-accept mode defeats the allowlist.
 
 ## Self-Check: PASSED
 - Created files verified present: `scripts/templates/settings.json.tmpl`, `scripts/leak_scan.py`, `scripts/templates/pre-commit.tmpl`, `references/egress-allowlist.md`; modified `scripts/init_workspace.py`.

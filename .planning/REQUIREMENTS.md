@@ -12,7 +12,7 @@ Requirements for the initial release. Each maps to a roadmap phase.
 - [x] **SETUP-01**: User can initialize an experiment workspace in an empty folder (directory layout, config, git init, context-file stubs)
 - [x] **SETUP-02**: User can choose a default execution target (local or Kaggle Kernel) at init, and change it anytime — globally or per-experiment
 - [x] **SETUP-03**: User can connect their Kaggle account via the Kaggle CLI, and the framework validates the credential with a live call
-- [ ] **SETUP-04**: Credentials are stored securely and never echoed; network egress is scoped to Kaggle and standard package sources
+- [x] **SETUP-04**: Credentials are stored securely and never echoed; network egress is scoped to Kaggle and standard package sources
 
 ### Competition
 

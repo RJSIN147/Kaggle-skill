@@ -1,152 +1,155 @@
 ---
 phase: 01-workspace-credentials-egress-guardrails
-verified: 2026-07-09T23:49:50Z
-status: gaps_found
-score: 4/5 must-haves verified
+verified: 2026-07-10T06:49:57Z
+status: passed
+score: 5/5 must-haves verified
 overrides_applied: 0
-gaps:
-  - truth: "Network egress is restricted to a Kaggle + package-source allowlist in .claude/settings.json — an off-allowlist fetch is refused, not silently allowed (ROADMAP Success Criterion 5 / SETUP-04 egress half)"
-    status: partial
-    reason: >-
-      Generated-settings correctness (Half A) is fully verified: sandbox.enabled=true,
-      sandbox.failIfUnavailable=true, allowedDomains is a superset of the 5 required hosts,
-      the deep-merge preserves user keys while forcing the security flags, and a malformed
-      settings.json fails clear. But host-enforcement (Half B) is only PARTIALLY demonstrated
-      per the phase's own recorded checkpoint evidence (01-03-SUMMARY.md,
-      references/egress-allowlist.md): of 3 off-allowlist hosts probed, 2 (neverssl.com,
-      icanhazip.com) were correctly denied (stalled proxy CONNECT / timeout), but one
-      (example.com) reached its real origin with genuine content — cause UNKNOWN. This is a
-      direct, empirically-observed exception to the literal wording of criterion 5 ("an
-      off-allowlist fetch is refused, not silently allowed"). The named follow-up
-      ("discriminating probe": example.org, example.net, wikipedia.org, google.com,
-      httpbin.org, declining every prompt) has not been run. This verifier confirmed its own
-      Bash tool environment has NO active sandbox proxy (https_proxy/HTTP_PROXY unset;
-      curl to neverssl.com and example.com both returned HTTP 200 unrestricted), so the
-      anomaly cannot be further diagnosed from this verification session — it requires a
-      live, interactive Claude Code session with the sandbox (socat + bubblewrap) active.
-    artifacts:
-      - path: "references/egress-allowlist.md"
-        issue: "Documents the anomaly honestly (empirical evidence table + UNVERIFIED flag) but does not resolve it"
-      - path: ".claude/settings.json (generated in scaffolded workspaces)"
-        issue: "The generated artifact itself is correct (Half A MET) — the gap is in live host enforcement, not the generated file"
-    missing:
-      - "Run the discriminating probe (curl to example.org, example.net, wikipedia.org, google.com, httpbin.org, declining every prompt) in a live Claude Code session with the sandbox active, to determine whether an undocumented pre-allowed set exists for the local CLI sandbox or the example.com result was a one-off anomaly."
-      - "Either explain and fix the example.com pass-through, or have a human explicitly accept the residual risk (e.g. via a VERIFICATION.md override entry naming who accepted it and why) before Phase 1 is considered fully closed."
+re_verification:
+  previous_status: gaps_found
+  previous_score: 4/5
+  gaps_closed:
+    - "Network egress is restricted to a Kaggle + package-source allowlist in .claude/settings.json — an off-allowlist fetch is refused, not silently allowed (ROADMAP Success Criterion 5 / SETUP-04 egress half)"
+  gaps_remaining: []
+  regressions: []
 ---
 
-# Phase 1: Workspace, Credentials & Egress Guardrails — Verification Report
+# Phase 1: Workspace, Credentials & Egress Guardrails — Verification Report (Re-verification)
 
 **Phase Goal:** A single init turns an empty folder into a valid, git-tracked experiment workspace with a live-validated Kaggle connection and a locked-down network egress allowlist.
-**Verified:** 2026-07-09T23:49:50Z
-**Status:** gaps_found
-**Re-verification:** No — initial verification
+**Verified:** 2026-07-10T06:49:57Z
+**Status:** passed
+**Re-verification:** Yes — after gap closure (previous run: `gaps_found`, 4/5)
+
+## What changed since the last verification
+
+`git diff --stat b86ac91 HEAD` confirms exactly 3 files touched, no code:
+
+- `.planning/REQUIREMENTS.md` (SETUP-04 traceability row: Pending → Complete)
+- `.planning/phases/01-workspace-credentials-egress-guardrails/01-03-SUMMARY.md` (criterion-5 record updated)
+- `references/egress-allowlist.md` (enforcement record corrected + Correction history added)
+
+Commit `3c9b1f2` message and diff were read in full and match the claims in the handoff. `uv run pytest tests/ -q` still passes 32/32 — the fix is documentation-only, as claimed.
+
+## Independent re-adjudication of the egress must-have (the actual gap)
+
+**This verifier's own Bash tool environment still has no active sandbox proxy** (confirmed again: `https_proxy`/`HTTP_PROXY` unset, `curl` to `example.com` returns `200` directly, even though `socat`/`bwrap` binaries exist on the host PATH). This is the same limitation recorded in the prior verification — the live network-enforcement test can only be performed in an interactive Claude Code session with the sandbox proxy wired in, which this tool-call environment is not. I cannot re-run the discriminating probe myself.
+
+What I *can* and did independently check:
+
+1. **The commit is real and scoped as described** — `3c9b1f2` exists in `git log`, touches only the 3 files above, and the diff shows the exact before/after text described in the handoff (Half B flipped from "PARTIALLY DEMONSTRATED" to "MET", `SETUP-04` traceability flipped to Complete).
+2. **`references/egress-allowlist.md` internal consistency** — read in full. It:
+   - States the OBSERVED mechanism as "an off-allowlist host prompts for approval" (not silent, not a bare timeout), matching the official docs quoted inline.
+   - Contains the empirical evidence tables for both Run 1 (auto-accept ON: example.com allowed, neverssl.com/icanhazip.com denied by stalled CONNECT) and Run 2 (auto-accept OFF, all 5 declined-and-prompted: example.org, example.net, wikipedia.org, google.com, httpbin.org).
+   - Contains a dedicated "Auto-accept mode defeats the egress allowlist" section — the standing operational caveat is prominent, not buried.
+   - Contains a dated "Correction history" table naming the two prior wrong claims (silent-degrade-on-missing-socat; "no prompt path") and what overturned each.
+   - The only place the phrase "no prompt path" appears is *inside* the Correction-history table, framed as a claim that was wrong — it is not asserted as current fact anywhere else in the file. Confirmed by grep across the whole repo.
+3. **No regression to the generated-settings half (Half A)** — re-scaffolded a throwaway workspace and independently re-confirmed `sandbox.enabled=true`, `sandbox.failIfUnavailable=true`, `allowedDomains` ⊇ the 5 required hosts, deep-merge preserving a pre-existing user key while unioning hosts and forcing security flags, and byte-for-byte fail-clear on a malformed pre-existing `settings.json` (see Behavioral Spot-Checks).
+4. **One leftover documentation inconsistency found** (not part of the reference doc, and not a functional gap): `01-03-SUMMARY.md` frontmatter `key-decisions` still carries an un-updated bullet ("Denial mechanism ... NOT a prompt ... recorded UNVERIFIED") immediately above the corrected bullet that says the opposite ("Half B ... MET ... all 5 prompted"). This is cosmetic staleness in an execution-log file, not in the authoritative portability spec (`references/egress-allowlist.md`, which is fully self-consistent). Flagged below as a non-blocking WARNING.
+
+**My independent judgment on the substantive question ("is 'prompts for approval' sufficient to satisfy 'refused, not silently allowed'?"):** Yes, I agree with the handoff's conclusion, for reasons I verified rather than took on faith:
+
+- A prompt is definitionally the opposite of "silent." An off-allowlist fetch that requires an explicit approval action before it reaches its origin is "refused by default," because in the absence of that action (declined, or unanswered — which stalls and times out, a deny) the fetch does not complete. That satisfies the criterion's plain-language intent.
+- The alternative reading — that "refused" must mean an unconditional hard block with zero decision point — is not what the criterion's own wording ("refused, not silently allowed") requires; it only rules out *silent* allowance, which the discriminating probe (5/5 declined-and-prompted, 0/5 silently allowed) directly falsifies as ever having existed for the no-consent case.
+- The auto-accept caveat is a real, distinct, and honestly-disclosed residual risk (auto-accept converts the allowlist from deny-by-default to allow-by-default) — but it is a property of *how the user chooses to run Claude Code*, not a defect in the generated `.claude/settings.json` or in the enforcement mechanism itself. It is documented prominently, with the correct prompt-immune escape valve named (`sandbox.network.allowManagedDomainsOnly`, managed/org-only) and why the scaffold cannot set it. This project's own explicit scope decisions ("Fully autonomous unsupervised optimization" is listed as an anti-pattern / out of scope) make this a reasonable accepted-risk posture, analogous to the already-accepted T-01-04b (TLS not terminated / domain fronting) residual risk in the same document.
+- I hold this to the same evidentiary bar the *prior* verification already applied to Success Criterion 3 (live Kaggle credential validation): a specific, credible, live-session result that this verifier's own tool sandbox cannot replicate (there for a security reason — never touch the real credential; here for an environment reason — no proxy in this Bash tool) was accepted as VERIFIED because it was independently documented with enough specificity to be falsifiable, and nothing else in the codebase contradicts it. The Run 2 probe meets that same bar: 5 named hosts, an explicit protocol (auto-accept OFF, every prompt declined), and a specific outcome (all 5 prompted, none silently allowed) — and it resolves rather than papers over the prior anomaly (explains *why* example.com looked like a bypass).
+
+**Conclusion: Success Criterion 5 is VERIFIED**, both halves, with the auto-accept caveat retained as a documented standing operational risk (not a gap).
 
 ## Goal Achievement
 
 ### Observable Truths
 
-These are the 5 ROADMAP.md Success Criteria for Phase 1 (the roadmap contract) — each independently re-tested against the actual codebase in this session, not taken from SUMMARY.md claims.
-
 | # | Truth (ROADMAP Success Criterion) | Status | Evidence |
 |---|---|---|---|
-| 1 | Running init on an empty folder produces the full workspace layout — control plane (config.json, ledger.jsonl, state.json), context-file stubs, .gitignore, and an initialized git repo | ✓ VERIFIED | Scaffolded a throwaway workspace (`init_workspace.py --workspace <tmp> --slug titanic`): produced `control/{config.json,state.json,ledger.jsonl}`, `competition.md`/`strategy.md`/`README.md`, `.env`, `.gitignore`, `.claude/settings.json`, `pyproject.toml`, `data/`, `experiments/`, and a git repo on `main` with exactly one `chore: scaffold workspace` commit (10 files staged, none stray). Re-run created zero new files (idempotent). |
-| 2 | User can set execution target to local (default) or kernel at init and change it later — globally in config.json — and the setting is honored | ✓ VERIFIED | Fresh scaffold: `config.json.execution_target == "local"`. `--set-execution-target kernel` flipped it to `"kernel"`. `--set-execution-target banana` was rejected by argparse (exit 2, no write — enum stayed `kernel`). A plain re-run without the setter left `kernel` untouched (no-overwrite-outside-setter). |
-| 3 | The framework validates the Kaggle credential with a live call and reports a clear pass/fail, with exact remediation for each common failure (wrong env var, missing chmod 600, 401, command-not-found) | ✓ VERIFIED | Code-level: `run_kaggle_list()` decides strictly by exit code, now has a 60s timeout (WR-01 fixed, confirmed in `scripts/check_credentials.py:342-369`), never surfaces captured stdout/stderr raw. Independently spot-checked (fabricated creds, no real token used): command-not-found branch fires correctly with PATH scrubbed; chmod-600 and `.env`-population consent gates behave exactly as specified (see Behavioral Spot-Checks). The live end-to-end pass (`state.json → VALIDATED`, real `access_token` file, exit 0, no leak) is documented in 01-04-SUMMARY.md/references/kaggle-cli-behavior.md as independently performed at the Task 3 checkpoint; this verifier did not re-run it (per security instructions, must never touch the real credential), but the mechanism it depends on (exit-code-only decision, masked output, timeout bound) is directly verified in code and via fabricated-input spot-checks. |
-| 4 | Credentials are chmod 600 and never echoed, logged, or committed (.gitignore covers .env/kaggle.json/access_token); a credential-leak check passes | ✓ VERIFIED | `.gitignore` confirmed to cover `.env`, `kaggle.json`, `access_token` (plus `**/kaggle.json`, `**/access_token`). Staged a fabricated `KAGGLE_KEY=<32 chars>` in a non-gitignored file (`notes.txt`) inside a real scaffolded workspace and ran `git commit` — the installed `.githooks/pre-commit` hook (wired via `core.hooksPath`) BLOCKED the commit for real. CR-01 (leak scanner failed OPEN on non-ASCII filenames / any git error) independently re-verified fixed: a `café.env` file containing a fabricated `KAGGLE_KEY` is now correctly BLOCKED (previously silently skipped); running the scanner outside a git repo now fails closed (BLOCKED) instead of exiting 0. Consent-gated chmod-600 self-heal verified with a fabricated 644 kaggle.json: unchanged without `--yes`, flipped to 600 only with `--yes`; `.env` population from a fabricated kaggle.json likewise offered-only vs. applied-only-with-consent, values never printed to stdout. |
-| 5 | Network egress is restricted to a Kaggle + package-source allowlist in `.claude/settings.json` — an off-allowlist fetch is refused, not silently allowed | ✗ FAILED (partial) | **Half A (generated settings) — MET:** verified `sandbox.enabled=true`, `sandbox.failIfUnavailable=true`, `allowedDomains` ⊇ {www.kaggle.com, storage.googleapis.com, pypi.org, files.pythonhosted.org, github.com}; deep-merge preserves an unrelated user key while unioning hosts and forcing the security flags; a malformed pre-existing settings.json is left byte-for-byte unchanged with a non-zero exit (all re-tested directly in this session). **Half B (host enforcement) — NOT fully met:** per the phase's own recorded checkpoint (01-03-SUMMARY.md / references/egress-allowlist.md), 2 of 3 off-allowlist hosts were denied (neverssl.com, icanhazip.com — stalled-CONNECT timeout) but one off-allowlist host (example.com) reached its real origin with genuine content, cause UNKNOWN. The discriminating probe that would help isolate this was never run. This is a literal contradiction of the criterion as worded ("an off-allowlist fetch is refused, not silently allowed") — one specific off-allowlist fetch was in fact silently allowed. See Gaps Summary. |
+| 1 | Running init on an empty folder produces the full workspace layout — control plane (config.json, ledger.jsonl, state.json), context-file stubs, .gitignore, and an initialized git repo | ✓ VERIFIED (regression-checked) | Re-scaffolded a fresh throwaway workspace this session: full D-10 layout produced (`control/{config.json,state.json,ledger.jsonl}`, `competition.md`/`strategy.md`/`README.md`, `.env`, `.gitignore`, `.claude/settings.json`, `pyproject.toml`, `data/`, `experiments/`, `.githooks/pre-commit`), git repo on `main` with exactly one `chore: scaffold workspace` commit, clean working tree. |
+| 2 | User can set execution target to local (default) or kernel at init and change it later — globally in config.json — and the setting is honored | ✓ VERIFIED (regression-checked) | Fresh scaffold: `execution_target == "local"`. `--set-execution-target kernel` flipped it. `--set-execution-target banana` rejected by argparse (exit 2), value stayed `kernel`. |
+| 3 | The framework validates the Kaggle credential with a live call and reports a clear pass/fail, with exact remediation for each common failure | ✓ VERIFIED (regression-checked) | `scripts/check_credentials.py` unchanged since prior verification (confirmed via `git diff` scope). Timeout (`timeout=60`), `MalformedStateJSON` fail-clear, and `KAGGLE_API_TOKEN`-first precedence all still present in code; no touching of the real credential performed, per instructions. |
+| 4 | Credentials are chmod 600 and never echoed, logged, or committed; a credential-leak check passes | ✓ VERIFIED (regression-checked + fresh spot-check) | `.gitignore` still covers `.env`/`kaggle.json`/`access_token`. Staged a fabricated `KAGGLE_KEY=<32 chars>` in a non-gitignored file and in a **non-ASCII-named** file (`café_notes.txt`, forced past `.gitignore` with `-f` to specifically re-test the CR-01 path) — both real `git commit` attempts were BLOCKED by the installed `.githooks/pre-commit` hook. `leak_scan.py` code re-inspected: NUL-delimited `core.quotePath=false` enumeration + fail-closed on any git error, unchanged since prior verification. |
+| 5 | Network egress is restricted to a Kaggle + package-source allowlist in `.claude/settings.json` — an off-allowlist fetch is refused, not silently allowed | ✓ VERIFIED (gap closed) | See "Independent re-adjudication" above. Half A (generated settings) re-confirmed directly in this session (deep-merge, malformed fail-clear, security flags forced). Half B (host enforcement) accepted on the strength of the 2026-07-10 discriminating probe (5/5 off-allowlist hosts prompted, 0/5 silently allowed, auto-accept OFF) recorded in `references/egress-allowlist.md` with full correction history — evidence this verifier's own tool environment cannot replicate (no sandbox proxy present) but which is internally consistent, specific, falsifiable, and resolves rather than hand-waves the prior anomaly. |
 
-**Score:** 4/5 truths verified.
+**Score:** 5/5 truths verified.
 
-### Required Artifacts
+### Required Artifacts (regression check — no code changed since prior VERIFIED pass)
 
 | Artifact | Expected | Status | Details |
 |---|---|---|---|
-| `SKILL.md` | Guided-then-scaffold init contract, `allowed-tools` incl. `Bash(python3 scripts/*)`, documents D-01/D-03/D-07 | ✓ VERIFIED | Read in full; frontmatter has all required `allowed-tools`; body documents guided-init, consent gating, flag-on-fail, egress + leak-guard sections. |
-| `pyproject.toml` (skill's own) | `[tool.pytest.ini_options]` with `live` marker; `requires-python>=3.11` | ✓ VERIFIED | `uv run pytest --markers` lists `live: requires a real Kaggle API token (excluded from default runs)`. |
-| `scripts/init_workspace.py` | Self-locating slug-gated D-10 scaffolder, deep-merge, git init, egress deep-merge | ✓ VERIFIED | Exercised directly: D-01 gate, D-02 deep-merge + nested-edit preservation, malformed-JSON fail-clear, git init on `main`, scaffold-scoped commit, idempotency. |
-| `scripts/templates/*.tmpl` (10 files) | config/state/settings/gitignore/pre-commit/env/pyproject/competition/strategy/README templates | ✓ VERIFIED | All 10 present on disk; content inspected for settings.json.tmpl and gitignore.tmpl; produced correct output in live scaffold test. |
-| `scripts/leak_scan.py` | Stdlib pre-commit content scanner, fail-closed | ✓ VERIFIED | CR-01 fix re-verified empirically (non-ASCII filename leak now blocked; git errors now fail closed); real `git commit` blocked via the installed hook. |
-| `scripts/check_credentials.py` | Credential detect/precedence/mask/consent-gated fixes/live validation | ✓ VERIFIED | WR-01 (timeout), WR-02 (state.json fail-clear), WR-03 (precedence reorder) all re-verified in code and empirically (fabricated inputs only). |
-| `references/egress-allowlist.md` | Portability doc + honest enforcement caveats | ✓ VERIFIED | Present, detailed, and — notably — honestly documents its own unresolved anomaly rather than smoothing it over. |
-| `references/kaggle-cli-behavior.md` | Observed kaggle CLI exit codes/precedence fixture | ✓ VERIFIED | Present; records fabricated-credential captures + the one live VERIFIED success path; honest provenance notes. |
-| `tests/conftest.py` + 8 `test_*.py` | Full RED→GREEN suite incl. review-driven pins | ✓ VERIFIED | 32 test nodes collected; `uv run pytest tests/ -q` → 32 passed (re-run in this session, matches orchestrator claim). |
+| `SKILL.md` | Guided-then-scaffold init contract | ✓ VERIFIED | Unchanged since prior verification (not in the 3-file diff). |
+| `scripts/init_workspace.py` | Self-locating slug-gated D-10 scaffolder, deep-merge, git init | ✓ VERIFIED | Unchanged; re-exercised directly this session (D-01 gate, deep-merge, malformed-JSON fail-clear, git init, idempotency). |
+| `scripts/templates/*.tmpl` (10 files) | config/state/settings/gitignore/pre-commit/env/pyproject/competition/strategy/README templates | ✓ VERIFIED | Unchanged; produced correct output in fresh scaffold test. |
+| `scripts/leak_scan.py` | Stdlib pre-commit content scanner, fail-closed | ✓ VERIFIED | Unchanged; re-read in full, CR-01 fix (NUL-delimited paths, fail-closed on error) confirmed in code and re-triggered live via a forced non-ASCII-filename commit attempt. |
+| `scripts/check_credentials.py` | Credential detect/precedence/mask/consent-gated fixes/live validation | ✓ VERIFIED | Unchanged; timeout/MalformedStateJSON/precedence-fix code re-confirmed present via grep. |
+| `references/egress-allowlist.md` | Portability doc + honest enforcement caveats | ✓ VERIFIED (updated, improved) | Fully re-read. Now internally consistent: OBSERVED mechanism = prompt, correction history documents the prior wrong claims rather than silently overwriting them, auto-accept caveat is prominent. |
+| `references/kaggle-cli-behavior.md` | Observed kaggle CLI exit codes/precedence fixture | ✓ VERIFIED | Unchanged since prior verification. |
+| `tests/conftest.py` + 8 `test_*.py` | Full RED→GREEN suite | ✓ VERIFIED | `uv run pytest tests/ -q` → 32 passed (re-run fresh this session). `-m "not live"` → 31 passed, 1 deselected. |
 
-### Key Link Verification
+### Key Link Verification (regression check)
 
-| From | To | Via | Status | Details |
-|---|---|---|---|---|
-| `SKILL.md` | `scripts/init_workspace.py` | documented `python3 scripts/init_workspace.py --workspace` invocation | ✓ WIRED | Literal string present in SKILL.md body; script runs exactly as documented. |
-| `scripts/init_workspace.py` | `scripts/templates/` | `Path(__file__).resolve().parent / "templates"` | ✓ WIRED | Templates read and substituted correctly in live scaffold test. |
-| `scripts/init_workspace.py` | `.claude/settings.json` | deep-merge union of allowedDomains + permissions.allow | ✓ WIRED | Directly tested: pre-existing settings with unrelated key + partial allowlist → user key preserved, hosts unioned, security flags forced. |
-| `scripts/init_workspace.py` | `git config core.hooksPath` | installs `.githooks/pre-commit`, then stages + commits | ✓ WIRED | `core.hooksPath` = `.githooks`; hook is executable (0755); hook actually fires on `git commit` and blocks a real fabricated-secret commit. |
-| `.githooks/pre-commit` | `scripts/leak_scan.py` | hook body is the copied scanner | ✓ WIRED | Confirmed by content + by triggering a real block via `git commit`. |
-| `scripts/check_credentials.py` | `kaggle competitions list` | exit-code live validation | ✓ WIRED | Code path confirmed; live pass documented in 01-04-SUMMARY.md (not independently re-run here — no real credential touched, per instructions). |
-| `scripts/check_credentials.py` | `control/state.json` | writes `credentials` VALIDATED\|UNVALIDATED | ✓ WIRED | Directly tested: command-not-found path writes `UNVALIDATED`; malformed state.json now fails clear (WR-02) instead of resetting `next_exp_id`. |
+No code changed since the prior VERIFIED pass on all 7 key links (SKILL.md→init_workspace.py, init_workspace.py→templates/, init_workspace.py→.claude/settings.json deep-merge, init_workspace.py→git core.hooksPath, pre-commit hook→leak_scan.py, check_credentials.py→kaggle CLI, check_credentials.py→control/state.json). All re-confirmed WIRED via the fresh scaffold + hook-block spot-checks in this session — see Behavioral Spot-Checks.
 
 ### Behavioral Spot-Checks
 
-All commands below were executed directly in this verification session (not read from SUMMARY.md), against a throwaway workspace in the session scratchpad, using only fabricated credential values.
+All commands below were executed directly in this re-verification session against a throwaway workspace in the session scratchpad (deleted after use), using only fabricated credential values. No real `~/.kaggle/access_token` was read, printed, or used.
 
 | Behavior | Command | Result | Status |
 |---|---|---|---|
 | Full suite green | `uv run pytest tests/ -q` | `32 passed` | ✓ PASS |
 | Non-live suite green | `uv run pytest tests/ -q -m "not live"` | `31 passed, 1 deselected` | ✓ PASS |
-| Fresh scaffold produces D-10 layout | `init_workspace.py --workspace <tmp> --slug titanic` | Full layout created, exit 0, one scaffold commit | ✓ PASS |
-| Idempotent re-run | same command again | Exit 0, no new commit, no new files | ✓ PASS |
 | D-01 gate (no slug on fresh dir) | `init_workspace.py --workspace <fresh>` (no `--slug`) | Exit 2, zero files created | ✓ PASS |
-| CR-01 fix: non-ASCII filename leak | staged `café.env` containing fabricated `KAGGLE_KEY=...`, ran `leak_scan.py` | `[BLOCKED]` exit 1 (previously silently skipped) | ✓ PASS |
-| CR-01 fix: fail-closed on git error | ran `leak_scan.py` outside a git repo | `[BLOCKED] could not enumerate staged files...` exit 1 (previously exit 0) | ✓ PASS |
-| Clean content passes | staged a secret-free file, ran `leak_scan.py` | exit 0 | ✓ PASS |
-| Real commit blocked by installed hook | staged fabricated secret in `notes.txt` (not gitignored) in a real scaffolded repo, ran `git commit` | `[BLOCKED]`, commit exit 1, no commit created | ✓ PASS |
-| settings.json deep-merge preserves user keys | pre-seeded settings with `env.FOO` + partial allowlist, re-ran init | user key preserved, hosts unioned, `failIfUnavailable` forced true | ✓ PASS |
-| settings.json malformed fail-clear | pre-seeded corrupt settings.json, re-ran init | exit 1, bytes byte-for-byte unchanged (md5 match) | ✓ PASS |
-| Execution-target setter + enum guard | `--set-execution-target kernel` then `--set-execution-target banana` | kernel applied; banana rejected (exit 2), value stayed `kernel` | ✓ PASS |
-| Consent-gated chmod-600 (WR-fix independent spot-check) | fabricated 644 `kaggle.json`, checker run without/with `--yes` | unchanged without consent; chmod 600 applied only with `--yes` | ✓ PASS |
-| Consent-gated `.env` population | same fabricated kaggle.json, checker run without/with `--yes` | `.env` untouched without consent; populated (fabricated values only) with `--yes`, never printed to stdout | ✓ PASS |
-| WR-02 fix: malformed state.json fail-clear | corrupted `control/state.json`, ran checker | `[BLOCKED]` exit 1, bytes unchanged (md5 match), `next_exp_id` not reset | ✓ PASS |
-| No raw secret in static scan | `grep` over `scripts/*.py` for credential-value prints | No raw-secret prints found (only instructional text) | ✓ PASS |
-| Egress sandbox active in verifier's own tool env? | `echo $https_proxy`; `curl` to neverssl.com / example.com from this session | No proxy configured; both hosts returned HTTP 200 unrestricted | ℹ️ Confirms this verifier's Bash tool has no active sandbox — the egress anomaly cannot be further diagnosed from here (requires a live, interactive Claude Code session with the sandbox active). |
+| Fresh scaffold produces D-10 layout | `init_workspace.py --workspace <tmp> --slug titanic` | Full layout, exit 0, one scaffold commit on `main` | ✓ PASS |
+| Execution-target default + setter + enum guard | fresh scaffold, then `--set-execution-target kernel`, then `--set-execution-target banana` | `local` → `kernel` applied; `banana` rejected exit 2, value stayed `kernel` | ✓ PASS |
+| settings.json deep-merge preserves user keys | pre-seeded `env.FOO` + partial allowlist + `failIfUnavailable:false`, re-ran init | `env.FOO` preserved, hosts unioned, `sandbox.enabled`/`failIfUnavailable` forced `true` | ✓ PASS |
+| settings.json malformed fail-clear | pre-seeded corrupt settings.json, re-ran init | Exit 1, bytes byte-for-byte unchanged (md5 match) | ✓ PASS |
+| Real commit blocked by installed hook (plain filename) | staged fabricated `KAGGLE_KEY=...` in `notes.txt`, ran `git commit` | `[BLOCKED]`, commit exit 1, no commit created | ✓ PASS |
+| Real commit blocked by installed hook (CR-01: non-ASCII filename) | staged fabricated `KAGGLE_KEY=...` in `café_notes.txt` (force-added past `.gitignore`), ran `git commit` | `[BLOCKED]`, commit exit 1, no commit created | ✓ PASS |
+| Egress sandbox active in verifier's own tool env? | `echo $https_proxy`; `curl` to `example.com` | No proxy configured; HTTP 200 unrestricted | ℹ️ Confirms (again) this verifier's Bash tool has no active sandbox proxy — Half B of Truth 5 cannot be independently re-run from here, only its documentation and internal consistency can be. |
+
+### Probe Execution
+
+No `scripts/*/tests/probe-*.sh`-style scripted probes exist in this repository (`find . -path '*/tests/probe-*.sh'` → empty). The "discriminating probe" referenced by this phase is an interactive, human-run live-session network test (curl to 5 named hosts inside an active Claude Code sandbox session, declining every domain-approval prompt) — it is not a repository-committed script this verifier can execute. This is consistent with the nature of the check (it requires the sandbox's socat/bubblewrap proxy and an interactive approval-prompt UI, neither of which exists in this Bash tool's environment). Treated as N/A for Step 7c; evidence assessed via documentation review instead (see "Independent re-adjudication" above).
 
 ### Requirements Coverage
 
 | Requirement | Source Plan | Description | Status | Evidence |
 |---|---|---|---|---|
-| SETUP-01 | 01-01 (RED), 01-02, 01-03 | Initialize workspace (layout, config, git init, context-file stubs) | ✓ SATISFIED | D-10 layout + git-on-main + scaffold-scoped idempotent commit all directly verified. REQUIREMENTS.md marks Complete — consistent with evidence. |
-| SETUP-02 | 01-01 (RED), 01-02 | Choose/change execution target | ✓ SATISFIED | Default `local`, setter, enum validation, no-overwrite-outside-setter all directly verified. REQUIREMENTS.md marks Complete — consistent. |
-| SETUP-03 | 01-01 (RED), 01-04 | Connect Kaggle account, live-validate credential | ✓ SATISFIED | Exit-code-only validation, 4 remediation branches, timeout bound (WR-01), fail-clear state write (WR-02) all verified in code + fabricated-input spot-checks; real live pass independently documented at the 01-04 checkpoint. REQUIREMENTS.md marks Complete — consistent. |
-| SETUP-04 | 01-01 (RED), 01-03, 01-04 | Credentials stored securely/never echoed; egress scoped | ⚠️ BLOCKED (partial) | Credential half fully MET (masking, consent-gating, gitignore, leak-guard fail-closed after CR-01 fix — all independently re-verified). Egress half NOT fully met (SC5 above). REQUIREMENTS.md marks this **Pending** — this verifier confirms that is the honest, accurate state; it should NOT be flipped to Complete yet. |
+| SETUP-01 | 01-01, 01-02, 01-03 | Initialize workspace (layout, config, git init, context-file stubs) | ✓ SATISFIED | Unchanged from prior verification; re-confirmed via fresh scaffold this session. |
+| SETUP-02 | 01-01, 01-02 | Choose/change execution target | ✓ SATISFIED | Unchanged from prior verification; re-confirmed this session. |
+| SETUP-03 | 01-01, 01-04 | Connect Kaggle account, live-validate credential | ✓ SATISFIED | Unchanged from prior verification (code untouched by this gap-closure). |
+| SETUP-04 | 01-01, 01-03, 01-04 | Credentials stored securely/never echoed; egress scoped | ✓ SATISFIED (gap closed) | Credential half already MET at prior verification; egress half now MET per the discriminating probe + corrected documentation. `REQUIREMENTS.md` traceability table now reads Complete for all of SETUP-01..04 — this verifier confirms that is now the honest state. |
 
-No orphaned requirements: SETUP-01 through SETUP-04 are the full Phase 1 requirement set per REQUIREMENTS.md traceability, and all four are claimed (with correct partial/complete status) across the 4 plans.
+No orphaned requirements: SETUP-01 through SETUP-04 remain the full Phase 1 requirement set, all four claimed and now all four Complete.
+
+**Note on REQUIREMENTS.md internal consistency (non-blocking):** the per-requirement checklist near the top of the file (line 15, `- [ ] **SETUP-04**: ...`) was not flipped to `[x]` in the same commit that flipped the traceability table's SETUP-04 row to "Complete" (line 81). The traceability table — the authoritative per-phase mapping this verification protocol reads from — is correct; the checklist marker is stale. Recommend a trivial follow-up edit for consistency; does not affect phase goal achievement.
 
 ### Anti-Patterns Found
 
-All Critical and 5 of 6 Warning findings from `01-REVIEW.md` were independently re-verified as fixed in this session (not merely trusted from commit messages):
-
-| File | Finding | Severity (original) | Status now | Evidence |
+| File | Line | Pattern | Severity | Impact |
 |---|---|---|---|---|
-| `scripts/leak_scan.py` | CR-01: fails open on non-ASCII filenames / any git error | 🛑 Critical | ✓ FIXED (verified) | Empirically re-triggered both failure modes in this session; both now fail closed. |
-| `scripts/check_credentials.py` | WR-01: no subprocess timeout | ⚠️ Warning | ✓ FIXED (verified) | Code shows `timeout=60` + `TimeoutExpired` handling, mapped to non-zero UNVALIDATED. |
-| `scripts/check_credentials.py` | WR-02: malformed state.json silently clobbered, resets `next_exp_id` | ⚠️ Warning | ✓ FIXED (verified) | Empirically re-triggered; now raises `MalformedStateJSON`, bytes preserved, exit non-zero. |
-| `scripts/check_credentials.py` | WR-03: precedence ranked access_token above env, contradicting "env-canonical" | ⚠️ Warning | ✓ FIXED (verified) | Code shows `KAGGLE_API_TOKEN` → env pair → `access_token` → `kaggle.json`, with an honest UNVERIFIED annotation for the legacy-pair-vs-file ordering. |
-| `tests/test_settings.py` | WR-05: no test pinned `sandbox.failIfUnavailable` | ⚠️ Warning | ✓ FIXED (verified) | `grep` confirms assertions in both `test_egress_allowlist` and `test_egress_allowlist_merges_existing`. |
-| `tests/test_credentials.py` | WR-06: non-hermetic tests could hit the live API | ⚠️ Warning | ✓ FIXED (verified) | `grep` confirms PATH-scrubbing (`extra_env={"PATH": str(empty_bin), ...}`) added to the four named tests. |
-| `scripts/leak_scan.py` | WR-04: legacy 32-hex key evades scanner outside `"key":`/`KAGGLE_KEY=` context | ℹ️ Info (documented tradeoff) | Not fixed — accepted tradeoff | Review itself said "acceptable to keep as a documented tradeoff." Not a phase blocker. |
-| `scripts/check_credentials.py` | IN-01: unused `import sys` / `SCRIPT_DIR` | ℹ️ Info | Not fixed | Cosmetic; confirmed still present (`grep` line 42/45). Non-blocking. |
-| `scripts/check_credentials.py` | IN-02: `_mask` discloses last 4 chars | ℹ️ Info | Not fixed | Documented conventional choice; non-blocking. |
-| `scripts/init_workspace.py` | IN-03: `--slug` unvalidated (safe today, injection risk in later phases) | ℹ️ Info | Not fixed | Non-blocking for Phase 1; worth a cheap format guard before Phase 4/5 build kernel-metadata/download commands on the slug. |
-| `scripts/leak_scan.py` | IN-04: docstring says "renamed file" rationale but `--diff-filter` used to exclude R | ℹ️ Info | Fixed as a side effect of CR-01 | CR-01's fix changed the filter to `ACMR` (renames now included), resolving the doc/filter mismatch. |
+| `.planning/phases/01-workspace-credentials-egress-guardrails/01-03-SUMMARY.md` | 43 (frontmatter `key-decisions`) | Stale bullet ("Denial mechanism ... NOT a prompt ... recorded UNVERIFIED") left uncorrected immediately above the corrected bullet (line 44) that states the opposite conclusion | ⚠️ Warning | Purely an execution-log narrative inconsistency; the authoritative `references/egress-allowlist.md` is fully self-consistent and is what other phases/runtimes will actually read. Recommend a follow-up edit to align the stale bullet, but non-blocking for phase closure. |
+| `.planning/REQUIREMENTS.md` | 15 | Checklist marker `[ ]` for SETUP-04 not updated to `[x]` despite traceability table (line 81) reading "Complete" | ⚠️ Warning | Cosmetic inconsistency within the same file; the traceability table (the field this protocol reads) is correct. Non-blocking. |
 
-No `TBD`/`FIXME`/`XXX` unresolved debt markers found in any file touched by this phase.
+No `TBD`/`FIXME`/`XXX` unresolved debt markers found in any file touched by this gap-closure (`3c9b1f2`) or in any previously-flagged phase file.
+
+All 6 review-driven fixes (CR-01, WR-01/02/03/05/06) previously verified as fixed remain fixed — no regressions detected (code untouched since prior verification).
+
+### Human Verification Required
+
+None. The one outstanding action from the prior verification — running the discriminating live-sandbox probe — has already been performed (by the user, in a live Claude Code session, per the handoff) and its result is now recorded with enough specificity (5 named hosts, explicit protocol, per-host outcome, correction history) to be independently assessed from the documentation and code alone. This mirrors how this same phase's prior verification already accepted Success Criterion 3's live credential-validation pass as VERIFIED without the verifier re-running it, for an analogous "this verifier's environment cannot safely/practically reproduce this specific live check" reason.
 
 ### Gaps Summary
 
-Phase 1 delivers a genuinely solid, independently-verified scaffolder, credential checker, and leak guard — SETUP-01, SETUP-02, and SETUP-03 are fully met, and the credential half of SETUP-04 (never-echoed, masked, consent-gated chmod/.env, secrets gitignored, leak-guard now fail-closed after the CR-01 fix) is also fully met. This is not a rubber-stamp: every claim above was independently re-executed against the actual code in this session (fresh scaffold, idempotency, D-01 gate, deep-merge, malformed-JSON fail-clear ×2, real `git commit` blocked by the installed hook, consent-gating with fabricated credentials, and all 6 review-driven fixes) rather than trusted from SUMMARY.md prose.
+No gaps remain. The single blocking gap from the prior verification — the egress-enforcement half of SETUP-04 / ROADMAP Success Criterion 5 — has been closed by the 2026-07-10 discriminating probe and the corresponding correction to `references/egress-allowlist.md` (commit `3c9b1f2`). This verifier independently confirmed:
 
-The one blocking gap is the **egress-enforcement half of SETUP-04** (ROADMAP Success Criterion 5). The generated `.claude/settings.json` is correct and well-tested (Half A). But the phase's own checkpoint evidence — which this verifier reviewed and could not further diagnose, since this verifier's own Bash tool has no active sandbox proxy (confirmed: unrestricted HTTP 200 to neverssl.com and example.com from this session) — shows one off-allowlist host reaching real origin content unexplained. Criterion 5 as literally worded ("an off-allowlist fetch is refused, not silently allowed") is not universally true today. REQUIREMENTS.md's own traceability table already reflects this honestly (SETUP-04 = Pending), and this verification confirms that is the correct, non-optimistic state — it should not be advanced to "Complete" until either the anomaly is explained/fixed via the named discriminating probe, or a human explicitly and knowingly accepts the residual risk.
+- the commit exists and is scoped exactly as described (docs-only, 3 files, no code, tests still 32/32),
+- the reference doc is now internally consistent (no residual "no prompt path" claim asserted as fact — it appears only inside the Correction-history table describing what was wrong),
+- the auto-accept caveat and prompt-immune mitigation (`allowManagedDomainsOnly`, managed/org-only) are documented prominently as a standing operational risk, not silently dropped,
+- Half A (generated settings) has not regressed (re-tested directly: deep-merge, malformed fail-clear, forced security flags),
+- Truths 1-4 have not regressed (re-tested directly: D-10 layout, execution-target setter, credential-checker code, leak-guard hook including the CR-01 non-ASCII-filename path).
 
-This is not a fabricated or manufactured gap: it is the same gap the phase's own plan authors flagged, carried forward honestly through three SUMMARY.md files and never silently dropped. This verification's contribution is confirming (a) the credential/scaffolding side is genuinely solid, (b) the review-driven fixes actually landed and work, and (c) the egress-enforcement anomaly remains genuinely unresolved and requires a live human-in-the-loop probe to close — not a code fix this verifier or the executor can make blind.
+Two non-blocking documentation-consistency nits were found (stale `01-03-SUMMARY.md` key-decisions bullet; un-flipped `REQUIREMENTS.md` checklist marker for SETUP-04) and are recorded above as WARNING-level follow-ups — neither affects the substantive security posture or the phase goal.
+
+**Overall determination: Phase 1's goal — "a single init turns an empty folder into a valid, git-tracked experiment workspace with a live-validated Kaggle connection and a locked-down network egress allowlist" — is achieved.** Status: `passed`, 5/5.
 
 ---
 
-_Verified: 2026-07-09T23:49:50Z_
+_Verified: 2026-07-10T06:49:57Z_
 _Verifier: Claude (gsd-verifier)_
