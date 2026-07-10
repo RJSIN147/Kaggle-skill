@@ -26,10 +26,19 @@ a fresh workspace and re-applied by the deep-merge into a pre-existing
 `.claude/settings.json`.
 
 > **Read this before trusting the allowlist:** the sections below record what was
-> **observed** on a live host as well as what the official docs say — and they do
-> **not** fully agree. Where they diverge, the divergence is flagged **UNVERIFIED**
-> rather than smoothed over. See
+> **observed** on a live host alongside what the official docs say. After a
+> discriminating live probe (2026-07-10) the two now **agree**: an off-allowlist
+> host **prompts for approval**, and there is **no undocumented baseline allowlist**
+> for the local CLI sandbox. An earlier revision of this file asserted the opposite
+> (a silent timeout with "no prompt path"); that was **wrong** and has been
+> corrected — see [Correction history](#correction-history) at the end. See also the
 > [Claude Code sandboxing docs](https://code.claude.com/docs/en/sandboxing.md).
+>
+> **⚠️ One thing you must internalize before relying on this:** because enforcement
+> for a non-allowlisted host is an **approval prompt**, running this workspace under
+> **auto-accept / auto-approve mode silently converts the allowlist from
+> deny-by-default to allow-by-default.** See
+> [Auto-accept defeats the allowlist](#auto-accept-mode-defeats-the-egress-allowlist).
 
 ## Allowed hosts and why each is on the list
 
@@ -73,22 +82,27 @@ human-verify checkpoint, not by the unit test.
    (consent-based; it never installs anything). Verify real enforcement after installing
    socat (Task 3). Source: https://code.claude.com/docs/en/sandboxing.md.
 
-2. **Denial mechanism (OBSERVED): a stalled proxy CONNECT that times out — no prompt was
-   seen.** On a live host (socat 1.8.0.0 + bubblewrap 0.9.0 present), all Bash-initiated
-   egress traversed an authenticated HTTP proxy at `localhost:3128` (via
-   `https_proxy`/`HTTP_PROXY`). An off-allowlist host was denied by the proxy **stalling
-   the CONNECT until the client timed out** ("Proxy CONNECT aborted due to timeout") —
-   **not** a fast `403`, and **no interactive permission prompt appeared** for
-   Bash-initiated calls. See the empirical table below.
+2. **Denial mechanism (OBSERVED): an off-allowlist host prompts for approval.** On a live
+   host (socat 1.8.0.0 + bubblewrap 0.9.0 present), all Bash-initiated egress traverses an
+   authenticated HTTP proxy at `localhost:3128` (via `https_proxy`/`HTTP_PROXY`). When a
+   Bash subprocess reaches for a host that is **not** on `allowedDomains`, Claude Code
+   **prompts for approval**. Declining denies the request. This matches the official docs:
+   for the local CLI Bash sandbox "no domains are pre-allowed. The first time a command
+   needs a new domain, Claude Code prompts for approval" — and an approved host is then
+   remembered for the rest of the session (since v2.1.191).
+   Source: https://code.claude.com/docs/en/sandboxing.md.
 
-   > **UNVERIFIED — docs vs. observation contradiction.** The official docs state that for
-   > the local CLI Bash sandbox "no domains are pre-allowed. The first time a command needs
-   > a new domain, Claude Code prompts for approval" (an approved host is then remembered
-   > for the rest of the session, since v2.1.191). We did **not** observe a prompt for
-   > Bash subprocess egress; denial was a silent timeout. The reason for the discrepancy is
-   > **unknown** and is recorded here as UNVERIFIED rather than explained away. (The large
-   > ~100-domain default allowlist that exists is documented for **Claude Code on the web**
-   > only, not the local CLI — so it does not account for the anomaly below either.)
+   **A stalled proxy CONNECT that times out ("Proxy CONNECT aborted due to timeout") is a
+   DENY, not a bypass.** It is what a Bash-initiated fetch looks like when its approval
+   prompt goes unanswered: the proxy holds the CONNECT while awaiting the decision, and the
+   client eventually gives up. The failure mode is **conservative (fail-safe)** — traffic is
+   dropped, not forwarded.
+
+   **There is NO silent-allow path and NO undocumented baseline allowlist for the local CLI
+   sandbox.** Off-allowlist traffic reaches its origin only via an **explicit approval**.
+   (The large ~100-domain default allowlist that does exist is documented for **Claude Code
+   on the web** only, not the local CLI.) Confirmed by the 2026-07-10 discriminating probe —
+   see [Empirical enforcement evidence](#empirical-enforcement-evidence).
 
 3. **A true no-prompt hard block needs managed/org settings — NOT enabled here.**
    `sandbox.network.allowManagedDomainsOnly` hard-blocks every non-allowed domain WITHOUT
@@ -99,6 +113,38 @@ human-verify checkpoint, not by the unit test.
    settings that exist: `sandbox.network.deniedDomains`,
    `sandbox.network.httpProxyPort` / `socksProxyPort`, and the fail-closed
    `sandbox.failIfUnavailable: true` (which the scaffold DOES set).
+
+## Auto-accept mode defeats the egress allowlist
+
+**This is the single most important operational caveat in this document.**
+
+Enforcement for a non-allowlisted host **is an approval prompt** (see caveat 2). Therefore
+any mode that answers prompts automatically — auto-accept / auto-approve / "don't ask
+again" — **silently converts the allowlist from deny-by-default to allow-by-default.**
+
+The mechanism, end to end:
+
+1. A Bash subprocess reaches for an off-allowlist host.
+2. Claude Code raises a domain-approval prompt.
+3. Auto-accept answers it **yes**, without surfacing a decision to you.
+4. The approved host is **remembered for the rest of the session** (v2.1.191+), so every
+   later fetch to it passes without any further signal.
+
+The allowlist is not bypassed here — it is *consented away*, one prompt at a time, invisibly.
+Neither Anthropic's docs nor this project's threat model originally called this out; it was
+found empirically (see [Correction history](#correction-history)).
+
+**Mitigations, in order of strength:**
+
+| Control | Effect | Available where |
+|---------|--------|-----------------|
+| **Do not run this workspace under auto-accept** when egress scoping matters | Restores the prompt as a real decision point | Always — this is the practical guidance |
+| `sandbox.network.allowManagedDomainsOnly` | **Hard-blocks** non-allowed domains **without prompting** — immune to auto-accept | **Managed/org settings only.** NOT honored in a workspace `.claude/settings.json`, so the scaffold cannot set it |
+| `sandbox.network.deniedDomains` | Explicit denylist; merges across settings scopes | Workspace settings |
+| `allowUnsandboxedCommands: false` | Removes the escape hatch that lets a command opt out of the sandbox entirely | Workspace settings (not set by the scaffold) |
+
+Treat "the allowlist is enforced" as true **only** for a session where prompts are actually
+being answered by a human.
 
 ## This is NOT an exfiltration boundary
 
@@ -122,30 +168,66 @@ process from leaking data. Treat it as a mitigation, never as containment.
 - **Net:** the allowlist is a **blast-radius reducer**, not a data-exfiltration boundary.
   This residual risk is accepted (threat T-01-04b).
 
-## Empirical enforcement evidence (live host, socat + bubblewrap present)
+## Empirical enforcement evidence
 
-Observed in a Claude Code session rooted at a scaffolded workspace (auto-accept mode was ON
-in that session). All egress went through the `localhost:3128` proxy.
+Both runs below were made in a Claude Code session rooted at a scaffolded workspace, with
+socat + bubblewrap present. All egress went through the `localhost:3128` proxy.
+
+### Run 1 (2026-07-10) — auto-accept mode **ON**
 
 | Host | On declared allowlist? | Result |
 |------|------------------------|--------|
 | `pypi.org` | yes | HTTP 200 — **allowed** |
-| `example.com` | **NO** | HTTP 200 with genuine origin content (`cf-ray`, real "Example Domain" body) — **ALLOWED** (anomaly) |
+| `example.com` | **NO** | HTTP 200, genuine origin content (`cf-ray`, real "Example Domain" body) — **allowed** |
 | `neverssl.com` | **NO** | **denied** — "Proxy CONNECT aborted due to timeout" |
 | `icanhazip.com` | **NO** | **denied** — "Proxy CONNECT aborted due to timeout" |
 
-**Interpretation.** The enforcement path provably works: two off-allowlist hosts were denied
-at the proxy while an on-allowlist host was allowed. **But `example.com`, which is NOT on the
-declared allowlist, reached its real origin — cause UNKNOWN.** Auto-accept being ON does
-*not* explain it, because auto-accept would equally have approved `neverssl.com` and
-`icanhazip.com`, which were denied. This is recorded as an **UNVERIFIED anomaly**, not
-rationalized.
+At the time, the `example.com` row looked like an allowlist bypass and was recorded as an
+UNVERIFIED anomaly.
 
-**Follow-up that would settle it (discriminating probe — NOT yet run):** fetch
-`example.org`, `example.net`, `wikipedia.org`, `google.com`, and `httpbin.org` (declining
-every prompt) to determine whether an **undocumented pre-allowed set** exists for the local
-CLI sandbox, or whether the `example.com` result was a one-off. Until that probe runs, the
-host-enforcement half of success criterion 5 is **partially demonstrated, not fully met**.
+### Run 2 (2026-07-10) — discriminating probe, auto-accept **OFF**, every prompt **declined**
+
+| Host | On declared allowlist? | Result |
+|------|------------------------|--------|
+| `example.org` | **NO** | **PROMPTED** for approval |
+| `example.net` | **NO** | **PROMPTED** |
+| `wikipedia.org` | **NO** | **PROMPTED** |
+| `google.com` | **NO** | **PROMPTED** |
+| `httpbin.org` | **NO** | **PROMPTED** |
+
+**All five off-allowlist hosts prompted.** None was silently allowed.
+
+### Resolution
+
+Run 2 settles Run 1. There is **no undocumented baseline allowlist** — the docs' "no domains
+are pre-allowed" is correct. `example.com` was not a bypass: it was an approval **prompt that
+auto-accept answered**, after which the host was remembered for the session (v2.1.191+).
+Enforcement was working correctly the whole time.
+
+Conclusions, stated precisely:
+
+- **Deny-by-default holds.** Off-allowlist hosts prompt; declining denies; an unanswered
+  prompt stalls the CONNECT and times out (a deny). There is **no silent-allow path**.
+- **The only route to an off-list origin is an explicit approval** — which is exactly why
+  [auto-accept defeats the allowlist](#auto-accept-mode-defeats-the-egress-allowlist).
+- Success criterion 5's host-enforcement half is therefore **MET** ("refused or prompted,
+  never silently allowed").
+
+**Residual, UNVERIFIED, non-blocking:** in Run 1, why auto-accept approved `example.com`'s
+prompt but did *not* approve `neverssl.com` / `icanhazip.com` (which stalled instead) is
+**unknown**. It does not affect the security conclusion, because that divergence fails in the
+**conservative** direction (deny), never the permissive one.
+
+## Correction history
+
+This file is a security reference; when it has been wrong, that is recorded rather than
+quietly overwritten.
+
+| Date | Claim that was wrong | What overturned it |
+|------|----------------------|--------------------|
+| 2026-07-10 | An earlier revision asserted the sandbox "silently degrades to unsandboxed" when `socat` is missing. | Official docs: Claude Code emits a **warning** and falls back — visible, not silent. `sandbox.failIfUnavailable: true` was then added to fail closed. |
+| 2026-07-10 | A later revision asserted, as an observed finding, that denial "manifests as a stalled CONNECT, **NOT** a prompt" and that there is "no prompt path for Bash-initiated calls." | The Run 2 discriminating probe: **all five** off-allowlist hosts prompted. The earlier session's missing prompts were being consumed by **auto-accept mode**. One session's behavior had been mistaken for the mechanism. |
+| 2026-07-10 | The `example.com` result was recorded as an UNVERIFIED anomaly possibly indicating an undocumented pre-allowed host set. | Run 2 showed no baseline exists; `example.com` was an auto-accepted prompt, not a bypass. |
 
 ## Leak-guard override (the documented escape hatch)
 

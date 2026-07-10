@@ -78,7 +78,7 @@ Which phases cover which requirements. Populated during roadmap creation.
 | SETUP-01 | Phase 1 | Complete |
 | SETUP-02 | Phase 1 | Complete |
 | SETUP-03 | Phase 1 | Complete |
-| SETUP-04 | Phase 1 | Pending |
+| SETUP-04 | Phase 1 | Complete |
 | COMP-01 | Phase 2 | Pending |
 | COMP-02 | Phase 2 | Pending |
 | COMP-03 | Phase 2 | Pending |

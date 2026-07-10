@@ -41,7 +41,7 @@ key-files:
 key-decisions:
   - "sandbox.failIfUnavailable=true is the native fail-closed control for T-01-09 (added post-checkpoint) — the advisory socat warning alone was not fail-closed; the deep-merge forces it on a pre-existing settings.json too"
   - "Denial mechanism recorded from live observation: off-allowlist Bash egress is denied by a STALLED proxy CONNECT that times out (localhost:3128), NOT a prompt and NOT a fast 403 — contradicting the docs' 'prompts for approval' claim; recorded UNVERIFIED"
-  - "Success criterion 5 split: Half A (generated settings correct) MET; Half B (host enforcement verified) PARTIALLY DEMONSTRATED — one off-list host (example.com) reached origin, cause UNKNOWN; criterion 5 NOT fully met"
+  - "Success criterion 5: Half A (generated settings correct) MET; Half B (host enforcement verified) MET after the 2026-07-10 discriminating probe — all 5 off-allowlist hosts prompted, no silent-allow path; the earlier example.com result was an auto-accepted prompt, not a bypass. Standing caveat: auto-accept mode defeats the allowlist."
   - "Do NOT enable allowUnsandboxedCommands:false or allowManagedDomainsOnly (managed/org-only) — documented as the path to a true no-prompt hard block, out of Phase 1 scope (D-09)"
 
 patterns-established:
@@ -122,11 +122,13 @@ Observed in a Claude Code session rooted at a scaffolded workspace (auto-accept 
 Criterion 5 ("off-allowlist fetch refused") is deliberately recorded as two distinct halves:
 
 - **Half A — generated settings correct: MET.** Proven by automated tests + inspected artifact: `sandbox.enabled=true`, `sandbox.failIfUnavailable=true`, `allowedDomains ⊇` the 5 required hosts, D-09 deep-merge (user keys preserved, hosts unioned), and fail-clear on a malformed settings.json.
-- **Half B — host enforcement verified: PARTIALLY DEMONSTRATED, NOT fully met.** The enforcement path provably works (2 off-list hosts denied at the proxy; on-list host allowed), BUT one off-list host (`example.com`) reached origin, cause UNKNOWN; denial is a stall/timeout, not a prompt.
+- **Half B — host enforcement verified: MET.** The 2026-07-10 discriminating probe (auto-accept OFF, every prompt declined) had **all five** off-allowlist hosts — `example.org`, `example.net`, `wikipedia.org`, `google.com`, `httpbin.org` — **prompt for approval**. None was silently allowed. This confirms the docs' "no domains are pre-allowed" and establishes there is **no undocumented baseline allowlist** and **no silent-allow path**: off-list traffic reaches an origin only via an explicit approval. The earlier `example.com` result is thereby explained — auto-accept mode answered its prompt (approved hosts are remembered for the session, v2.1.191+); it was never a bypass. A stalled proxy CONNECT that times out is a **deny** (fail-safe), i.e. an unanswered prompt.
 
-**Therefore criterion 5 is NOT marked fully met**, and **SETUP-04 is NOT claimed fully validated.** SETUP-04 also awaits 01-04's credential handling ("stored securely and never echoed"). SETUP-01's git-init half IS delivered here (already Complete in REQUIREMENTS.md from 01-02).
+**Therefore criterion 5 is MET** (both halves), and SETUP-04's egress half is satisfied. SETUP-04's credential half ("stored securely and never echoed") is delivered by 01-04. SETUP-01's git-init half IS delivered here (already Complete in REQUIREMENTS.md from 01-02).
 
-**Human verification outstanding:** run the discriminating probe — `curl` to `example.org`, `example.net`, `wikipedia.org`, `google.com`, `httpbin.org` while **declining every prompt** — to determine whether an undocumented pre-allowed set exists for the local CLI sandbox (which would explain the `example.com` result), and to confirm the timeout-vs-prompt denial mechanism. Until then Half B stays partially demonstrated.
+**Standing operational caveat (NOT a gap — a property of the mechanism):** enforcement for a non-allowlisted host *is an approval prompt*, so running this workspace under **auto-accept / auto-approve mode silently converts the allowlist from deny-by-default to allow-by-default**. The prompt-immune control is `sandbox.network.allowManagedDomainsOnly`, which hard-blocks without prompting but is honored only in managed/org settings — a workspace `.claude/settings.json` cannot set it. Documented in `references/egress-allowlist.md`. Separately, the allowlist remains a **blast-radius reducer, not an exfiltration boundary** (TLS not terminated → domain fronting; our own `github.com` entry is itself an exfil path).
+
+**Residual, UNVERIFIED, non-blocking:** why auto-accept approved `example.com`'s prompt in the first run but not `neverssl.com` / `icanhazip.com` (which stalled) is unknown. It does not affect the security conclusion — that divergence fails in the conservative (deny) direction.
 
 ## Decisions Made
 
