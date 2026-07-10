@@ -161,6 +161,66 @@ def test_cv_evidence_does_not_write_cv_scheme(seeded_workspace, run_script):
     assert _read_cfg(ws)["cv"]["scheme"] is None
 
 
+def test_titanic_shape_recommends_stratified_no_group_falsepos(seeded_workspace, run_script):
+    """Gap-1 regression: a titanic-shaped pair (continuous fractional-repeating Age/Fare,
+    sparse Cabin, binary target, no true group) → StratifiedKFold, with Age/Fare/Cabin
+    NOT flagged as group candidates (the old detector false-flagged them → GroupKFold)."""
+    ws = seeded_workspace
+    build_pair(ws / "data", "titanic")
+
+    r = run_script("cv_evidence.py", "--workspace", ws, cwd=ws)
+    assert r.returncode == 0, r.stderr
+
+    ev = _read_evidence(ws)
+    assert ev["recommend"] == "StratifiedKFold"
+    for col in ("Age", "Fare", "Cabin"):
+        assert col not in ev["group_candidates"], f"{col} false-flagged as a group id"
+    assert ev["group_candidates"] == []
+
+
+def test_grouped_still_flags_group_after_tightening(seeded_workspace, run_script):
+    """No-regression: the tightened detector STILL flags the genuine integer group_id."""
+    ws = seeded_workspace
+    build_pair(ws / "data", "grouped")
+
+    r = run_script("cv_evidence.py", "--workspace", ws, cwd=ws)
+    assert r.returncode == 0, r.stderr
+
+    ev = _read_evidence(ws)
+    assert ev["recommend"] == "GroupKFold"
+    assert "group_id" in ev["group_candidates"]
+
+
+def test_recommendation_labeled_advisory_hint(seeded_workspace, run_script):
+    """cv-evidence.json labels the recommendation a NON-authoritative advisory hint —
+    the AI decides; tooling never auto-commits the value."""
+    ws = seeded_workspace
+    build_pair(ws / "data", "grouped")
+
+    run_script("cv_evidence.py", "--workspace", ws, cwd=ws)
+
+    ev = _read_evidence(ws)
+    assert ev.get("recommend_is_hint") is True
+    note = (ev.get("recommend_note") or "").lower()
+    assert "advisory" in note or "hint" in note
+
+
+def test_non_tabular_pair_degrades_to_no_scheme(seeded_workspace, run_script):
+    """A degenerate non-tabular pair (no shared feature columns) → the 'no tabular
+    structure' sentinel: recommend is None, NEVER a CV_SCHEMES value."""
+    ws = seeded_workspace
+    build_pair(ws / "data", "degenerate")
+
+    r = run_script("cv_evidence.py", "--workspace", ws, cwd=ws)
+    assert r.returncode == 0, r.stderr
+
+    ev = _read_evidence(ws)
+    assert ev["recommend"] not in (
+        "GroupKFold", "TimeSeriesSplit", "StratifiedKFold", "KFold"
+    )
+    assert ev["recommend"] is None
+
+
 def test_unresolved_pair_degrades_to_skipped(seeded_workspace, run_script):
     """data/ lacking train.csv/test.csv → exit 0 + a SKIPPED record, never a crash."""
     ws = seeded_workspace

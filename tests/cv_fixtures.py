@@ -10,6 +10,14 @@ for each of three structural shapes that drive ``recommend_cv``:
   * ``temporal``   — a parseable ISO ``date`` column with test dates strictly after
                      the train dates                        → TimeSeriesSplit
   * ``imbalanced`` — a skewed binary classification ``target``          → StratifiedKFold
+  * ``titanic``    — a titanic-SHAPED pair: continuous fractional-REPEATING ``Age`` /
+                     ``Fare`` (n_unique >= 10, avg group >= 2 — the exact shape the old
+                     ``detect_group_candidates`` false-flagged as a group id), a
+                     high-cardinality mostly-EMPTY ``Cabin``, a low-card ``Pclass``, a
+                     unique ``PassengerId``, binary ``Survived`` target → StratifiedKFold
+                     with Age/Fare/Cabin NOT flagged as group candidates
+  * ``degenerate`` — a NON-tabular pair whose train/test share NO columns → no analyzable
+                     structure → recommend is the "no tabular structure" sentinel (None)
 
 Each built ``train.csv`` carries exactly ONE non-id column absent from its
 ``test.csv`` — the target — so ``columns(train) − columns(test) − id`` (D-07) resolves
@@ -24,7 +32,7 @@ import random
 from datetime import date, timedelta
 from pathlib import Path
 
-SHAPES = ("grouped", "temporal", "imbalanced")
+SHAPES = ("grouped", "temporal", "imbalanced", "titanic", "degenerate")
 
 
 def _write_csv(path: Path, header, rows) -> None:
@@ -106,10 +114,59 @@ def _build_imbalanced(data_dir: Path, rng: random.Random) -> dict:
     return {"target": "target", "id": "id", "expected_recommend": "StratifiedKFold"}
 
 
+def _build_titanic(data_dir: Path, rng: random.Random) -> dict:
+    """A titanic-SHAPED pair that reproduces the Gap-1 false positive.
+
+    Continuous fractional-REPEATING ``Age`` and ``Fare`` (n_unique >= 10, avg group
+    size >= 2) are exactly what the old ``detect_group_candidates`` flagged as group
+    ids. ``Cabin`` is high-cardinality but mostly EMPTY. ``Pclass`` is low-card.
+    ``PassengerId`` is a unique id; ``Survived`` is the binary target (train-only).
+    Correct scheme: StratifiedKFold, with Age/Fare/Cabin NOT group candidates.
+    """
+    n_train, n_test = 120, 40
+    # Fractional pools force repetition (n_unique >= 10, avg group >= 2) while every
+    # value carries a real decimal → a continuous-numeric feature, never a group id.
+    age_pool = [round(15.5 + i, 2) for i in range(30)]      # 15.5 .. 44.5, all .5
+    fare_pool = [round(7.25 + i * 1.13, 2) for i in range(40)]  # 40 distinct decimals
+
+    def _row(pid: int, with_target: bool):
+        pclass = rng.choice([1, 2, 3])
+        age = rng.choice(age_pool)
+        fare = rng.choice(fare_pool)
+        cabin = "" if rng.random() < 0.75 else f"C{rng.randint(1, 200)}"
+        base = [pid, pclass, age, fare, cabin]
+        if with_target:
+            return [pid, rng.randint(0, 1) if rng.random() < 0.4 else 0, *base[1:]]
+        return base
+
+    train_rows = [_row(pid, with_target=True) for pid in range(1, n_train + 1)]
+    test_rows = [_row(pid, with_target=False)
+                 for pid in range(n_train + 1, n_train + n_test + 1)]
+
+    _write_csv(data_dir / "train.csv",
+               ["PassengerId", "Survived", "Pclass", "Age", "Fare", "Cabin"], train_rows)
+    _write_csv(data_dir / "test.csv",
+               ["PassengerId", "Pclass", "Age", "Fare", "Cabin"], test_rows)
+    return {"target": "Survived", "id": "PassengerId",
+            "expected_recommend": "StratifiedKFold",
+            "non_group_columns": ["Age", "Fare", "Cabin"]}
+
+
+def _build_degenerate(data_dir: Path, rng: random.Random) -> dict:
+    """A NON-tabular pair: train/test share NO columns → no analyzable structure."""
+    train_rows = [[i, rng.randint(0, 9)] for i in range(1, 11)]
+    test_rows = [[i, rng.randint(0, 9)] for i in range(1, 6)]
+    _write_csv(data_dir / "train.csv", ["alpha", "beta"], train_rows)
+    _write_csv(data_dir / "test.csv", ["gamma", "delta"], test_rows)
+    return {"target": None, "id": None, "expected_recommend": None}
+
+
 _BUILDERS = {
     "grouped": _build_grouped,
     "temporal": _build_temporal,
     "imbalanced": _build_imbalanced,
+    "titanic": _build_titanic,
+    "degenerate": _build_degenerate,
 }
 
 
