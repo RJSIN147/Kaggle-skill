@@ -14,7 +14,7 @@ This roadmap follows a **local-loop-first vertical MVP**: prove the entire reaso
 Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Workspace, Credentials & Egress Guardrails** - Empty folder to a validated, git-tracked workspace with locked-down egress (completed 2026-07-10)
-- [ ] **Phase 2: Competition Context & Data** - Machine-derived competition "constitution" plus local data, UI gates cleared
+- [x] **Phase 2: Competition Context & Data** - Machine-derived competition "constitution" plus local data, UI gates cleared (completed 2026-07-10)
 - [ ] **Phase 3: Local Experiment Loop, Ledger & Strategy** - The full idea-to-verdict-to-ledger-to-strategy cycle, local & CV-only (MVP / core value)
 - [ ] **Phase 4: Kaggle Kernel Execution (GPU Path)** - Run the same experiment on Kaggle GPU compute, silent-failure caught
 - [ ] **Phase 5: Submission & Leaderboard Tracking** - Submit under CV-first discipline with budget gating and CV-to-LB gap tracking
@@ -82,7 +82,7 @@ Plans:
 
 **Wave 4** *(blocked on Wave 3)*
 
-- [ ] 02-05-PLAN.md — SKILL.md three-stage flow + gate protocol + opt-in live CLI-shape verification + rules/phone human-action gate
+- [x] 02-05-PLAN.md — SKILL.md three-stage flow + gate protocol + opt-in live CLI-shape verification + rules/phone human-action gate
 
 ### Phase 3: Local Experiment Loop, Ledger & Strategy
 
@@ -155,7 +155,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Workspace, Credentials & Egress Guardrails | 4/4 | Complete   | 2026-07-09 |
-| 2. Competition Context & Data | 4/5 | In Progress|  |
+| 2. Competition Context & Data | 5/5 | Complete   | 2026-07-10 |
 | 3. Local Experiment Loop, Ledger & Strategy | 0/4 | Not started | - |
 | 4. Kaggle Kernel Execution (GPU Path) | 0/2 | Not started | - |
 | 5. Submission & Leaderboard Tracking | 0/3 | Not started | - |
