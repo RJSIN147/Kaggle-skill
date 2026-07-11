@@ -84,6 +84,30 @@ def _atomic_write(path: Path, text: str) -> None:
     os.replace(tmp, path)
 
 
+def rebuild_ledger_file(ws: Path) -> list[dict]:
+    """Rewrite ``control/ledger.jsonl`` as a PURE FUNCTION of the meta folders (atomic).
+
+    Derives one row per valid ``experiments/exp-*/meta.json`` (sorted by exp_id,
+    skip-and-warn on corrupt/invalid), renders each as one compact JSON line, and
+    ``os.replace``s the whole file atomically. Returns the derived rows.
+
+    This is the ONE derivation used by BOTH entry points: ``main()`` (the on-demand
+    repair tool) and ``record_experiment.py`` (the incremental recorder delegates
+    here after writing each meta.json). Sharing this path is what makes the
+    incrementally-built ledger BYTE-IDENTICAL to a full rebuild of the same folders
+    (MEM-01) — SUCCESS and FAILED alike — instead of the two diverging.
+    """
+    rows = _rows_from_folders(ws)
+
+    # Each row is one compact JSON line (matches the RESEARCH §Ledger derived-row
+    # shape). A non-empty ledger is newline-terminated; an empty one is byte-empty.
+    lines = [json.dumps(row, separators=(",", ":")) for row in rows]
+    text = ("\n".join(lines) + "\n") if lines else ""
+
+    _atomic_write(ws / "control" / "ledger.jsonl", text)
+    return rows
+
+
 def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(
         prog="rebuild_ledger.py",
@@ -99,15 +123,7 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv=None) -> int:
     args = build_parser().parse_args(argv)
     ws = args.workspace.resolve()
-
-    rows = _rows_from_folders(ws)
-
-    # Each row is one compact JSON line (matches the RESEARCH §Ledger derived-row
-    # shape). A non-empty ledger is newline-terminated; an empty one is byte-empty.
-    lines = [json.dumps(row, separators=(",", ":")) for row in rows]
-    text = ("\n".join(lines) + "\n") if lines else ""
-
-    _atomic_write(ws / "control" / "ledger.jsonl", text)
+    rebuild_ledger_file(ws)
     return 0
 
 
