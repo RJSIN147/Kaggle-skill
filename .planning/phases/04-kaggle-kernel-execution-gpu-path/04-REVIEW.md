@@ -11,7 +11,16 @@ findings:
   warning: 1
   info: 0
   total: 2
-status: issues_found
+resolved:
+  critical: 1
+  warning: 0
+status: resolved
+resolution_note: >-
+  CR-01 crash BLOCKER (non-string kernel_run.json.status) fixed in commit aaab35a via an
+  isinstance(str) guard + regression test test_non_string_status_does_not_crash; full suite
+  205 passed. WR-01 WARNING (DETACHED/PENDING reaching SUCCESS) left as a documented, deliberate
+  scope-out of plan 04-06 (which specified matching ONLY ERROR/CANCEL_ACKNOWLEDGED) — tracked for
+  a later hardening pass alongside CR-02/WR-04/WR-01.
 ---
 
 # Phase 4: Code Review Report (gap-closure re-review)
