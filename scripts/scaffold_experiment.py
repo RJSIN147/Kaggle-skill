@@ -28,10 +28,18 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
+
+# Charset gate for values that get rendered into the executed experiment.py (CR-01).
+# The primary defense is repr()-quoting every rendered literal (so ANY value is inert);
+# these gates are defense-in-depth — block a malformed slug / unknown cv scheme early
+# (block, don't guess) rather than mint a harness from a suspicious control-plane value.
+_SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
+_CV_SCHEMES = ("KFold", "StratifiedKFold", "GroupKFold", "TimeSeriesSplit")
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
@@ -128,8 +136,26 @@ def main(argv=None) -> int:
             file=sys.stderr,
         )
         return 1
+    # Re-validate the CV scheme against the allowed enum before rendering it into the
+    # executed harness (block, don't guess — CR-01 defense-in-depth).
+    if cv_scheme not in _CV_SCHEMES:
+        print(
+            f"cannot scaffold: unknown cv scheme '{cv_scheme}' — expected one of "
+            f"{_CV_SCHEMES}.",
+            file=sys.stderr,
+        )
+        return 1
 
     slug = config.get("competition_slug") or ""
+    # A non-empty slug must be a well-formed Kaggle slug. An empty slug is tolerated
+    # (renders to an inert ''); a malformed non-empty slug blocks (CR-01 defense-in-depth).
+    if slug and not _SLUG_RE.match(slug):
+        print(
+            f"cannot scaffold: competition_slug {slug!r} is not a valid Kaggle slug "
+            f"(expected {_SLUG_RE.pattern}).",
+            file=sys.stderr,
+        )
+        return 1
 
     # Id cursor: read-mint-then-advance. A non-int/invalid cursor blocks.
     n = state.get("next_exp_id")
@@ -146,14 +172,18 @@ def main(argv=None) -> int:
     (exp_dir / "artifacts").mkdir(parents=True, exist_ok=True)
 
     # Render the harness template with the resolved registry_entry literal + cv scheme.
+    # Every config-sourced value is rendered as a PROPERLY QUOTED Python literal via
+    # repr() — never interpolated raw inside hand-written quotes — so no slug/cv_scheme/
+    # metric value can break out of its string literal and inject code into the harness
+    # that run_local.py executes (CR-01). Mirrors how registry_entry is already emitted.
     experiment_src = _render_text(
         "experiment.py.tmpl",
         {
-            "slug": slug,
-            "exp_id": exp_id,
-            "exp_dir": f"experiments/{exp_id}",
-            "cv_scheme": cv_scheme,
-            "metric_name": metric_name,
+            "slug_literal": repr(slug),
+            "exp_id_literal": repr(exp_id),
+            "exp_dir_literal": repr(f"experiments/{exp_id}"),
+            "cv_scheme_literal": repr(cv_scheme),
+            "metric_name_literal": repr(metric_name),
             "registry_entry": repr(registry_entry),
         },
     )
