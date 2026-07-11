@@ -11,9 +11,12 @@
 #
 # FLOORS, not newest majors (CLAUDE.md §Version Compatibility — Kaggle-image parity):
 # pandas 3.0 is a breaking major and numpy 2.5.1 needs Python ≥3.12 while the floor is
-# 3.11, so pin `pandas>=2.2` / `scikit-learn>=1.5` (numpy>=1.26 comes transitively).
-# The remaining ML stack (lightgbm, xgboost, catboost, ...) is declared in Phase 3 when
-# the local runner needs it — those versions are not pinned before they are exercised.
+# 3.11, so pin `pandas>=2.2` / `scikit-learn>=1.5` / `numpy>=1.26` (NOT the newest majors).
+# The ML stack (lightgbm, xgboost, catboost) is declared HERE as of Phase 3: the local
+# runner (03-04) runs experiments under `uv run` in this workspace env. The skill NEVER
+# runtime-installs — the operator runs `uv sync`; if the env is absent the runner degrades
+# (records a clear "run uv sync" message), it does not install. `xgboost>=2.1` keeps 3.11
+# compatibility (the 3.x wheels want Python ≥3.12); GBDT floors track Kaggle's image.
 [project]
 name = "kaggle-competition-workspace"
 version = "0.0.0"
@@ -22,6 +25,10 @@ requires-python = ">=3.11"
 dependencies = [
     "pandas>=2.2",
     "scikit-learn>=1.5",
+    "numpy>=1.26",
+    "lightgbm>=4.5",
+    "xgboost>=2.1",
+    "catboost>=1.2",
 ]
 
 [tool.uv]
