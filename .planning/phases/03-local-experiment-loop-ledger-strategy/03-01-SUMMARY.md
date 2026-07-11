@@ -107,6 +107,10 @@ None for this plan. The workspace ML deps (lightgbm/xgboost/catboost) are declar
 - The result-contract foundation is in place: 03-02/03/04 can read `config.json.metric` (direction + valid-range gate) and `metric_registry.REGISTRY[name]["sklearn_callable"]` (harness resolution) from one source, never re-deriving.
 - `custom` prediction_type is `None` — the scaffold's `run_cv` must accept an AI-supplied metric callable for that path (already anticipated in 03-RESEARCH Pattern 3).
 
+## Self-Check: PASSED
+
+All created files verified on disk (metric_registry.py, set_metric.py, both test files, this SUMMARY). All task commits verified in git log (debc8cc, 51a94a9, 5b88a5b, 83c2039, bbc5e4c). No unexpected deletions.
+
 ---
 *Phase: 03-local-experiment-loop-ledger-strategy*
 *Completed: 2026-07-11*
