@@ -150,8 +150,8 @@ Plans:
 
 **Wave 3** *(blocked on 04-02; parallel — no file overlap)*
 
-- [ ] 04-03-PLAN.md — Poll + pull slice: poll_kernel.py (enum classify + exponential backoff/budget + detach-not-cancel) + pull_kernel.py (output/logs/image provenance) + gitignore kernel artifacts
-- [ ] 04-04-PLAN.md — Recorder extension (headline): record_experiment.py silent-failure first rung (scan_kernel_log + one kernel_error reason, log scanned before result.json is trusted)
+- [x] 04-03-PLAN.md — Poll + pull slice: poll_kernel.py (enum classify + exponential backoff/budget + detach-not-cancel) + pull_kernel.py (output/logs/image provenance) + gitignore kernel artifacts
+- [x] 04-04-PLAN.md — Recorder extension (headline): record_experiment.py silent-failure first rung (scan_kernel_log + one kernel_error reason, log scanned before result.json is trusted)
 
 **Wave 4** *(blocked on 04-03, 04-04)*
 
@@ -188,7 +188,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | 1. Workspace, Credentials & Egress Guardrails | 4/4 | Complete   | 2026-07-09 |
 | 2. Competition Context & Data | 7/7 | Complete   | 2026-07-10 |
 | 3. Local Experiment Loop, Ledger & Strategy | 5/5 | Complete   | 2026-07-11 |
-| 4. Kaggle Kernel Execution (GPU Path) | 2/5 | In Progress|  |
+| 4. Kaggle Kernel Execution (GPU Path) | 4/5 | In Progress|  |
 | 5. Submission & Leaderboard Tracking | 0/3 | Not started | - |
 
 ## Coverage
