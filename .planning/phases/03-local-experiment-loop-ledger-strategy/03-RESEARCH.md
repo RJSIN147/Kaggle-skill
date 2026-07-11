@@ -647,22 +647,22 @@ Add `"metric": {"name": null, "greater_is_better": null}` to `config.json.tmpl` 
 | A4 | `custom` metric direction is always knowable by the AI from competition prose | set_metric / registry | Medium — if the AI mis-judges direction, current-best selection inverts; mitigated by explicit `--direction` + human confirmation |
 | A5 | slopcheck would rate all 6 ML packages `[OK]` (could not run this session) | Package Legitimacy Audit | Negligible — all are top-download packages with known repos |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Where does `set_metric.py` live — standalone vs folded into scaffold?**
    - Known: metric is competition-level (set once), read by the harness before any run.
    - Unclear: standalone entry point vs a precondition step of `scaffold_experiment.py`.
-   - Recommendation: standalone setter (mirrors `--set-competition-type`); run once during setup. Planner may fold it in if it prefers fewer entry points.
+   - RESOLVED: standalone setter (mirrors `--set-competition-type`); run once during setup. Planner may fold it in if it prefers fewer entry points.
 
 2. **Should the recorder auto-commit `experiment.py` + `meta.json` for a clean `git_commit` provenance, or record HEAD + a `git_dirty` flag?**
    - Known: provenance needs a commit; an uncommitted tree makes `git rev-parse HEAD` point at the *previous* state.
-   - Recommendation: record HEAD + `git_dirty` honestly; offer an optional `--commit` flag that stages the exp folder by explicit path and commits before capturing HEAD. Don't force a commit (the user may want to review first).
+   - RESOLVED: record HEAD + `git_dirty` honestly; offer an optional `--commit` flag that stages the exp folder by explicit path and commits before capturing HEAD. Don't force a commit (the user may want to review first).
 
 3. **OOF for multiclass/proba metrics** — the sketch stores a 1-D OOF; multiclass proba OOF is 2-D.
-   - Recommendation: store OOF as-is (`np.save` handles 2-D); make `oof` optional and skip cleanly when shape is ambiguous. Low priority for v1 tabular default.
+   - RESOLVED: store OOF as-is (`np.save` handles 2-D); make `oof` optional and skip cleanly when shape is ambiguous. Low priority for v1 tabular default.
 
 4. **`immutability` enforcement of the experiment folder (criterion 2, Claude's discretion)** — read-only chmod after record vs convention-only.
-   - Recommendation: convention-only for v1 (never rewritten; a re-run scaffolds a new `exp-NNN`). Read-only chmod fights re-running a fixed notebook (D-02 idempotency) — avoid.
+   - RESOLVED: convention-only for v1 (never rewritten; a re-run scaffolds a new `exp-NNN`). Read-only chmod fights re-running a fixed notebook (D-02 idempotency) — avoid.
 
 ## Environment Availability
 
