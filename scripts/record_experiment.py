@@ -40,6 +40,7 @@ import argparse
 import hashlib
 import json
 import math
+import os
 import statistics
 import subprocess
 import sys
@@ -350,11 +351,35 @@ def main(argv=None) -> int:
     # always be rebuilt from the meta folders (rebuild_ledger.py, MEM-01).
     if status == "SUCCESS":
         row = to_ledger_row(meta)
-        line = json.dumps(row, separators=(",", ":")) + "\n"
+        new_line = json.dumps(row, separators=(",", ":"))
         ledger_path = ws / "control" / "ledger.jsonl"
         ledger_path.parent.mkdir(parents=True, exist_ok=True)
-        with ledger_path.open("a") as fh:
-            fh.write(line)
+
+        # Idempotent append (WR-01): re-recording an already-recorded SUCCESS must NOT
+        # duplicate the row (which would double-count it in regen_strategy). Drop any prior
+        # line for this exp_id, then append the fresh row. An unparseable existing line is
+        # preserved verbatim (never fabricated over, never silently dropped). The whole
+        # file is then rewritten ATOMICALLY (tempfile + os.replace) so a crash mid-write
+        # leaves the previous ledger intact — closing the truncated-final-line hole too.
+        kept: list[str] = []
+        if ledger_path.exists():
+            for raw in ledger_path.read_text().splitlines():
+                stripped = raw.strip()
+                if not stripped:
+                    continue
+                try:
+                    existing = json.loads(stripped)
+                except json.JSONDecodeError:
+                    kept.append(stripped)
+                    continue
+                if isinstance(existing, dict) and existing.get("exp_id") == row["exp_id"]:
+                    continue  # drop the stale row for this exp_id (idempotent re-record)
+                kept.append(stripped)
+        kept.append(new_line)
+
+        tmp_ledger = ledger_path.with_suffix(ledger_path.suffix + ".tmp")
+        tmp_ledger.write_text("\n".join(kept) + "\n")
+        os.replace(tmp_ledger, ledger_path)
 
     # Stage the provenance-bearing files by EXPLICIT path (never a blanket stage).
     _stage_provenance(ws, f"{exp_rel}/experiment.py", f"{exp_rel}/meta.json")

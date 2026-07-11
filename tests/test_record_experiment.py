@@ -148,6 +148,25 @@ def test_success_writes_meta_ledger_verdict_and_provenance(run_script, tmp_path)
     assert (exp / "VERDICT.md").is_file()
 
 
+def test_re_recording_success_is_idempotent_single_ledger_row(run_script, tmp_path):
+    """WR-01: re-recording an already-recorded SUCCESS must NOT duplicate the ledger row
+    (which would double-count it in regen_strategy). Exactly one row after two records."""
+    ws = tmp_path
+    exp = _seed(ws)
+    _write_result(exp)
+    _git_init(ws)
+    r1 = _record(run_script, ws)
+    assert r1.returncode == 0, r1.stderr
+    assert len(_ledger_rows(ws)) == 1
+    # Re-record the SAME SUCCESS exp — the canonical meta still carries exp_id/idea, so
+    # classification re-runs and reaches SUCCESS again. It must overwrite, not append.
+    r2 = _record(run_script, ws)
+    assert r2.returncode == 0, r2.stderr
+    rows = _ledger_rows(ws)
+    assert len(rows) == 1
+    assert rows[0]["exp_id"] == "exp-001"
+
+
 def test_missing_result_is_failed_with_verdict_no_success_row(run_script, tmp_path):
     ws = tmp_path
     exp = _seed(ws)  # NO result.json — the throwing-notebook headline
