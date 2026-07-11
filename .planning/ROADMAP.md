@@ -109,8 +109,8 @@ Plans:
 
 **Wave 1** *(foundations, parallel — no file overlap)*
 
-- [ ] 03-01-PLAN.md — Metric registry + config.metric setter (D-08) + workspace ML floors
-- [ ] 03-02-PLAN.md — Ledger schema: experiment_meta module + rebuild_ledger.py + meta/VERDICT templates (MEM-01, provenance)
+- [x] 03-01-PLAN.md — Metric registry + config.metric setter (D-08) + workspace ML floors
+- [x] 03-02-PLAN.md — Ledger schema: experiment_meta module + rebuild_ledger.py + meta/VERDICT templates (MEM-01, provenance)
 
 **Wave 2** *(blocked on 03-01)*
 
@@ -173,7 +173,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 |-------|----------------|--------|-----------|
 | 1. Workspace, Credentials & Egress Guardrails | 4/4 | Complete   | 2026-07-09 |
 | 2. Competition Context & Data | 7/7 | Complete   | 2026-07-10 |
-| 3. Local Experiment Loop, Ledger & Strategy | 0/5 | Planned | - |
+| 3. Local Experiment Loop, Ledger & Strategy | 2/5 | In Progress|  |
 | 4. Kaggle Kernel Execution (GPU Path) | 0/2 | Not started | - |
 | 5. Submission & Leaderboard Tracking | 0/3 | Not started | - |
 
