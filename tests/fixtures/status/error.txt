@@ -1,0 +1,2 @@
+titanic-exp-001 has status "KernelWorkerStatus.ERROR"
+Failure message: "COMPLETE run stalled: worker reported RUNNING then died"
