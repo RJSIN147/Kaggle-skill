@@ -266,6 +266,86 @@ the competition section, these are **separate, idempotent entry points the SKILL
 
 ---
 
+## Kaggle kernel loop (EXP-05, GPU path)
+
+When `execution_target` is `kernel` (or an operator opts into a one-off GPU run), the SAME
+Phase-3 `experiment.py` goes to a live Kaggle kernel — unchanged: `resolve_data_dir` auto-selects
+`/kaggle/input` on the kernel, so nothing about the experiment is rewritten for GPU. Like the local
+loop, these are **separate idempotent entry points the SKILL sequences** (D-02) — each is
+non-interactive (argparse in, exit code out); the SKILL holds the human/AI loop between steps.
+**Numbers are TOOLING-WRITTEN end-to-end.** Prerequisite: a scaffolded experiment
+(`experiments/exp-NNN/experiment.py`) with the metric + `cv.scheme` already committed, exactly as
+for the local run. Sequence (each `python3 scripts/<x>.py --workspace <cwd> --exp-dir experiments/exp-NNN`):
+
+1. **Convert** — build the inspectable notebook (regenerable from `experiment.py`, never mutating it — D-02):
+
+   ```bash
+   python3 scripts/convert_notebook.py --workspace <cwd> --exp-dir experiments/exp-NNN
+   ```
+
+   Shells `uv run --no-sync jupytext` (never a runtime install; a missing env degrades to a clear
+   `uv sync` error). The `.ipynb` is a build artifact — overwritten every call.
+
+2. **Push** — generate metadata, push, hand off:
+
+   ```bash
+   python3 scripts/push_kernel.py --workspace <cwd> --exp-dir experiments/exp-NNN [--accelerator NvidiaTeslaT4]
+   ```
+
+   Surfaces a **non-blocking GPU-quota heads-up** (D-13) — informational only, it NEVER blocks the
+   push. **Internet is OFF by default** and the *effective* value is recorded in
+   `kernel_run.json` provenance as an auditable exception (D-06); to opt into an internet-ON run
+   deliberately, set it first via
+   `python3 scripts/init_workspace.py --workspace <cwd>` config setter path
+   (`set_config_field(("kernel","enable_internet"), true)`) — never hand-edit. The deterministic
+   `<username>/<slug>-exp-NNN` slug means a re-push targets the **SAME** kernel, and push writes
+   `kernel_run.json` (`status="PENDING"`) — the push→poll→pull handoff state.
+
+3. **Poll** — bounded, 429-safe backoff that **DETACHES, never cancels**, on our-side timeout:
+
+   ```bash
+   python3 scripts/poll_kernel.py --workspace <cwd> --exp-dir experiments/exp-NNN [--budget <sec>]
+   ```
+
+   The reserved exit codes drive the SKILL's detach/resume loop (same reserved-code discipline as the
+   gate protocol above — Claude holds the loop, the script never sleeps on stdin):
+
+   | Exit | Meaning | Next SKILL step |
+   |------|---------|-----------------|
+   | 0 | COMPLETE | run pull |
+   | 2 | ERROR / CANCEL_ACKNOWLEDGED (terminal, non-success) | pull the log for the reason |
+   | 3 | DETACHED — our budget expired, kernel still in-flight | **re-run poll later to reattach — WITHOUT re-pushing** (GPU time already spent is never re-burned — D-01/D-09) |
+   | 4 | transient errors exceeded the threshold (fail-closed) | re-run poll to retry |
+   | 124 / 127 | gateway timeout / CLI-missing (pass-through) | remediate + re-run |
+
+   On DETACH the SKILL simply re-invokes `poll_kernel.py` — it reattaches from the same
+   `kernel_run.json` handoff, **never re-pushing / re-burning GPU time**.
+
+4. **Pull** — fetch the same `result.json` + `artifacts/` contract the local runner uses, plus the
+   execution log and image provenance:
+
+   ```bash
+   python3 scripts/pull_kernel.py --workspace <cwd> --exp-dir experiments/exp-NNN
+   ```
+
+   Writes `result.json` + `oof.npy` (flat), `kernel_log.txt` (untrusted — written to file, never
+   echoed), and merges `docker_image` + `machine_shape` provenance into `kernel_run.json` (D-14).
+
+5. **Record (the anti-lie step, kernel path)** — pass the pulled log so the recorder scans it FIRST:
+
+   ```bash
+   python3 scripts/record_experiment.py --workspace <cwd> --exp-dir experiments/exp-NNN --kernel-log experiments/exp-NNN/kernel_log.txt
+   ```
+
+   The `--kernel-log` scan is the NEW FIRST RUNG of the fail-closed ladder: a traceback / OOM marker
+   in the log ⇒ **FAILED(kernel_error)** even if `kernels status` said COMPLETE and a valid
+   `result.json` came back (the anti-silent-failure guarantee, Success Criterion 3). No marker ⇒ it
+   falls through to the SAME `result.json`/mean-recompute ladder as the local loop, and merges
+   `kernel_run.json` provenance (backend, slug, **effective** `enable_internet`, accelerator, image)
+   into `meta.json`. Then the SAME `regen_strategy.py` step (4 above) closes the cycle.
+
+---
+
 ## Security & egress (SETUP-04)
 
 - **Never echo, log, or commit credential values.** The scripts mask output and the pre-commit
@@ -293,7 +373,11 @@ the competition section, these are **separate, idempotent entry points the SKILL
 | `scripts/set_metric.py` | EXP/D-08 metric setter: the AI decides the enum from captured prose, tooling writes `config.json.metric`; blocks (exit 78) if uncaptured; `custom` needs an explicit direction |
 | `scripts/scaffold_experiment.py` | EXP-01/D-02 mint a fresh `exp-NNN` + render `experiment.py` (metric/CV snapshot baked in) + a `meta.json` stub carrying idea/hypothesis; advances the id cursor |
 | `scripts/run_local.py` | EXP-03/D-01 run the scaffolded `experiment.py` under `uv run --no-sync` (never installs), capture only the exit code; `result.json` is verified by the recorder |
-| `scripts/record_experiment.py` | EXP-04/D-05/06 the anti-lie recorder: recompute the mean, attach provenance, persist `meta.json` + ledger row + `VERDICT.md`; a bad run is FAILED-with-verdict |
+| `scripts/convert_notebook.py` | EXP-05/D-02 non-destructive `.py`→`.ipynb` build via `uv run --no-sync jupytext` (never runtime-installs; `experiment.py` unchanged, `.ipynb` regenerable) |
+| `scripts/push_kernel.py` | EXP-05/D-06/13 render kernel-metadata → non-blocking quota heads-up → gateway `kernels push` → write `kernel_run.json` (effective internet flag recorded; deterministic slug re-pushes the same kernel) |
+| `scripts/poll_kernel.py` | EXP-05/D-09 VERIFIED-enum status classify + bounded jittered backoff; DETACHES (never cancels) on our-side budget expiry — re-run to reattach without re-pushing (exit 0/2/3/4) |
+| `scripts/pull_kernel.py` | EXP-05/D-14 `kernels output` + `logs`→`kernel_log.txt` (untrusted, file-only) + `pull -m` image/machine provenance merged into `kernel_run.json` |
+| `scripts/record_experiment.py` | EXP-04/D-05/06 the anti-lie recorder: recompute the mean, attach provenance, persist `meta.json` + ledger row + `VERDICT.md`; a bad run is FAILED-with-verdict. Kernel path (`--kernel-log`) scans the log FIRST — a marker ⇒ FAILED(`kernel_error`) even with COMPLETE status + valid `result.json` |
 | `scripts/rebuild_ledger.py` | MEM-01/D-10 rebuild `control/ledger.jsonl` as a pure function of the `meta.json` folders (corrupt metas skipped-and-warned; atomic replace) |
 | `scripts/regen_strategy.py` | MEM-02/03/D-12 regenerate `strategy.md` from the ledger: tooling FACTS (current-best + tried-list) + AI `--reasoning-file`, full atomic overwrite |
 
