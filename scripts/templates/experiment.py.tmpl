@@ -33,10 +33,10 @@ from statistics import mean, pstdev
 # scorer is resolved from `registry_entry["sklearn_callable"]` (Blocker-2), never by
 # getattr on the config metric name. This file never imports the skill's registry module.
 # --------------------------------------------------------------------------- #
-SLUG = "$slug"
-EXP_ID = "$exp_id"
-CV_SCHEME = "$cv_scheme"
-METRIC_NAME = "$metric_name"
+SLUG = $slug_literal
+EXP_ID = $exp_id_literal
+CV_SCHEME = $cv_scheme_literal
+METRIC_NAME = $metric_name_literal
 DEFAULT_SEED = 42  # D-09: fixed default seed, per-experiment override via --seed.
 registry_entry = $registry_entry
 
@@ -185,7 +185,7 @@ def build_experiment(seed):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description="Run this experiment's CV and emit result.json.")
-    ap.add_argument("--exp-dir", default="$exp_dir",
+    ap.add_argument("--exp-dir", default=$exp_dir_literal,
                     help="Experiment folder (holds result.json + artifacts/).")
     ap.add_argument("--slug", default=SLUG, help="Competition slug for resolve_data_dir().")
     ap.add_argument("--data-dir", default=None,
