@@ -137,9 +137,14 @@ def _validate_result(result: dict, metric_name: str) -> str | None:
     if abs(float(cv_mean) - recomputed) >= 1e-6:
         return "schema_invalid"
 
-    # Step 5: the emitted metric must match config (or be the explicit "custom" escape).
+    # Step 5: the emitted metric must match config. The "custom" escape hatch is honored
+    # ONLY when config itself declared `custom` — otherwise a run configured for a bounded
+    # metric (e.g. roc_auc in [0,1]) could self-report metric="custom" and sail past the
+    # range gate with an implausible score (WR-03). When config names a known bounded
+    # metric, require the result to report that SAME metric so its range is enforced.
     result_metric = result["metric"]
-    if result_metric != metric_name and result_metric != "custom":
+    allow_custom = metric_name == "custom"
+    if result_metric != metric_name and not (allow_custom and result_metric == "custom"):
         return "schema_invalid"
 
     # Step 6: cv_mean and every fold score sit inside the metric's registered range.
