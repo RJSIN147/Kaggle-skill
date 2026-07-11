@@ -114,7 +114,7 @@ Plans:
 
 **Wave 2** *(blocked on 03-01)*
 
-- [ ] 03-03-PLAN.md — experiment.py.tmpl (resolve_data_dir + leakage-safe run_cv harness) + scaffold_experiment.py (EXP-01/02)
+- [x] 03-03-PLAN.md — experiment.py.tmpl (resolve_data_dir + leakage-safe run_cv harness) + scaffold_experiment.py (EXP-01/02)
 
 **Wave 3** *(blocked on 03-01, 03-02, 03-03 — the anti-lie headline slice)*
 
@@ -173,7 +173,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 |-------|----------------|--------|-----------|
 | 1. Workspace, Credentials & Egress Guardrails | 4/4 | Complete   | 2026-07-09 |
 | 2. Competition Context & Data | 7/7 | Complete   | 2026-07-10 |
-| 3. Local Experiment Loop, Ledger & Strategy | 2/5 | In Progress|  |
+| 3. Local Experiment Loop, Ledger & Strategy | 3/5 | In Progress|  |
 | 4. Kaggle Kernel Execution (GPU Path) | 0/2 | Not started | - |
 | 5. Submission & Leaderboard Tracking | 0/3 | Not started | - |
 
