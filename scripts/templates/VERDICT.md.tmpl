@@ -1,0 +1,24 @@
+# Verdict — $exp_id
+
+> The written verdict for this experiment: what was tried, what happened, and why.
+> The AI writes the prose (Idea / Hypothesis / Verdict). The **numbers** (CV mean/std,
+> fold scores, metric) are TOOLING-WRITTEN into `meta.json` / `result.json` by the
+> recorder — the AI *references* them here, it never types a score by hand (D-05).
+
+## Idea
+_What was tried this cycle (one or two sentences)._
+
+## Hypothesis
+_The expected effect and why — the falsifiable claim this run tested._
+
+## Result
+_The CV score for this experiment is recorded by the tooling in_
+`meta.json` _(`cv_mean ± cv_std`, per-fold scores) and_ `result.json`_. Reference
+those numbers here in prose; do not hand-type them — a hand-typed number can drift
+from the recorded one and poison the ledger._
+
+## Verdict
+_Did it work? Worked / Didn't / Inconclusive — and **why**. If it failed, name the
+failure (the recorder sets `status="FAILED"` with a `failure_reason`); explain what
+the failure teaches for the next hypothesis. A failure recorded with a clear verdict
+is a successful cycle._
