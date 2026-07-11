@@ -40,7 +40,6 @@ import argparse
 import hashlib
 import json
 import math
-import os
 import statistics
 import subprocess
 import sys
@@ -51,9 +50,9 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
-from experiment_meta import to_ledger_row  # noqa: E402
 from init_workspace import _render_text, create_if_absent  # noqa: E402
 from metric_registry import REGISTRY  # noqa: E402
+from rebuild_ledger import rebuild_ledger_file  # noqa: E402
 
 # The D-06 failure enum: every FAILED meta carries exactly one of these reasons so the
 # tried-list and the verdict prompt can name WHY the cycle failed.
@@ -346,40 +345,18 @@ def main(argv=None) -> int:
         _render_text("VERDICT.md.tmpl", {"exp_id": carried["exp_id"]}),
     )
 
-    # Only a SUCCESS appends a derived row to the ledger. A FAILED run is recorded (meta +
-    # verdict) but NEVER fabricated into a success row (criterion 3). The full ledger can
-    # always be rebuilt from the meta folders (rebuild_ledger.py, MEM-01).
-    if status == "SUCCESS":
-        row = to_ledger_row(meta)
-        new_line = json.dumps(row, separators=(",", ":"))
-        ledger_path = ws / "control" / "ledger.jsonl"
-        ledger_path.parent.mkdir(parents=True, exist_ok=True)
-
-        # Idempotent append (WR-01): re-recording an already-recorded SUCCESS must NOT
-        # duplicate the row (which would double-count it in regen_strategy). Drop any prior
-        # line for this exp_id, then append the fresh row. An unparseable existing line is
-        # preserved verbatim (never fabricated over, never silently dropped). The whole
-        # file is then rewritten ATOMICALLY (tempfile + os.replace) so a crash mid-write
-        # leaves the previous ledger intact — closing the truncated-final-line hole too.
-        kept: list[str] = []
-        if ledger_path.exists():
-            for raw in ledger_path.read_text().splitlines():
-                stripped = raw.strip()
-                if not stripped:
-                    continue
-                try:
-                    existing = json.loads(stripped)
-                except json.JSONDecodeError:
-                    kept.append(stripped)
-                    continue
-                if isinstance(existing, dict) and existing.get("exp_id") == row["exp_id"]:
-                    continue  # drop the stale row for this exp_id (idempotent re-record)
-                kept.append(stripped)
-        kept.append(new_line)
-
-        tmp_ledger = ledger_path.with_suffix(ledger_path.suffix + ".tmp")
-        tmp_ledger.write_text("\n".join(kept) + "\n")
-        os.replace(tmp_ledger, ledger_path)
+    # Persist the derived ledger row for EVERY experiment — SUCCESS and FAILED alike
+    # (MEM-01 / MEM-02). The canonical meta.json was just written above, so we regenerate
+    # control/ledger.jsonl as a PURE FUNCTION of the meta folders via the same derivation
+    # rebuild_ledger.py uses. This guarantees the incrementally-maintained ledger is
+    # BYTE-IDENTICAL to a full rebuild of the identical folder set — the two can never
+    # diverge, closing the gap where a FAILED experiment (correctly recorded in its own
+    # meta.json) never reached the ledger and so stayed invisible to regen_strategy's
+    # never-repeat tried-list. A FAILED row carries a null cv_mean (to_ledger_row derives
+    # it straight from the meta) — a recorded fact, NEVER a fabricated score. Dedupe is
+    # inherent (one folder → one row, so re-recording the same exp_id yields exactly one
+    # row) and the write is atomic (tempfile + os.replace inside rebuild_ledger_file).
+    rebuild_ledger_file(ws)
 
     # Stage the provenance-bearing files by EXPLICIT path (never a blanket stage).
     _stage_provenance(ws, f"{exp_rel}/experiment.py", f"{exp_rel}/meta.json")
@@ -391,7 +368,8 @@ def main(argv=None) -> int:
     else:
         print(f"recorded {carried['exp_id']} FAILED (reason={failure_reason}). "
               f"idea/hypothesis preserved; write WHY it failed at {exp_rel}/VERDICT.md. "
-              f"No success ledger row was appended.")
+              f"A FAILED ledger row (null cv_mean, no fabricated score) was recorded so "
+              f"the never-repeat tried-list sees this attempt.")
     return 0
 
 
