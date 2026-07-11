@@ -103,14 +103,26 @@ Plans:
   4. Every experiment lands in a git-backed ledger (meta.json canonical + derived ledger.jsonl index of score/verdict/artifact links) that fully rebuilds from the per-experiment folders.
   5. The strategy doc (current best, hypothesis queue, next action) is regenerated from the ledger each cycle — never hand-edited — and the AI reasons over history so it does not re-propose an already-tried idea.
 
-**Plans**: TBD (suggested 4)
+**Plans**: 5 plans
 
 Plans:
 
-- [ ] 03-01: Ledger schema — meta.json canonical + derived ledger.jsonl + rebuild_ledger.py + provenance fields
-- [ ] 03-02: Notebook template with backend-agnostic path resolver, CV harness (fold-internal), seed/env capture, result.json contract
-- [ ] 03-03: Local runner + recorder script (tooling writes scores from result.json) + artifact validation + silent-failure detection
-- [ ] 03-04: Experiment orchestrator lifecycle (state.json cursor) + strategy regeneration from ledger + prompt-driven never-repeat
+**Wave 1** *(foundations, parallel — no file overlap)*
+
+- [ ] 03-01-PLAN.md — Metric registry + config.metric setter (D-08) + workspace ML floors
+- [ ] 03-02-PLAN.md — Ledger schema: experiment_meta module + rebuild_ledger.py + meta/VERDICT templates (MEM-01, provenance)
+
+**Wave 2** *(blocked on 03-01)*
+
+- [ ] 03-03-PLAN.md — experiment.py.tmpl (resolve_data_dir + leakage-safe run_cv harness) + scaffold_experiment.py (EXP-01/02)
+
+**Wave 3** *(blocked on 03-01, 03-02, 03-03 — the anti-lie headline slice)*
+
+- [ ] 03-04-PLAN.md — run_local.py + record_experiment.py: fail-closed result contract, provenance, throwing-notebook = FAILURE-with-verdict (EXP-03/04)
+
+**Wave 4** *(blocked on 03-02, 03-04)*
+
+- [ ] 03-05-PLAN.md — regen_strategy.py (ledger facts + AI reasoning, full overwrite) + SKILL.md loop wiring + prompt-driven never-repeat (MEM-02/03)
 
 ### Phase 4: Kaggle Kernel Execution (GPU Path)
 
@@ -161,7 +173,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 |-------|----------------|--------|-----------|
 | 1. Workspace, Credentials & Egress Guardrails | 4/4 | Complete   | 2026-07-09 |
 | 2. Competition Context & Data | 7/7 | Complete   | 2026-07-10 |
-| 3. Local Experiment Loop, Ledger & Strategy | 0/4 | Not started | - |
+| 3. Local Experiment Loop, Ledger & Strategy | 0/5 | Planned | - |
 | 4. Kaggle Kernel Execution (GPU Path) | 0/2 | Not started | - |
 | 5. Submission & Leaderboard Tracking | 0/3 | Not started | - |
 
