@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Phase 4 context gathered
-last_updated: "2026-07-11T19:11:23.411Z"
-last_activity: 2026-07-11 -- Phase 04 execution started
+stopped_at: Phase 04 complete (04-05 done; opt-in live GPU push deferred to operator)
+last_updated: "2026-07-12T00:00:00.000Z"
+last_activity: 2026-07-12 -- Phase 04 complete (04-05); live GPU push deferred
 progress:
   total_phases: 5
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 21
-  completed_plans: 16
-  percent: 60
+  completed_plans: 21
+  percent: 80
 ---
 
 # Project State
@@ -25,10 +25,10 @@ See: .planning/PROJECT.md (updated 2026-07-09)
 
 ## Current Position
 
-Phase: 04 (kaggle-kernel-execution-gpu-path) — EXECUTING
-Plan: 1 of 5
-Status: Executing Phase 04
-Last activity: 2026-07-11 -- Phase 04 execution started
+Phase: 04 (kaggle-kernel-execution-gpu-path) — COMPLETE (buildable scope; one opt-in live GPU push deferred to operator)
+Plan: 5 of 5 (all plans complete)
+Status: Phase 04 complete — ready for Phase 05
+Last activity: 2026-07-12 -- 04-05 complete; live GPU push deferred to operator
 
 Progress: [██████████] 100%
 
@@ -78,6 +78,8 @@ Recent decisions affecting current work:
 - [Phase ?]: 01-03: criterion 5 split — Half A (generated settings) MET, Half B (host enforcement) PARTIALLY demonstrated (example.com off-list reached origin, UNVERIFIED); criterion 5 + SETUP-04 NOT fully validated
 - [Phase 01]: 01-04: SETUP-03 MET — live exit-code credential validation proven end-to-end at Task 3 checkpoint (real access_token file source, exit 0, state.json=VALIDATED, no leak); success path now VERIFIED in kaggle-cli-behavior.md
 - [Phase 01]: 01-04: SETUP-04 NOT complete — credential half MET (masked/never-echoed, chmod+.env consent-gated, secrets gitignored), egress half still PARTIAL (01-03 example.com anomaly). Legacy KAGGLE_USERNAME/KAGGLE_KEY end-to-end validation UNVERIFIED. kaggle declared dev/live-only dep.
+- [Phase 04]: 04-05: kernel path (convert→push→poll→pull→record) wired into SKILL.md with detach/resume (re-run poll without re-pushing — D-01/D-09), D-13 non-blocking quota heads-up, and D-06 internet-off/effective-value notes + four scripts-table rows. Task 1 complete (commit 1acccbe).
+- [Phase 04]: 04-05: the one opt-in live GPU push DEFERRED to operator (deliberate, not skipped/failed) — the plan scopes it as NOT a phase blocker; phase is green from fixtures (199 passed) independent of the live run. Operator to confirm A1 (T4×2 accelerator string), A2 (kernels-status render vs _STATUS_RE), A3 (kernel-log shape + _KERNEL_ERROR_MARKERS coverage), A4 (kernels-push version string vs push_kernel.py regex) into references/kaggle-cli-behavior.md.
 
 ### Pending Todos
 
@@ -98,10 +100,10 @@ Items acknowledged and carried forward from previous milestone close:
 
 | Category | Item | Status | Deferred At |
 |----------|------|--------|-------------|
-| *(none)* | | | |
+| Live verification (EXP-05) | One opt-in live Kaggle GPU push (convert→push→poll→pull→record) to confirm A1 T4×2 string / A2 status render / A3 log+marker coverage / A4 push version regex, findings into references/kaggle-cli-behavior.md. Needs Phase 1 creds + Phase 2 data + Phase 3 scaffolded experiment. | Operator-owned, deferred | 04-05 (2026-07-12) |
 
 ## Session Continuity
 
-Last session: 2026-07-11T18:07:42.336Z
-Stopped at: Phase 4 context gathered
-Resume file: .planning/phases/04-kaggle-kernel-execution-gpu-path/04-CONTEXT.md
+Last session: 2026-07-12T00:00:00.000Z
+Stopped at: Phase 04 complete (04-05 done; opt-in live GPU push deferred to operator)
+Resume file: None — ready to plan/execute Phase 05 (Submission & Leaderboard Tracking)
