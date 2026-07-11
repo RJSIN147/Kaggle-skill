@@ -34,13 +34,15 @@ def render_experiment(tmp_path, *, slug="titanic", exp_id="exp-001",
     (tmp_path / "data").mkdir(parents=True, exist_ok=True)
 
     raw = TEMPLATE.read_text()
+    # CR-01: every config-sourced value is rendered as a repr()-quoted Python literal
+    # (the template now carries bare $*_literal placeholders, no hand-written quotes).
     src = Template(raw).safe_substitute(
         {
-            "slug": slug,
-            "exp_id": exp_id,
-            "exp_dir": f"experiments/{exp_id}",
-            "cv_scheme": cv_scheme,
-            "metric_name": metric_name,
+            "slug_literal": repr(slug),
+            "exp_id_literal": repr(exp_id),
+            "exp_dir_literal": repr(f"experiments/{exp_id}"),
+            "cv_scheme_literal": repr(cv_scheme),
+            "metric_name_literal": repr(metric_name),
             "registry_entry": repr(entry),
         }
     )
