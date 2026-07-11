@@ -195,6 +195,24 @@ def test_out_of_range_mean_is_failed(run_script, tmp_path):
     assert meta["failure_reason"] == "out_of_range"
 
 
+def test_custom_metric_cannot_bypass_bounded_range_gate(run_script, tmp_path):
+    """WR-03: config declares a bounded metric (roc_auc in [0,1]); a result that
+    self-reports metric='custom' with an implausible score must NOT bypass the range gate.
+    It is FAILED (schema_invalid), never appended as a success row."""
+    ws = tmp_path
+    exp = _seed(ws, metric="roc_auc")
+    # Would sail through the range gate as "custom" (range (-inf, inf)) under the old code.
+    _write_result(exp, metric="custom", cv_mean=5.0, fold_scores=[5.0, 5.0, 5.0], n_folds=3)
+    _git_init(ws)
+    r = _record(run_script, ws)
+    assert r.returncode == 0, r.stderr
+
+    meta = _read_meta(exp)
+    assert meta["status"] == "FAILED"
+    assert meta["failure_reason"] == "schema_invalid"
+    assert _ledger_rows(ws) == []
+
+
 def test_non_finite_fold_is_failed(run_script, tmp_path):
     ws = tmp_path
     exp = _seed(ws)
