@@ -136,12 +136,26 @@ Plans:
   2. The framework polls to completion with backoff (no 429 storm) and pulls results/artifacts back into the same artifacts/ contract the local runner uses.
   3. A kernel reporting "complete" is not trusted as success — the pulled run log is scanned for tracebacks and artifacts are validated against the same result contract before any score is recorded.
 
-**Plans**: TBD (suggested 2)
+**Plans**: 5 plans
 
 Plans:
 
-- [ ] 04-01: kernel-metadata.json generation from validated template (competition_sources, accelerator, internet-off) + kaggle kernels push
-- [ ] 04-02: Timeout-bounded status polling with backoff + output/pull + run-log traceback scan extending the result contract
+**Wave 1**
+
+- [ ] 04-01-PLAN.md — Nyquist Wave 0 kernel test harness: fixtures (logs/status/golden metadata) + RED stubs pinning every EXP-05 test-map row
+
+**Wave 2** *(blocked on 04-01)*
+
+- [ ] 04-02-PLAN.md — Convert + push slice: convert_notebook.py (jupytext, non-destructive) + push_kernel.py (metadata gen + non-blocking quota + push + kernel_run.json) + kernel-metadata template + config internet toggle
+
+**Wave 3** *(blocked on 04-02; parallel — no file overlap)*
+
+- [ ] 04-03-PLAN.md — Poll + pull slice: poll_kernel.py (enum classify + exponential backoff/budget + detach-not-cancel) + pull_kernel.py (output/logs/image provenance) + gitignore kernel artifacts
+- [ ] 04-04-PLAN.md — Recorder extension (headline): record_experiment.py silent-failure first rung (scan_kernel_log + one kernel_error reason, log scanned before result.json is trusted)
+
+**Wave 4** *(blocked on 04-03, 04-04)*
+
+- [ ] 04-05-PLAN.md — SKILL.md kernel-path sequencing (convert→push→poll→pull→record, detach/resume, quota + internet notes) + one opt-in live-push human-verify checkpoint (T4×2 string / log format / status render)
 
 ### Phase 5: Submission & Leaderboard Tracking
 
@@ -174,7 +188,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | 1. Workspace, Credentials & Egress Guardrails | 4/4 | Complete   | 2026-07-09 |
 | 2. Competition Context & Data | 7/7 | Complete   | 2026-07-10 |
 | 3. Local Experiment Loop, Ledger & Strategy | 5/5 | Complete   | 2026-07-11 |
-| 4. Kaggle Kernel Execution (GPU Path) | 0/2 | Not started | - |
+| 4. Kaggle Kernel Execution (GPU Path) | 0/5 | Not started | - |
 | 5. Submission & Leaderboard Tracking | 0/3 | Not started | - |
 
 ## Coverage
