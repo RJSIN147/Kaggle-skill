@@ -101,6 +101,10 @@ None — plan executed exactly as written. The only in-flight adjustments were d
 - The loop's integrity spine is complete: `scaffold → run_local → record_experiment` produces honest, provenance-bearing meta.json + ledger rows. Ready for `regen_strategy.py` (reads ledger.jsonl) and the kernel-execution path (which reuses the same recorder against pulled kernel output).
 - No blockers. `rebuild_ledger.py` already consumes the meta.json shape this recorder writes.
 
+## Self-Check: PASSED
+
+All created files present (scripts/run_local.py, scripts/record_experiment.py, tests/test_run_local.py, tests/test_record_experiment.py, 03-04-SUMMARY.md). All task commits verified in git history (ec515ad, 07b56cb, 108f235, e67036b). Full offline suite: 166 passed, 1 skipped, 8 deselected.
+
 ---
 *Phase: 03-local-experiment-loop-ledger-strategy*
 *Completed: 2026-07-11*
