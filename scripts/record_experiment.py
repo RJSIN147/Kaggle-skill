@@ -55,8 +55,26 @@ from metric_registry import REGISTRY  # noqa: E402
 from rebuild_ledger import rebuild_ledger_file  # noqa: E402
 
 # The D-06 failure enum: every FAILED meta carries exactly one of these reasons so the
-# tried-list and the verdict prompt can name WHY the cycle failed.
-FAILURE_REASONS = ("missing_result", "schema_invalid", "non_finite", "out_of_range")
+# tried-list and the verdict prompt can name WHY the cycle failed. `kernel_error` is the
+# ONE reason added for the kernel path (D-11/D-12): a kernel log that carries a traceback /
+# OOM / time-limit marker. Missing/invalid kernel result.json keeps mapping to the EXISTING
+# missing_result/schema_invalid reasons — no kernel-specific proliferation (D-12).
+FAILURE_REASONS = ("missing_result", "schema_invalid", "non_finite", "out_of_range",
+                   "kernel_error")
+
+# D-11 silent-failure markers scanned in a pulled Kaggle kernel log BEFORE its result.json
+# is trusted. A kernel can report COMPLETE yet have thrown mid-notebook and still leave a
+# stale/valid-looking result.json on disk — these markers catch that lie. Pure pattern-match:
+# the log is untrusted Kaggle text, never echoed and never a source of an executed
+# path/command (V5/V7).
+_KERNEL_ERROR_MARKERS = (
+    "Traceback (most recent call last)",
+    "\nError:",
+    "\nException:",
+    "Your notebook tried to allocate more memory than is available",
+    "Killed",
+    "Notebook Exceeded",
+)
 
 # result.json keys required before a run can even be considered for SUCCESS (D-04).
 REQUIRED_RESULT_KEYS = ("metric", "n_folds", "fold_scores", "cv_mean", "cv_std")
@@ -76,6 +94,28 @@ def _read_json(path: Path):
         return None, "missing_result"
     except (json.JSONDecodeError, OSError):
         return None, "schema_invalid"
+
+
+def scan_kernel_log(log_text: str) -> bool:
+    """True if the kernel log carries a D-11 silent-failure marker (traceback / OOM / kill).
+
+    Pure pattern-match — ``marker in text`` only. NEVER echoes the log and NEVER derives an
+    executed path/command from its content (V5/V7). Handles Assumption A3: a Kaggle log may
+    arrive as plain text OR as a JSON array of ``{"stream_name": ..., "data": ...}`` records;
+    when it parses as such a list, the ``data`` fields are concatenated and that is scanned,
+    otherwise the raw text is scanned as-is.
+    """
+    scan_target = log_text
+    try:
+        parsed = json.loads(log_text)
+    except (json.JSONDecodeError, ValueError):
+        parsed = None
+    if isinstance(parsed, list) and all(isinstance(rec, dict) for rec in parsed):
+        parts = [str(rec.get("data", "")) for rec in parsed]
+        # Join on newline so a marker anchored on "\n" (\nError:/\nException:) is still
+        # matchable across record boundaries.
+        scan_target = "\n".join(parts)
+    return any(marker in scan_target for marker in _KERNEL_ERROR_MARKERS)
 
 
 def _read_config_metric(config_path: Path) -> tuple[str | None, str | None]:
@@ -225,6 +265,12 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--run-exit-code", type=int, default=None,
                     help="The exit code from run_local.py. A non-zero value pre-classifies "
                          "the run as FAILED before result.json is even read.")
+    ap.add_argument("--kernel-log", type=Path, default=None,
+                    help="Path to a pulled Kaggle kernel log (kernel path only). When set, the "
+                         "log is scanned for D-11 silent-failure markers as the FIRST rung of "
+                         "the fail-closed ladder: a traceback/OOM hit records FAILED("
+                         "kernel_error) BEFORE result.json is trusted. Absent = local path "
+                         "(existing behavior, byte-for-byte unchanged).")
     return ap
 
 
@@ -275,23 +321,42 @@ def main(argv=None) -> int:
 
     result_path = exp_dir / "result.json"
 
-    # Classification. A non-zero run exit pre-classifies FAILED BEFORE reading result.json
-    # (a throwing run can never be a success, even if a stale valid result.json exists).
-    run_failed = args.run_exit_code is not None and args.run_exit_code != 0
+    # Classification ladder. THE NEW FIRST RUNG (kernel path only, D-11/D-12): when
+    # --kernel-log is provided, the pulled Kaggle log is scanned for silent-failure markers
+    # BEFORE result.json is ever read. A hit => FAILED(kernel_error) even if a perfectly valid
+    # result.json is on disk — a kernel that reported COMPLETE but actually threw can never be
+    # a success (criterion 3). No hit (or no --kernel-log at all) => fall through to the
+    # EXISTING run_failed / _read_json / _validate_result ladder completely unchanged, so the
+    # local path stays byte-for-byte identical.
     valid_result: dict | None = None
-    if run_failed:
-        status = "FAILED"
-        failure_reason = "missing_result" if not result_path.exists() else "schema_invalid"
-    else:
-        result, load_err = _read_json(result_path)
-        if load_err is not None:
-            status, failure_reason = "FAILED", load_err
+    kernel_error_hit = False
+    if args.kernel_log is not None:
+        try:
+            log_text = args.kernel_log.read_text()
+        except (FileNotFoundError, OSError):
+            log_text = None  # unreadable log = no kernel_error evidence; defer to result ladder
+        if log_text is not None and scan_kernel_log(log_text):
+            status, failure_reason, kernel_error_hit = "FAILED", "kernel_error", True
+
+    if not kernel_error_hit:
+        # A non-zero run exit pre-classifies FAILED BEFORE reading result.json (a throwing run
+        # can never be a success, even if a stale valid result.json exists).
+        run_failed = args.run_exit_code is not None and args.run_exit_code != 0
+        if run_failed:
+            status = "FAILED"
+            failure_reason = (
+                "missing_result" if not result_path.exists() else "schema_invalid"
+            )
         else:
-            failure_reason = _validate_result(result, metric_name)
-            if failure_reason is None:
-                status, valid_result = "SUCCESS", result
+            result, load_err = _read_json(result_path)
+            if load_err is not None:
+                status, failure_reason = "FAILED", load_err
             else:
-                status = "FAILED"
+                failure_reason = _validate_result(result, metric_name)
+                if failure_reason is None:
+                    status, valid_result = "SUCCESS", result
+                else:
+                    status = "FAILED"
 
     provenance = _build_provenance(ws, exp_dir, exp_rel, valid_result)
 
@@ -334,6 +399,31 @@ def main(argv=None) -> int:
                 "artifacts": valid_result.get("artifacts", []),
             }
         )
+
+    # Kernel provenance merge (kernel path only, D-06/D-14). When --kernel-log is set, this
+    # was a Kaggle-kernel run: pull the auditable provenance from kernel_run.json (written by
+    # push_kernel.py / merged by pull_kernel.py) into meta so an internet-ON kernel run is a
+    # VISIBLE, auditable exception (D-06) rather than a silent one. Fail-clear: a missing or
+    # unreadable kernel_run.json never blocks the record — the meta simply carries no kernel
+    # block. The local path (no --kernel-log) is untouched, so its meta shape is unchanged.
+    if args.kernel_log is not None:
+        kernel_run, _ = _read_json(exp_dir / "kernel_run.json")
+        if isinstance(kernel_run, dict):
+            kernel_block = {
+                "backend": kernel_run.get("backend", "kernel"),
+                "kernel_slug": kernel_run.get("kernel_slug"),
+                "competition_slug": kernel_run.get("competition_slug"),
+                "enable_internet": kernel_run.get("enable_internet"),
+                "accelerator": kernel_run.get("accelerator"),
+                "docker_image": kernel_run.get("docker_image"),
+                "machine_shape": kernel_run.get("machine_shape"),
+                "kernel_version": kernel_run.get("kernel_version"),
+            }
+            meta["kernel"] = kernel_block
+        else:
+            # No handoff file but this WAS a kernel run — still mark the backend so the record
+            # is not mistaken for a local run.
+            meta["kernel"] = {"backend": "kernel"}
 
     # Persist the canonical meta.json (overwrites the stub — an intentional finalize).
     stub_path.write_text(json.dumps(meta, indent=2) + "\n")
