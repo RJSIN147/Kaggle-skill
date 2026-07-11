@@ -331,7 +331,9 @@ def main(argv=None) -> int:
     #   2. D-11 log-marker rung: a readable pulled log carrying a traceback/OOM/kill marker.
     #   3. WR-03 fail-closed rung: an unreadable/missing --kernel-log fails CLOSED — a kernel run
     #      whose expected log cannot be read is NEVER SUCCESS off a possibly-stale result.json.
-    # A missing/garbage kernel_run.json simply does not trigger rung 1 (fail-clear via _read_json).
+    # A missing/garbage kernel_run.json simply does not trigger rung 1 (fail-clear via _read_json
+    # AND an isinstance(str) guard, so a non-string status — list/dict — can never raise on the
+    # set-membership test).
     # No kernel rung fired (or no --kernel-log at all) => fall through to the EXISTING run_failed /
     # _read_json / _validate_result ladder unchanged, so the local path stays byte-for-byte
     # identical. kernel_run is read ONCE here and reused by the provenance merge below.
@@ -344,7 +346,11 @@ def main(argv=None) -> int:
             kernel_run = parsed_kernel_run
 
         # Rung 1 — CR-01 authoritative status (before any log read / result validation).
-        if kernel_run is not None and kernel_run.get("status") in {
+        # kernel_run.json.status is untrusted text: a non-string (JSON list/dict) is unhashable and
+        # would raise on the set-membership test, so gate on isinstance(str) first — a malformed
+        # status fails clear (rung 1 never fires, recorder never crashes, never flips to SUCCESS).
+        kernel_status = kernel_run.get("status") if kernel_run is not None else None
+        if isinstance(kernel_status, str) and kernel_status in {
             "ERROR", "CANCEL_ACKNOWLEDGED"
         }:
             status, failure_reason, kernel_error_hit = "FAILED", "kernel_error", True
