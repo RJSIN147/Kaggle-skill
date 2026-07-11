@@ -23,6 +23,12 @@ the framework exists to serve that loop.
 
 - [x] Capture static competition context — data schema, eval metric, rules, submission limits — in a dedicated file at setup — *Validated in Phase 2: Competition Context & Data (COMP-01, machine-derived "constitution" with provenance-tagged limits and untrusted-content wrapping)*
 - [x] Download competition data for local runs — *Validated in Phase 2: Competition Context & Data (COMP-02, UI-only rules gate cleared, zip-slip-protected extraction, never busy-loops)*
+- [x] Represent an experiment as an idea + hypothesis, its generated notebook/script, its result, and a written verdict (worked / didn't / why) — *Validated in Phase 3: Local Experiment Loop, Ledger & Strategy (immutable per-experiment folder: meta.json canonical + VERDICT.md; numeric fields written only by tooling from a machine-checked result.json)*
+- [x] AI authors a fresh notebook/script per experiment from a template scaffold — *Validated in Phase 3 (EXP-01, scaffold_experiment.py renders experiment.py with a backend-agnostic data-path resolver and injection-safe repr() literals)*
+- [x] Run an experiment locally (the default path), producing a cross-validation score and artifacts — *Validated in Phase 3 (EXP-02, run_local.py under `uv run --no-sync`; fold-internal preprocessing enforced; anti-lie fail-closed result validation)*
+- [x] Log every experiment to a structured ledger (metadata, CV score, links to artifacts), backed by git — *Validated in Phase 3 (MEM-01, meta.json canonical + derived ledger.jsonl that fully rebuilds from the folders; SUCCESS and FAILED both recorded with provenance — run id, artifact hash, git commit, seed)*
+- [x] Maintain a living strategy doc the AI updates each cycle (current best, hypothesis queue, what to try next) — *Validated in Phase 3 (MEM-03, regen_strategy.py regenerates strategy.md from the ledger each cycle, never hand-edited)*
+- [x] Maintain experiment history the AI reasons over so it never re-proposes an already-tried idea — *Validated in Phase 3 (MEM-02, tried-list digest surfaces both tried-and-succeeded and tried-and-failed ideas)*
 
 ### Active
 
@@ -31,15 +37,9 @@ the framework exists to serve that loop.
 - [ ] Initialize an experiment workspace in an empty folder (directory structure, config, context files)
 - [ ] Connect to the user's Kaggle account via the Kaggle CLI/API (credential setup + validation)
 - [ ] Choose a default execution target (local vs Kaggle Kernel) at init; overridable anytime, globally or per-experiment
-- [ ] Represent an experiment as an idea + hypothesis, its generated notebook/script, its result, and a written verdict (worked / didn't / why)
-- [ ] AI authors a fresh notebook/script per experiment from a template scaffold
-- [ ] Run an experiment locally (the default path), producing a cross-validation score and artifacts
 - [ ] Push a notebook to a Kaggle Kernel, run it on Kaggle compute (GPU), and pull results/artifacts back
-- [ ] Log every experiment to a structured ledger (metadata, CV score, links to artifacts), backed by git
 - [ ] CV-first scoring: local cross-validation is the primary signal; submissions rationed against the daily limit; track the CV→LB gap
 - [ ] Submit predictions to the competition via the Kaggle CLI and record the resulting LB score
-- [ ] Maintain a living strategy doc the AI updates each cycle (current best, hypothesis queue, what to try next)
-- [ ] Maintain experiment history the AI reasons over so it never re-proposes an already-tried idea
 
 ### Out of Scope
 
@@ -102,4 +102,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-07-11 after Phase 2 (Competition Context & Data) complete — machine-derived competition constitution + local data download shipped; CV scheme is AI-decided (D-05), tooling only persists the validated choice.*
+*Last updated: 2026-07-11 after Phase 3 (Local Experiment Loop, Ledger & Strategy) complete — the full idea→run→verdict→ledger→strategy cycle works end-to-end on local CV-only compute. Machine-verified scores only (anti-lie fail-closed result contract; a throwing/lying run is recorded FAILED, never a success), git-backed ledger that rebuilds from per-experiment folders, and a regenerated-from-ledger strategy with a never-repeat digest. Injection-safe experiment scaffolding (CR-01). Deferred low-risk: --exp-dir path traversal (IN-01), verbatim-trusted artifacts paths (IN-02).*
