@@ -4,14 +4,14 @@ milestone: v1.0
 milestone_name: milestone
 status: executing
 stopped_at: Phase 04 complete (04-05 done; opt-in live GPU push deferred to operator)
-last_updated: "2026-07-11T21:31:36.930Z"
-last_activity: 2026-07-11 -- Phase 04 execution started
+last_updated: "2026-07-11T21:37:31.886Z"
+last_activity: 2026-07-11
 progress:
   total_phases: 5
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 22
-  completed_plans: 21
-  percent: 60
+  completed_plans: 22
+  percent: 80
 ---
 
 # Project State
@@ -25,12 +25,12 @@ See: .planning/PROJECT.md (updated 2026-07-09)
 
 ## Current Position
 
-Phase: 04 (kaggle-kernel-execution-gpu-path) — EXECUTING
-Plan: 1 of 6
-Status: Executing Phase 04
-Last activity: 2026-07-11 -- Phase 04 execution started
+Phase: 04 (kaggle-kernel-execution-gpu-path) — GAP CLOSURE COMPLETE
+Plan: 6 of 6 (04-06 gap-closure: CR-01 + WR-03) executed
+Status: Ready to re-verify Phase 04
+Last activity: 2026-07-11 -- 04-06 gap closure (CR-01 + WR-03) executed
 
-Progress: [█████████░] executed, awaiting gap closure + re-verify
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -58,6 +58,7 @@ Progress: [█████████░] executed, awaiting gap closure + re-v
 | Phase 01 P01-02 | ~25min | 2 tasks | 9 files |
 | Phase 01 P01-03 | ~35min | 3 tasks | 5 files |
 | Phase 01 P01-04 | ~40min | 3 tasks | 2 files |
+| Phase 04 P06 | ~3min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -80,6 +81,8 @@ Recent decisions affecting current work:
 - [Phase 01]: 01-04: SETUP-04 NOT complete — credential half MET (masked/never-echoed, chmod+.env consent-gated, secrets gitignored), egress half still PARTIAL (01-03 example.com anomaly). Legacy KAGGLE_USERNAME/KAGGLE_KEY end-to-end validation UNVERIFIED. kaggle declared dev/live-only dep.
 - [Phase 04]: 04-05: kernel path (convert→push→poll→pull→record) wired into SKILL.md with detach/resume (re-run poll without re-pushing — D-01/D-09), D-13 non-blocking quota heads-up, and D-06 internet-off/effective-value notes + four scripts-table rows. Task 1 complete (commit 1acccbe).
 - [Phase 04]: 04-05: the one opt-in live GPU push DEFERRED to operator (deliberate, not skipped/failed) — the plan scopes it as NOT a phase blocker; phase is green from fixtures (199 passed) independent of the live run. Operator to confirm A1 (T4×2 accelerator string), A2 (kernels-status render vs _STATUS_RE), A3 (kernel-log shape + _KERNEL_ERROR_MARKERS coverage), A4 (kernels-push version string vs push_kernel.py regex) into references/kaggle-cli-behavior.md.
+- [Phase 04]: 04-06: kernel_run.json.status is authoritative — status in {ERROR, CANCEL_ACKNOWLEDGED} classifies FAILED(kernel_error) BEFORE result.json validation (CR-01); exact membership only, never echoed.
+- [Phase 04]: 04-06: WR-03 — an unreadable/missing --kernel-log fails CLOSED to FAILED(kernel_error) instead of deferring to a stale result.json; kernel_error reused, local path unchanged.
 
 ### Pending Todos
 
@@ -104,6 +107,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-12T00:00:00.000Z
+Last session: 2026-07-11T21:36:01.056Z
 Stopped at: Phase 04 complete (04-05 done; opt-in live GPU push deferred to operator)
-Resume file: None — ready to plan/execute Phase 05 (Submission & Leaderboard Tracking)
+Resume file: None

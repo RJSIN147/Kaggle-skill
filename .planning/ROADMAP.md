@@ -16,7 +16,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 1: Workspace, Credentials & Egress Guardrails** - Empty folder to a validated, git-tracked workspace with locked-down egress (completed 2026-07-10)
 - [x] **Phase 2: Competition Context & Data** - Machine-derived competition "constitution" plus local data, UI gates cleared (verification gaps_found 2026-07-10 — gap closure pending) (completed 2026-07-10)
 - [x] **Phase 3: Local Experiment Loop, Ledger & Strategy** - The full idea-to-verdict-to-ledger-to-strategy cycle, local & CV-only (MVP / core value) (completed 2026-07-11)
-- [ ] **Phase 4: Kaggle Kernel Execution (GPU Path)** - Run the same experiment on Kaggle GPU compute, silent-failure caught (all 5 plans executed; verification gaps_found 2026-07-12 — gap closure pending: anti-silent-failure guarantee has a hole, CR-01/VERIFICATION)
+- [x] **Phase 4: Kaggle Kernel Execution (GPU Path)** - Run the same experiment on Kaggle GPU compute, silent-failure caught (all 5 plans executed; verification gaps_found 2026-07-12 — gap closure pending: anti-silent-failure guarantee has a hole, CR-01/VERIFICATION) (completed 2026-07-11)
 - [ ] **Phase 5: Submission & Leaderboard Tracking** - Submit under CV-first discipline with budget gating and CV-to-LB gap tracking
 
 ## Phase Details
@@ -188,7 +188,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | 1. Workspace, Credentials & Egress Guardrails | 4/4 | Complete   | 2026-07-09 |
 | 2. Competition Context & Data | 7/7 | Complete   | 2026-07-10 |
 | 3. Local Experiment Loop, Ledger & Strategy | 5/5 | Complete   | 2026-07-11 |
-| 4. Kaggle Kernel Execution (GPU Path) | 5/5 | Complete   | 2026-07-11 |
+| 4. Kaggle Kernel Execution (GPU Path) | 6/6 | Complete   | 2026-07-11 |
 | 5. Submission & Leaderboard Tracking | 0/3 | Not started | - |
 
 ## Coverage

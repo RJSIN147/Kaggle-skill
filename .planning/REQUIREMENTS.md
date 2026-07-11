@@ -26,7 +26,7 @@ Requirements for the initial release. Each maps to a roadmap phase.
 - [ ] **EXP-02**: The AI authors a fresh notebook/script per experiment from a template scaffold, using a backend-agnostic data-path + result contract so the same code runs locally or on a Kernel
 - [ ] **EXP-03**: User can run an experiment locally, producing a cross-validation score and artifacts
 - [ ] **EXP-04**: Numeric results are written by tooling (from a machine-checked `result.json`), never hand-written by the AI; every ledger row carries provenance (run id, artifact hash, git commit, seed)
-- [ ] **EXP-05**: User can push a notebook to a Kaggle Kernel, run it on Kaggle compute (GPU), poll to completion, and pull results/artifacts back — with silent-failure (traceback-in-log) detection
+- [x] **EXP-05**: User can push a notebook to a Kaggle Kernel, run it on Kaggle compute (GPU), poll to completion, and pull results/artifacts back — with silent-failure (traceback-in-log) detection
 
 ### Memory
 
@@ -86,7 +86,7 @@ Which phases cover which requirements. Populated during roadmap creation.
 | EXP-02 | Phase 3 | Pending |
 | EXP-03 | Phase 3 | Pending |
 | EXP-04 | Phase 3 | Pending |
-| EXP-05 | Phase 4 | Pending |
+| EXP-05 | Phase 4 | Complete |
 | MEM-01 | Phase 3 | Pending |
 | MEM-02 | Phase 3 | Pending |
 | MEM-03 | Phase 3 | Pending |
