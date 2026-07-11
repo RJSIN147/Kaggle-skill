@@ -321,22 +321,44 @@ def main(argv=None) -> int:
 
     result_path = exp_dir / "result.json"
 
-    # Classification ladder. THE NEW FIRST RUNG (kernel path only, D-11/D-12): when
-    # --kernel-log is provided, the pulled Kaggle log is scanned for silent-failure markers
-    # BEFORE result.json is ever read. A hit => FAILED(kernel_error) even if a perfectly valid
-    # result.json is on disk — a kernel that reported COMPLETE but actually threw can never be
-    # a success (criterion 3). No hit (or no --kernel-log at all) => fall through to the
-    # EXISTING run_failed / _read_json / _validate_result ladder completely unchanged, so the
-    # local path stays byte-for-byte identical.
+    # Classification ladder (kernel path only, D-11/D-12 + CR-01/WR-03). When --kernel-log is
+    # provided, three AUTHORITATIVE kernel rungs decide BEFORE result.json is ever validated —
+    # each classifies FAILED(kernel_error), so a stale valid result.json can never rescue a
+    # confirmed or unverifiable failure (criterion 3, truth 11):
+    #   1. CR-01 status rung: kernel_run.json.status (poll-written, authoritative) in
+    #      {"ERROR", "CANCEL_ACKNOWLEDGED"} => a Kaggle-confirmed terminal FAILURE, unconditional.
+    #      Exact membership only — the status is untrusted text, never substring/regex/eval/echoed.
+    #   2. D-11 log-marker rung: a readable pulled log carrying a traceback/OOM/kill marker.
+    #   3. WR-03 fail-closed rung: an unreadable/missing --kernel-log fails CLOSED — a kernel run
+    #      whose expected log cannot be read is NEVER SUCCESS off a possibly-stale result.json.
+    # A missing/garbage kernel_run.json simply does not trigger rung 1 (fail-clear via _read_json).
+    # No kernel rung fired (or no --kernel-log at all) => fall through to the EXISTING run_failed /
+    # _read_json / _validate_result ladder unchanged, so the local path stays byte-for-byte
+    # identical. kernel_run is read ONCE here and reused by the provenance merge below.
     valid_result: dict | None = None
     kernel_error_hit = False
+    kernel_run: dict | None = None
     if args.kernel_log is not None:
-        try:
-            log_text = args.kernel_log.read_text()
-        except (FileNotFoundError, OSError):
-            log_text = None  # unreadable log = no kernel_error evidence; defer to result ladder
-        if log_text is not None and scan_kernel_log(log_text):
+        parsed_kernel_run, _ = _read_json(exp_dir / "kernel_run.json")
+        if isinstance(parsed_kernel_run, dict):
+            kernel_run = parsed_kernel_run
+
+        # Rung 1 — CR-01 authoritative status (before any log read / result validation).
+        if kernel_run is not None and kernel_run.get("status") in {
+            "ERROR", "CANCEL_ACKNOWLEDGED"
+        }:
             status, failure_reason, kernel_error_hit = "FAILED", "kernel_error", True
+
+        # Rungs 2 & 3 — log-marker scan, with WR-03 fail-closed on an unreadable log.
+        if not kernel_error_hit:
+            try:
+                log_text = args.kernel_log.read_text()
+            except (FileNotFoundError, OSError):
+                # WR-03: fail CLOSED — never defer an unverifiable log to a stale result.json.
+                status, failure_reason, kernel_error_hit = "FAILED", "kernel_error", True
+            else:
+                if scan_kernel_log(log_text):
+                    status, failure_reason, kernel_error_hit = "FAILED", "kernel_error", True
 
     if not kernel_error_hit:
         # A non-zero run exit pre-classifies FAILED BEFORE reading result.json (a throwing run
@@ -400,15 +422,17 @@ def main(argv=None) -> int:
             }
         )
 
-    # Kernel provenance merge (kernel path only, D-06/D-14). When --kernel-log is set, this
-    # was a Kaggle-kernel run: pull the auditable provenance from kernel_run.json (written by
-    # push_kernel.py / merged by pull_kernel.py) into meta so an internet-ON kernel run is a
-    # VISIBLE, auditable exception (D-06) rather than a silent one. Fail-clear: a missing or
-    # unreadable kernel_run.json never blocks the record — the meta simply carries no kernel
-    # block. The local path (no --kernel-log) is untouched, so its meta shape is unchanged.
+    # Kernel provenance merge (kernel path only, D-06/D-14 + CR-01 status audit). When
+    # --kernel-log is set, this was a Kaggle-kernel run: pull the auditable provenance from
+    # kernel_run.json (read ONCE above, reused here — never read twice) into meta so an
+    # internet-ON kernel run is a VISIBLE, auditable exception (D-06) rather than a silent one.
+    # The authoritative poll-written `status` is copied into meta["kernel"]["status"] on BOTH
+    # the SUCCESS and the FAILED path, so WHY a run was classified is auditable. Fail-clear: a
+    # missing or unreadable kernel_run.json never blocks the record — the meta simply carries
+    # only the backend marker. The local path (no --kernel-log) is untouched, so its meta shape
+    # is unchanged.
     if args.kernel_log is not None:
-        kernel_run, _ = _read_json(exp_dir / "kernel_run.json")
-        if isinstance(kernel_run, dict):
+        if kernel_run is not None:
             kernel_block = {
                 "backend": kernel_run.get("backend", "kernel"),
                 "kernel_slug": kernel_run.get("kernel_slug"),
@@ -418,6 +442,7 @@ def main(argv=None) -> int:
                 "docker_image": kernel_run.get("docker_image"),
                 "machine_shape": kernel_run.get("machine_shape"),
                 "kernel_version": kernel_run.get("kernel_version"),
+                "status": kernel_run.get("status"),
             }
             meta["kernel"] = kernel_block
         else:
