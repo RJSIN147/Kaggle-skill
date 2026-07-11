@@ -275,3 +275,26 @@ def test_status_complete_success_and_audit_copy(run_script, tmp_path):
     assert meta["status"] == "SUCCESS"
     assert meta["failure_reason"] is None
     assert meta["kernel"]["status"] == "COMPLETE"
+
+
+def test_non_string_status_does_not_crash(run_script, tmp_path):
+    """CR-01 hardening (Test F): a malformed kernel_run.json whose status is a non-string
+    (JSON array) is unhashable and would raise on the set-membership test. The isinstance(str)
+    guard must fail clear — the recorder never crashes, rung 1 never fires, and with a clean log
+    + valid result.json the run records SUCCESS (a malformed status is not a confirmed failure)."""
+    ws = tmp_path
+    exp = _seed(ws)
+    _write_result(exp)
+    # status is a JSON list — unhashable; the pre-guard membership test raised TypeError here.
+    (exp / "kernel_run.json").write_text(
+        json.dumps({"backend": "kernel", "kernel_slug": "tuser/exp-001", "status": []}) + "\n"
+    )
+    _git_init(ws)
+    log = FIXTURES / "kernel_logs" / "clean.txt"
+    r = _record(run_script, ws, "--kernel-log", str(log))
+    assert r.returncode == 0, r.stderr  # must NOT crash on the malformed status
+
+    meta = _read_meta(exp)
+    assert meta["status"] == "SUCCESS"
+    assert meta["failure_reason"] is None
+    assert meta["kernel"]["status"] == []  # copied verbatim into provenance
