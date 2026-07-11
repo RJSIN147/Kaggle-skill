@@ -79,3 +79,7 @@ None — plan executed exactly as written. The plan's Task 3 action mentioned `_
 ## Known Stubs
 
 None. The two templates default derived numeric fields to `null`/`[]` by design — these are tooling-written by the recorder (03-04), not stubs; the meta template's identity/provenance fields are `${TOKEN}` placeholders the scaffolder/recorder fill.
+
+## Self-Check: PASSED
+
+All 7 created files exist on disk; all 6 commits (`b173b5f`, `78dd532`, `02c7780`, `8f5e536`, `4b1695f`, `751d755`) are present in git history.
