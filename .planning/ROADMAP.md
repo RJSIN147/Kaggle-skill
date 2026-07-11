@@ -15,7 +15,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Workspace, Credentials & Egress Guardrails** - Empty folder to a validated, git-tracked workspace with locked-down egress (completed 2026-07-10)
 - [x] **Phase 2: Competition Context & Data** - Machine-derived competition "constitution" plus local data, UI gates cleared (verification gaps_found 2026-07-10 — gap closure pending) (completed 2026-07-10)
-- [ ] **Phase 3: Local Experiment Loop, Ledger & Strategy** - The full idea-to-verdict-to-ledger-to-strategy cycle, local & CV-only (MVP / core value)
+- [x] **Phase 3: Local Experiment Loop, Ledger & Strategy** - The full idea-to-verdict-to-ledger-to-strategy cycle, local & CV-only (MVP / core value) (completed 2026-07-11)
 - [ ] **Phase 4: Kaggle Kernel Execution (GPU Path)** - Run the same experiment on Kaggle GPU compute, silent-failure caught
 - [ ] **Phase 5: Submission & Leaderboard Tracking** - Submit under CV-first discipline with budget gating and CV-to-LB gap tracking
 
@@ -122,7 +122,7 @@ Plans:
 
 **Wave 4** *(blocked on 03-02, 03-04)*
 
-- [ ] 03-05-PLAN.md — regen_strategy.py (ledger facts + AI reasoning, full overwrite) + SKILL.md loop wiring + prompt-driven never-repeat (MEM-02/03)
+- [x] 03-05-PLAN.md — regen_strategy.py (ledger facts + AI reasoning, full overwrite) + SKILL.md loop wiring + prompt-driven never-repeat (MEM-02/03)
 
 ### Phase 4: Kaggle Kernel Execution (GPU Path)
 
@@ -173,7 +173,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 |-------|----------------|--------|-----------|
 | 1. Workspace, Credentials & Egress Guardrails | 4/4 | Complete   | 2026-07-09 |
 | 2. Competition Context & Data | 7/7 | Complete   | 2026-07-10 |
-| 3. Local Experiment Loop, Ledger & Strategy | 4/5 | In Progress|  |
+| 3. Local Experiment Loop, Ledger & Strategy | 5/5 | Complete   | 2026-07-11 |
 | 4. Kaggle Kernel Execution (GPU Path) | 0/2 | Not started | - |
 | 5. Submission & Leaderboard Tracking | 0/3 | Not started | - |
 
