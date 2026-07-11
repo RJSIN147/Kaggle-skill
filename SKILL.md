@@ -195,6 +195,77 @@ verification, so nothing busy-loops (criterion 3):
 
 ---
 
+## Local experiment loop (EXP-*/MEM-*)
+
+Once the data is analyzed and `cv.scheme` committed, drive one CV-first experiment cycle. Like
+the competition section, these are **separate, idempotent entry points the SKILL sequences**
+(D-02) — each is non-interactive (argparse in, exit code out); the SKILL holds the human/AI loop.
+**Numbers are TOOLING-WRITTEN end-to-end — the AI never hand-types a CV score.** Sequence:
+
+0. **Set the metric first (precondition).** Read `competition.md`'s **Evaluation metric** prose
+   (the captured value, NOT the `_TODO` stub), decide the enum, and commit it:
+
+   ```bash
+   python3 scripts/set_metric.py --workspace <cwd> --metric <enum>
+   ```
+
+   Direction is looked up from the registry for known metrics; `custom` REQUIRES an explicit
+   `--greater-is-better` / `--no-greater-is-better` (block, don't guess). If the metric is
+   uncaptured/unmappable the script blocks with reserved **exit 78** — run
+   `capture_competition.py` first, **never guess a metric**.
+
+1. **Never-repeat check, THEN scaffold (MEM-02, D-13).** BEFORE authoring a new `experiment.py`,
+   perform the prompt-driven **never-repeat** check: read `control/ledger.jsonl`
+   (idea/hypothesis/verdict/score per row) and the **tried-list digest** in `strategy.md`, and
+   confirm the proposed idea is **not a duplicate** of one already tried. This is prose-driven —
+   no new tooling; the digest is a by-product of `regen_strategy.py`. Only once the idea is
+   confirmed novel, mint the experiment:
+
+   ```bash
+   python3 scripts/scaffold_experiment.py --workspace <cwd> --idea "..." --hypothesis "..."
+   ```
+
+   It mints `experiments/exp-NNN/` with a rendered `experiment.py` (metric + CV snapshot baked
+   in) and a `meta.json` stub carrying the idea/hypothesis. Then **the AI edits the scaffolded
+   `experiment.py`** — model, features, an UNFITTED `preprocess_factory()` (leakage-safe by
+   construction).
+
+2. **Run locally.**
+
+   ```bash
+   python3 scripts/run_local.py --workspace <cwd> --exp-dir experiments/exp-NNN
+   ```
+
+   Runs `experiment.py` under `uv run --no-sync` (never installs at runtime — a missing ML env
+   degrades to a clear `run \`uv sync\`` error), captures ONLY the child exit code, and leaves
+   the emitted `result.json` on disk for the recorder to verify.
+
+3. **Record (the anti-lie step).** Pass the run's exit code through:
+
+   ```bash
+   python3 scripts/record_experiment.py --workspace <cwd> --exp-dir experiments/exp-NNN --run-exit-code <rc>
+   ```
+
+   The recorder writes **ALL** numbers: it recomputes `mean(fold_scores)` to catch a lying
+   notebook, attaches provenance, and persists `meta.json` + a ledger row + a `VERDICT.md` stub.
+   A throwing/invalid run is recorded **FAILED WITH a verdict** (never dropped, never a success
+   row). If the ledger ever drifts, `rebuild_ledger.py` rebuilds it as a pure function of the
+   `meta.json` folders.
+
+4. **Regenerate the strategy (MEM-03, D-12).** The AI writes a fresh **reasoning fragment**
+   (hypothesis queue + next action) to a markdown file, then:
+
+   ```bash
+   python3 scripts/regen_strategy.py --workspace <cwd> --reasoning-file <path>
+   ```
+
+   Tooling renders the FACTS (current-best by the metric's direction + the tried-list digest)
+   from `control/ledger.jsonl` and splices the AI's reasoning **verbatim**, then **fully
+   overwrites** `strategy.md` atomically. The current-best number comes from the ledger, never
+   AI-typed; a hand edit is clobbered each cycle — so the strategy can never drift from the facts.
+
+---
+
 ## Security & egress (SETUP-04)
 
 - **Never echo, log, or commit credential values.** The scripts mask output and the pre-commit
@@ -219,6 +290,12 @@ verification, so nothing busy-loops (criterion 3):
 | `scripts/download_data.py` | COMP-02/03 rules-gate preflight → download `<slug>.zip` → zip-slip-safe extract into `data/` (needs VALIDATED creds) |
 | `scripts/analyze_data.py` | COMP-01 schema + CV evidence + real adversarial validation (degrades to `AV: SKIPPED` when the workspace ML env is absent). Persists `cv.scheme` ONLY from the AI's explicit `--cv-scheme`; never auto-picks it (D-05) |
 | `scripts/cv_evidence.py` | COMP-01 stdlib structural CV evidence (group/datetime/target-balance/id-overlap) + a NON-authoritative advisory `recommend` hint the AI reasons over; never commits `cv.scheme` |
+| `scripts/set_metric.py` | EXP/D-08 metric setter: the AI decides the enum from captured prose, tooling writes `config.json.metric`; blocks (exit 78) if uncaptured; `custom` needs an explicit direction |
+| `scripts/scaffold_experiment.py` | EXP-01/D-02 mint a fresh `exp-NNN` + render `experiment.py` (metric/CV snapshot baked in) + a `meta.json` stub carrying idea/hypothesis; advances the id cursor |
+| `scripts/run_local.py` | EXP-03/D-01 run the scaffolded `experiment.py` under `uv run --no-sync` (never installs), capture only the exit code; `result.json` is verified by the recorder |
+| `scripts/record_experiment.py` | EXP-04/D-05/06 the anti-lie recorder: recompute the mean, attach provenance, persist `meta.json` + ledger row + `VERDICT.md`; a bad run is FAILED-with-verdict |
+| `scripts/rebuild_ledger.py` | MEM-01/D-10 rebuild `control/ledger.jsonl` as a pure function of the `meta.json` folders (corrupt metas skipped-and-warned; atomic replace) |
+| `scripts/regen_strategy.py` | MEM-02/03/D-12 regenerate `strategy.md` from the ledger: tooling FACTS (current-best + tried-list) + AI `--reasoning-file`, full atomic overwrite |
 
 Read `references/egress-allowlist.md` (egress hosts + portability) and
 `references/kaggle-cli-behavior.md` (observed CLI exit-codes / precedence) only when needed.
