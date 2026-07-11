@@ -59,7 +59,19 @@ def _read_ledger(path: Path) -> list[dict]:
         line = line.strip()
         if not line:
             continue
-        rows.append(json.loads(line))
+        # Fail-clear, matching rebuild_ledger's posture (WR-02): a single malformed line
+        # (e.g. a truncated final line from an interrupted write) must NOT abort strategy
+        # regeneration with a raw traceback. Skip-and-warn, and skip non-object rows so a
+        # scalar/list line cannot later raise AttributeError on r.get(...).
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError as exc:
+            print(f"regen: skipping unparseable ledger line: {exc}.", file=sys.stderr)
+            continue
+        if not isinstance(row, dict):
+            print("regen: skipping non-object ledger line.", file=sys.stderr)
+            continue
+        rows.append(row)
     return rows
 
 

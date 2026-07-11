@@ -255,6 +255,30 @@ def test_missing_reasoning_file_blocks(run_script, tmp_workspace):
 
 
 # --------------------------------------------------------------------------- #
+# WR-02: a corrupt / non-object ledger line is skipped, not fatal.
+# --------------------------------------------------------------------------- #
+def test_corrupt_ledger_line_is_skipped_not_fatal(run_script, tmp_workspace):
+    """WR-02: a truncated final line (from an interrupted write) or a non-object line must
+    NOT abort regen with a JSONDecodeError/AttributeError traceback. The good rows still
+    render; the bad lines are skipped-and-warned."""
+    ws = tmp_workspace
+    _seed(ws, rows=[_row("exp-001", idea="the good row", cv_mean=0.70)])
+    # Append a scalar line and a truncated (unparseable) final line after the valid row.
+    ledger = ws / "control" / "ledger.jsonl"
+    ledger.write_text(ledger.read_text() + "5\n" + '{"exp_id":"exp-002","cv_mean":0.9')
+    reasoning = _write_reasoning(ws, "## Hypothesis queue\n1. next.")
+
+    proc = run_script("regen_strategy.py", "--workspace", ws,
+                      "--reasoning-file", reasoning, cwd=ws)
+    assert proc.returncode == 0, proc.stderr
+    out = _strategy_text(ws)
+    # The valid row still drives the facts; the truncated exp-002 never lands.
+    cb = out.split("## Current best", 1)[1].split("##", 1)[0]
+    assert "exp-001" in cb
+    assert "exp-002" not in out
+
+
+# --------------------------------------------------------------------------- #
 # D-12: full overwrite, NOT a section-safe-merge.
 # --------------------------------------------------------------------------- #
 def test_script_does_not_use_replace_section():
