@@ -16,7 +16,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 1: Workspace, Credentials & Egress Guardrails** - Empty folder to a validated, git-tracked workspace with locked-down egress (completed 2026-07-10)
 - [x] **Phase 2: Competition Context & Data** - Machine-derived competition "constitution" plus local data, UI gates cleared (verification gaps_found 2026-07-10 — gap closure pending) (completed 2026-07-10)
 - [x] **Phase 3: Local Experiment Loop, Ledger & Strategy** - The full idea-to-verdict-to-ledger-to-strategy cycle, local & CV-only (MVP / core value) (completed 2026-07-11)
-- [x] **Phase 4: Kaggle Kernel Execution (GPU Path)** - Run the same experiment on Kaggle GPU compute, silent-failure caught (completed 2026-07-11)
+- [ ] **Phase 4: Kaggle Kernel Execution (GPU Path)** - Run the same experiment on Kaggle GPU compute, silent-failure caught (all 5 plans executed; verification gaps_found 2026-07-12 — gap closure pending: anti-silent-failure guarantee has a hole, CR-01/VERIFICATION)
 - [ ] **Phase 5: Submission & Leaderboard Tracking** - Submit under CV-first discipline with budget gating and CV-to-LB gap tracking
 
 ## Phase Details
