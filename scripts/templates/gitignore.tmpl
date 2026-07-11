@@ -23,10 +23,18 @@ experiments/*/*.csv
 experiments/*/*.zip
 experiments/*/*.pkl
 experiments/*/*.parquet
-# Tracked-but-anticipated exceptions: keep experiment code + meta.json (Phase 3)
+# Phase 4 kernel-path artifacts — pulled kernel output is FLAT (result.json + oof.npy
+# + rendered .ipynb) so heavy binaries land at the experiment root, not under
+# artifacts/. Ignore the numpy dump and the (untrusted, possibly large/token-shaped)
+# execution log; keep the small kernel_run.json provenance TRACKED (D-03/D-14).
+experiments/*/*.npy
+experiments/*/kernel_log.txt
+# Tracked-but-anticipated exceptions: keep experiment code + meta.json (Phase 3) and
+# the kernel_run.json provenance (Phase 4)
 !experiments/*/*.py
 !experiments/*/*.ipynb
 !experiments/*/meta.json
+!experiments/*/kernel_run.json
 
 # Python
 __pycache__/
