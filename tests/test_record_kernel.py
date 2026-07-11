@@ -100,6 +100,26 @@ def _read_meta(exp: Path) -> dict:
     return json.loads((exp / "meta.json").read_text())
 
 
+def _write_kernel_run(exp: Path, status: str) -> None:
+    """Write a minimal kernel_run.json carrying a given poll-written status.
+
+    Mirrors what poll_kernel.py leaves behind on a terminal poll (status set to one of
+    COMPLETE/ERROR/CANCEL_ACKNOWLEDGED). Only the fields the recorder reads for the status
+    rung + provenance merge are populated.
+    """
+    (exp / "kernel_run.json").write_text(
+        json.dumps(
+            {
+                "backend": "kernel",
+                "kernel_slug": "tuser/exp-001",
+                "status": status,
+            },
+            indent=2,
+        )
+        + "\n"
+    )
+
+
 def _record(run_script, ws, *extra):
     return run_script(
         "record_experiment.py", "--workspace", ws, "--exp-dir", "experiments/exp-001",
@@ -159,3 +179,99 @@ def test_source_has_kernel_error_rung():
     single recorder (D-12: one ladder, one enum — extended, never re-derived)."""
     src = (SCRIPTS_DIR / "record_experiment.py").read_text()
     assert "kernel_error" in src
+
+
+# --------------------------------------------------------------------------- #
+# 04-06 gap-closure regression tests (CR-01 + WR-03). RED against the pre-fix
+# recorder: Tests A/B/D would record SUCCESS off the stale valid result.json and
+# Tests A/B/C/E find no meta["kernel"]["status"] key.
+# --------------------------------------------------------------------------- #
+
+
+def test_status_error_beats_valid_result(run_script, tmp_path):
+    """CR-01 (Test A): kernel_run.json.status == ERROR ⇒ FAILED(kernel_error), even with a
+    marker-free (clean) log AND a perfectly valid result.json on disk. The Kaggle-confirmed
+    terminal failure is authoritative BEFORE result.json is validated."""
+    ws = tmp_path
+    exp = _seed(ws)
+    _write_result(exp)  # a valid result that must NOT rescue the confirmed failure
+    _write_kernel_run(exp, "ERROR")
+    _git_init(ws)
+    log = FIXTURES / "kernel_logs" / "clean.txt"  # marker-free ⇒ only the status rung can fire
+    r = _record(run_script, ws, "--kernel-log", str(log))
+    assert r.returncode == 0, r.stderr
+
+    meta = _read_meta(exp)
+    assert meta["status"] == "FAILED"
+    assert meta["failure_reason"] == "kernel_error"
+
+
+def test_status_cancel_acknowledged_beats_valid_result(run_script, tmp_path):
+    """CR-01 (Test B): kernel_run.json.status == CANCEL_ACKNOWLEDGED ⇒ FAILED(kernel_error),
+    same as ERROR — the second Kaggle-confirmed FAILED-terminal state."""
+    ws = tmp_path
+    exp = _seed(ws)
+    _write_result(exp)
+    _write_kernel_run(exp, "CANCEL_ACKNOWLEDGED")
+    _git_init(ws)
+    log = FIXTURES / "kernel_logs" / "clean.txt"
+    r = _record(run_script, ws, "--kernel-log", str(log))
+    assert r.returncode == 0, r.stderr
+
+    meta = _read_meta(exp)
+    assert meta["status"] == "FAILED"
+    assert meta["failure_reason"] == "kernel_error"
+
+
+def test_status_copied_into_meta_kernel_on_failed_path(run_script, tmp_path):
+    """CR-01 (Test C): the confirmed status is copied verbatim into meta["kernel"]["status"]
+    on the FAILED path — provenance audit of WHY the run was failed."""
+    ws = tmp_path
+    exp = _seed(ws)
+    _write_result(exp)
+    _write_kernel_run(exp, "ERROR")
+    _git_init(ws)
+    log = FIXTURES / "kernel_logs" / "clean.txt"
+    r = _record(run_script, ws, "--kernel-log", str(log))
+    assert r.returncode == 0, r.stderr
+
+    meta = _read_meta(exp)
+    assert meta["status"] == "FAILED"
+    assert meta["kernel"]["status"] == "ERROR"
+
+
+def test_unreadable_kernel_log_fails_closed(run_script, tmp_path):
+    """WR-03 (Test D): an unreadable/missing --kernel-log ⇒ FAILED(kernel_error), NEVER SUCCESS
+    off a stale valid result.json. No kernel_run.json (or one without a failed status) — the
+    unreadable-log rung alone must fail closed."""
+    ws = tmp_path
+    exp = _seed(ws)
+    _write_result(exp)  # a stale valid result that must NOT rescue an unverifiable log
+    _git_init(ws)
+    missing_log = exp / "kernel_log.txt"  # never pulled — does not exist
+    assert not missing_log.exists()
+    r = _record(run_script, ws, "--kernel-log", str(missing_log))
+    assert r.returncode == 0, r.stderr
+
+    meta = _read_meta(exp)
+    assert meta["status"] == "FAILED"
+    assert meta["failure_reason"] == "kernel_error"
+
+
+def test_status_complete_success_and_audit_copy(run_script, tmp_path):
+    """CR-01 (Test E): a clean log + valid result.json + kernel_run.json status COMPLETE ⇒
+    SUCCESS, AND meta["kernel"]["status"] == COMPLETE — the status copy fires on the SUCCESS
+    path too and COMPLETE never fails."""
+    ws = tmp_path
+    exp = _seed(ws)
+    _write_result(exp)
+    _write_kernel_run(exp, "COMPLETE")
+    _git_init(ws)
+    log = FIXTURES / "kernel_logs" / "clean.txt"
+    r = _record(run_script, ws, "--kernel-log", str(log))
+    assert r.returncode == 0, r.stderr
+
+    meta = _read_meta(exp)
+    assert meta["status"] == "SUCCESS"
+    assert meta["failure_reason"] is None
+    assert meta["kernel"]["status"] == "COMPLETE"
