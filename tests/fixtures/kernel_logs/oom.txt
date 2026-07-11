@@ -1,0 +1,6 @@
+[NbConvertApp] Converting notebook __notebook__.ipynb to notebook
+[NbConvertApp] Executing notebook with kernel: python3
+Loading competition data from /kaggle/input/titanic ...
+Building 8192 x 200000 dense feature matrix ...
+Your notebook tried to allocate more memory than is available. It has restarted.
+Killed

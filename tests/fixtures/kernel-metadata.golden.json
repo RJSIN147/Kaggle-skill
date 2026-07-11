@@ -1,0 +1,15 @@
+{
+  "id": "testuser/titanic-exp-001",
+  "title": "titanic-exp-001",
+  "code_file": "experiment.ipynb",
+  "language": "python",
+  "kernel_type": "notebook",
+  "is_private": true,
+  "enable_gpu": true,
+  "enable_tpu": false,
+  "enable_internet": false,
+  "competition_sources": ["titanic"],
+  "dataset_sources": [],
+  "kernel_sources": [],
+  "model_sources": []
+}
