@@ -111,6 +111,63 @@ def test_internet_provenance(run_script, tmp_path):
     assert data.get("enable_internet") is False
 
 
+def _make_kaggle_shim_with_version(bindir: Path, version: int = 3) -> None:
+    """Like `_make_kaggle_shim`, but the `kernels push` output names a version int
+    so the D-05 provenance scrape has something to parse."""
+    bindir.mkdir(parents=True, exist_ok=True)
+    shim = bindir / "kaggle"
+    shim.write_text(
+        "#!/usr/bin/env bash\n"
+        'if [ "$1" = "config" ] && [ "$2" = "view" ]; then\n'
+        '  echo "- username: testuser"; exit 0\n'
+        "fi\n"
+        'if [ "$1" = "quota" ]; then\n'
+        "  echo '{\"resource\":\"gpu\",\"used\":0.0,\"remaining\":30.0,"
+        "\"total\":30.0,\"refreshAt\":\"2026-07-19T00:00:00Z\"}'; exit 0\n"
+        "fi\n"
+        'if [ "$1" = "kernels" ] && [ "$2" = "push" ]; then\n'
+        f'  echo "Kernel version {version} successfully pushed"; exit 0\n'
+        "fi\n"
+        'if [ "$1" = "kernels" ]; then echo "kernels $2 ok"; exit 0; fi\n'
+        "exit 0\n"
+    )
+    shim.chmod(0o755)
+
+
+def test_version_provenance(run_script, tmp_path):
+    """kernel_run.json.kernel_version is the integer parsed from the push output when
+    present, else null — provenance-only, never blocking the push exit code (D-05)."""
+    # Version present in the push output → parsed as an int.
+    ws = tmp_path / "with_version"
+    ws.mkdir()
+    _seed_config(ws)
+    _make_exp(ws)
+    bindir = ws / "bin"
+    _make_kaggle_shim_with_version(bindir, version=7)
+    r = run_script(
+        "push_kernel.py", "--workspace", ws, "--exp-dir", "experiments/exp-001",
+        cwd=ws, extra_env=_path_with(bindir),
+    )
+    assert r.returncode == 0, r.stderr
+    data = json.loads((ws / "experiments" / "exp-001" / "kernel_run.json").read_text())
+    assert data["kernel_version"] == 7
+
+    # No parseable version in the push output → null, and the push still succeeds.
+    ws2 = tmp_path / "no_version"
+    ws2.mkdir()
+    _seed_config(ws2)
+    _make_exp(ws2)
+    bindir2 = ws2 / "bin"
+    _make_kaggle_shim(bindir2)  # emits "kernels push ok" — no version integer
+    r2 = run_script(
+        "push_kernel.py", "--workspace", ws2, "--exp-dir", "experiments/exp-001",
+        cwd=ws2, extra_env=_path_with(bindir2),
+    )
+    assert r2.returncode == 0, r2.stderr
+    data2 = json.loads((ws2 / "experiments" / "exp-001" / "kernel_run.json").read_text())
+    assert data2["kernel_version"] is None
+
+
 def test_source_routes_through_gateway():
     """Source-invariant (goes GREEN in 04-02): every kaggle call routes through the
     no-echo/timeout choke point, never a bare subprocess or a printed status buffer."""

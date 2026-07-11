@@ -17,6 +17,9 @@
 # runtime-installs — the operator runs `uv sync`; if the env is absent the runner degrades
 # (records a clear "run uv sync" message), it does not install. `xgboost>=2.1` keeps 3.11
 # compatibility (the 3.x wheels want Python ≥3.12); GBDT floors track Kaggle's image.
+# jupytext (>=1.16) is the .py -> .ipynb bridge for the kernel path (EXP-05, D-02):
+# convert_notebook.py shells `uv run --no-sync jupytext` in this env. DECLARED here so the
+# operator's `uv sync` provides it — the skill NEVER runtime-installs (CLAUDE.md).
 [project]
 name = "kaggle-competition-workspace"
 version = "0.0.0"
@@ -29,6 +32,7 @@ dependencies = [
     "lightgbm>=4.5",
     "xgboost>=2.1",
     "catboost>=1.2",
+    "jupytext>=1.16",
 ]
 
 [tool.uv]
