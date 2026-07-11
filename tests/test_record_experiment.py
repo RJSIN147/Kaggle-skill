@@ -181,8 +181,14 @@ def test_missing_result_is_failed_with_verdict_no_success_row(run_script, tmp_pa
     assert meta["idea"]
     assert meta["hypothesis"]
     assert (exp / "VERDICT.md").is_file()
-    # THE anti-lie assertion: no success row was fabricated.
-    assert _ledger_rows(ws) == []
+    # THE anti-lie assertion (post MEM-01/MEM-02 fix): a FAILED experiment DOES land a
+    # ledger row so the never-repeat tried-list sees it, but that row carries NO
+    # fabricated score — cv_mean is null, never invented from thin air.
+    rows = _ledger_rows(ws)
+    assert len(rows) == 1
+    assert rows[0]["exp_id"] == "exp-001"
+    assert rows[0]["status"] == "FAILED"
+    assert rows[0]["cv_mean"] is None
 
 
 def test_lying_mean_is_failed_schema_invalid(run_script, tmp_path):
@@ -198,7 +204,11 @@ def test_lying_mean_is_failed_schema_invalid(run_script, tmp_path):
     assert meta["status"] == "FAILED"
     assert meta["failure_reason"] == "schema_invalid"
     assert meta["idea"] and meta["hypothesis"]
-    assert _ledger_rows(ws) == []
+    # A FAILED row lands, but the lying mean is NOT carried into it (null cv_mean).
+    rows = _ledger_rows(ws)
+    assert len(rows) == 1
+    assert rows[0]["status"] == "FAILED"
+    assert rows[0]["cv_mean"] is None
 
 
 def test_out_of_range_mean_is_failed(run_script, tmp_path):
@@ -229,7 +239,11 @@ def test_custom_metric_cannot_bypass_bounded_range_gate(run_script, tmp_path):
     meta = _read_meta(exp)
     assert meta["status"] == "FAILED"
     assert meta["failure_reason"] == "schema_invalid"
-    assert _ledger_rows(ws) == []
+    # The implausible custom score never reaches the ledger as a number (null cv_mean).
+    rows = _ledger_rows(ws)
+    assert len(rows) == 1
+    assert rows[0]["status"] == "FAILED"
+    assert rows[0]["cv_mean"] is None
 
 
 def test_non_finite_fold_is_failed(run_script, tmp_path):
@@ -258,7 +272,12 @@ def test_e2e_throwing_run_recorded_failed_with_hypothesis(run_script, tmp_path):
     assert meta["idea"]
     assert meta["hypothesis"]
     assert (exp / "VERDICT.md").is_file()
-    assert _ledger_rows(ws) == []  # criterion 3 demonstrated
+    # criterion 3 demonstrated: the throwing run lands a FAILED row (visible to the
+    # never-repeat tried-list) but with NO fabricated score.
+    rows = _ledger_rows(ws)
+    assert len(rows) == 1
+    assert rows[0]["status"] == "FAILED"
+    assert rows[0]["cv_mean"] is None
 
 
 def test_nonzero_run_never_upgraded_to_success(run_script, tmp_path):
@@ -272,7 +291,12 @@ def test_nonzero_run_never_upgraded_to_success(run_script, tmp_path):
 
     meta = _read_meta(exp)
     assert meta["status"] == "FAILED"
-    assert _ledger_rows(ws) == []
+    # A valid-on-disk result cannot upgrade a nonzero run: the row is FAILED and its
+    # score fields stay null (the disk numbers are never carried into a FAILED row).
+    rows = _ledger_rows(ws)
+    assert len(rows) == 1
+    assert rows[0]["status"] == "FAILED"
+    assert rows[0]["cv_mean"] is None
 
 
 def test_missing_stub_meta_fails_clear(run_script, tmp_path):
@@ -291,3 +315,139 @@ def test_source_recompute_present_no_git_add_all_no_sklearn():
     assert "git add -A" not in src
     assert "import sklearn" not in src
     assert "from sklearn" not in src
+
+
+# --------------------------------------------------------------------------- #
+# FAILED experiments MUST land in the ledger too (MEM-01 / MEM-02).
+#
+# The historical gap (03-VERIFICATION.md): record_experiment.py gated its ledger
+# write behind `if status == "SUCCESS":`, so a FAILED experiment produced a
+# canonical meta.json but NEVER a ledger row in the normal scaffold->run->record
+# loop. That made the incremental ledger diverge from a full rebuild_ledger.py of
+# the same folders (Criterion 4) and hid tried-and-FAILED ideas from
+# regen_strategy's never-repeat tried-list (Criterion 5). The fix: record delegates
+# to the same full-derivation path rebuild uses, so incremental == rebuild by
+# construction — for SUCCESS and FAILED alike — while a FAILED row still carries a
+# null cv_mean (a recorded fact, never a fabricated score).
+# --------------------------------------------------------------------------- #
+def _stub_for(exp_id, *, idea, hypothesis):
+    return {
+        "schema_version": 1,
+        "exp_id": exp_id,
+        "created": "2026-01-01T00:00:00Z",
+        "idea": idea,
+        "hypothesis": hypothesis,
+        "status": "pending",
+        "failure_reason": None,
+        "metric": None,
+        "greater_is_better": None,
+        "cv_scheme": None,
+        "n_folds": None,
+        "fold_scores": [],
+        "cv_mean": None,
+        "cv_std": None,
+        "provenance": {
+            "run_id": "", "artifact_hash": "", "git_commit": "",
+            "git_dirty": False, "seed": "",
+        },
+        "result_path": f"experiments/{exp_id}/result.json",
+        "verdict_path": f"experiments/{exp_id}/VERDICT.md",
+        "artifacts": [],
+    }
+
+
+def _add_exp(ws, exp_id, *, idea, hypothesis):
+    """Scaffold a second experiment folder (experiment.py anchor + meta.json stub)."""
+    exp = ws / "experiments" / exp_id
+    (exp / "artifacts").mkdir(parents=True, exist_ok=True)
+    (exp / "experiment.py").write_text(f"# minted {exp_id}\nprint('hi')\n")
+    (exp / "meta.json").write_text(
+        json.dumps(_stub_for(exp_id, idea=idea, hypothesis=hypothesis), indent=2) + "\n"
+    )
+    return exp
+
+
+def _record_dir(run_script, ws, exp_id, *extra):
+    return run_script(
+        "record_experiment.py", "--workspace", ws, "--exp-dir", f"experiments/{exp_id}",
+        *extra, cwd=ws,
+    )
+
+
+def test_failed_experiment_appends_single_null_score_row(run_script, tmp_path):
+    """(a)+(d): a FAILED experiment appends EXACTLY ONE ledger row with a null cv_mean
+    (no fabricated score) and honest provenance, so the never-repeat tried-list sees it."""
+    ws = tmp_path
+    _seed(ws)  # exp-001, no result.json → FAILED (missing_result)
+    _git_init(ws)
+    r = _record(run_script, ws)
+    assert r.returncode == 0, r.stderr
+
+    rows = _ledger_rows(ws)
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["exp_id"] == "exp-001"
+    assert row["status"] == "FAILED"
+    # (d) no fabricated numeric score on the FAILED row.
+    assert row["cv_mean"] is None
+    assert row["cv_std"] is None
+    # Real provenance carried through so the row is auditable (EXP-04).
+    assert row["idea"] == "LightGBM baseline on raw features"
+    assert row["git_commit"] not in (None, "")
+    assert row["seed"] is not None
+
+
+def test_re_recording_failed_is_idempotent_single_ledger_row(run_script, tmp_path):
+    """(b) WR-01 for the FAILED path: re-recording an already-recorded FAILED experiment
+    must NOT duplicate its row — still exactly one FAILED/null-score row."""
+    ws = tmp_path
+    _seed(ws)
+    _git_init(ws)
+    assert _record(run_script, ws).returncode == 0
+    rows1 = _ledger_rows(ws)
+    assert len(rows1) == 1 and rows1[0]["status"] == "FAILED"
+    # Re-record the SAME FAILED exp — must overwrite, not append.
+    assert _record(run_script, ws).returncode == 0
+    rows2 = _ledger_rows(ws)
+    assert len(rows2) == 1
+    assert rows2[0]["exp_id"] == "exp-001"
+    assert rows2[0]["status"] == "FAILED"
+    assert rows2[0]["cv_mean"] is None
+
+
+def test_incremental_ledger_equals_full_rebuild_for_mixed_statuses(run_script, tmp_path):
+    """(c) The canonical MEM-01 invariant: after recording a mix of SUCCESS + FAILED
+    experiments through the normal loop, control/ledger.jsonl is BYTE-IDENTICAL to a
+    fresh rebuild_ledger.py of the same folders — incremental and full-derivation ledgers
+    can never diverge (the exact gap this fix closes)."""
+    ws = tmp_path
+    exp1 = _seed(ws)  # seeds control + exp-001 stub (will be SUCCESS)
+    _write_result(exp1)
+    _add_exp(  # exp-002 will be FAILED (no result.json)
+        ws, "exp-002",
+        idea="XGBoost on target-encoded cats",
+        hypothesis="target encoding beats one-hot",
+    )
+    _git_init(ws)
+
+    assert _record_dir(run_script, ws, "exp-001").returncode == 0
+    assert _record_dir(run_script, ws, "exp-002").returncode == 0
+
+    incremental = (ws / "control" / "ledger.jsonl").read_bytes()
+
+    rows = _ledger_rows(ws)
+    assert {r["exp_id"]: r["status"] for r in rows} == {
+        "exp-001": "SUCCESS",
+        "exp-002": "FAILED",
+    }
+    # The FAILED row still carries no fabricated score; the SUCCESS row keeps its number.
+    by_id = {r["exp_id"]: r for r in rows}
+    assert by_id["exp-002"]["cv_mean"] is None
+    assert by_id["exp-001"]["cv_mean"] == 0.81
+
+    # A full rebuild of the IDENTICAL folder set must reproduce the SAME bytes.
+    (ws / "control" / "ledger.jsonl").unlink()
+    assert run_script("rebuild_ledger.py", "--workspace", ws, cwd=ws).returncode == 0
+    rebuilt = (ws / "control" / "ledger.jsonl").read_bytes()
+
+    assert incremental == rebuilt
