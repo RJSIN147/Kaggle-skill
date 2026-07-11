@@ -1,0 +1,10 @@
+[NbConvertApp] Converting notebook __notebook__.ipynb to notebook
+[NbConvertApp] Executing notebook with kernel: python3
+Loading competition data from /kaggle/input/titanic ...
+Fitting fold 0/3 ... roc_auc=0.801
+Fitting fold 1/3 ... roc_auc=0.823
+Fitting fold 2/3 ... roc_auc=0.812
+CV mean roc_auc = 0.812 (+/- 0.009)
+Wrote result.json and artifacts/oof.npy to /kaggle/working
+[NbConvertApp] Writing 20487 bytes to __notebook__.ipynb
+Notebook run completed normally.

@@ -1,0 +1,12 @@
+[NbConvertApp] Converting notebook __notebook__.ipynb to notebook
+[NbConvertApp] Executing notebook with kernel: python3
+Loading competition data from /kaggle/input/titanic ...
+Fitting fold 0/3 ...
+Fitting fold 1/3 ...
+Traceback (most recent call last)
+  File "/kaggle/working/__notebook_source__.ipynb", line 42, in <module>
+    oof = cross_val_predict(model, X, y, cv=cv)
+  File "/opt/conda/lib/python3.11/site-packages/sklearn/model_selection/_validation.py", line 1013, in cross_val_predict
+    raise ValueError("Found input variables with inconsistent numbers of samples")
+ValueError: Found input variables with inconsistent numbers of samples: [891, 418]
+[NbConvertApp] Writing 20487 bytes to __notebook__.ipynb
