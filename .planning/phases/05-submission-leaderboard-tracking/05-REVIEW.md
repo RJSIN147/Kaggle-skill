@@ -33,10 +33,27 @@ files_reviewed_list:
   - tests/test_submit.py
 findings:
   critical: 3
+  critical_fixed: 3
+  critical_open: 0
   warning: 11
   info: 0
   total: 14
-status: issues_found
+status: criticals_fixed
+resolution:
+  fixed_at: 2026-07-12
+  note: >-
+    All 3 criticals (CR-01, CR-02, CR-03) fixed test-first — each regression test
+    confirmed RED against the original code, then GREEN. Suite 259 -> 277 passed
+    (18 new tests), ruff clean, slot-safety grep guard still empty.
+  commits:
+    - 23c437a  # CR-01 double-spend via --reconcile
+    - a5b87eb  # CR-02 submit.py CSV validation
+    - e957f63  # CR-03 missing CV rendered CLEAR
+  warnings_open: 11  # deliberately out of scope for the critical-fix pass
+  behavior_change: >-
+    CR-01: a re-submit of an exp_id whose prior row came from --reconcile (sha
+    unknown) now blocks and requires explicit --resubmit. Deliberate fail-closed
+    choice — over-blocking costs a flag, failing open costs an irreversible slot.
 ---
 
 # Phase 5: Code Review Report
