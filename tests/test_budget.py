@@ -127,6 +127,75 @@ def test_utc_day_boundary(monkeypatch, tz):
 
 
 # --------------------------------------------------------------------------- #
+# WR-06 — the fail-closed trigger is NARROWED to rows that could actually be TODAY's,
+# without ever failing OPEN.
+#
+# The status parse used to run BEFORE the date parse, so ONE historical row carrying an
+# unrecognized status literal (a future Kaggle enum, a legacy value) returned -1 —
+# PERMANENTLY. `--page-size 200` returns the whole recent history, so that single row
+# would brick the budget count for the competition on EVERY subsequent day, forever, with
+# no escape that is not an override.
+#
+# The stated rationale ("skipping would UNDERCOUNT") only ever held for rows that COULD be
+# today's. A row whose DATE parses cleanly to a past day cannot change today's count no
+# matter what its status says.
+#
+# ⚠ The fail-closed guarantee is UNCHANGED where it is load-bearing: an unparseable DATE is
+# still fatal (an unknowable DAY could be today), and an unparseable status on a row dated
+# TODAY is still fatal.
+# --------------------------------------------------------------------------- #
+def _unknown_status_row(date, *, ref=46780799):
+    """A row Kaggle sent us whose status literal this framework cannot classify."""
+    return {
+        "ref": ref,
+        "fileName": "submission.csv",
+        "date": date,
+        "description": "exp-099",
+        "status": "SubmissionStatus.QUARANTINED",
+        "publicScore": "",
+        "privateScore": "",
+    }
+
+
+def test_a_past_row_with_an_unknown_status_does_not_brick_the_count():
+    """A YESTERDAY-dated unknown status must NOT return the sentinel — it cannot be today's.
+
+    RED before WR-06: the status parse ran first, so this returned -1 and every subsequent
+    day's budget was permanently unknowable for this competition.
+    """
+    log = _log()
+    rows = _fixture("mixed_today")
+
+    # Dated YESTERDAY (and even a year ago): it cannot possibly be charged against today.
+    for stale_date in ("2026-07-11T09:41:02.000000", "2025-01-02T03:04:05.000000"):
+        polluted = rows + [_unknown_status_row(stale_date)]
+        assert log.charged_today(polluted, NOW_UTC) == EXPECTED_CHARGED_TODAY, (
+            f"a row dated {stale_date} cannot change TODAY's count whatever its status "
+            "says — failing closed on it permanently bricks the budget for this "
+            "competition, with no non-override escape"
+        )
+
+
+def test_the_unknown_status_of_a_today_row_still_fails_closed():
+    """⚠ The narrowing must NOT fail OPEN. A TODAY-dated unknown status is STILL fatal."""
+    log = _log()
+    rows = _fixture("mixed_today")
+
+    today = rows + [_unknown_status_row("2026-07-12T18:00:00.000000")]
+    assert log.charged_today(today, NOW_UTC) == -1, (
+        "an unrecognized status on a row that IS today's must still FAIL CLOSED — skipping "
+        "it would UNDERCOUNT and let the user spend past Kaggle's real daily limit"
+    )
+
+    # ...and an unparseable DATE remains fatal regardless of the status, because an
+    # unknowable DAY might BE today. This is the boundary the narrowing must not cross.
+    assert log.charged_today(rows + [_unknown_status_row("not-a-timestamp")], NOW_UTC) == -1
+    assert log.charged_today(
+        rows + [_unknown_status_row(None)], NOW_UTC
+    ) == -1, "a MISSING date is an unknowable day — fail closed"
+
+
+# --------------------------------------------------------------------------- #
 # D-04: FAIL CLOSED. Never guess a count.
 # --------------------------------------------------------------------------- #
 def test_fails_closed_when_count_unavailable(monkeypatch):
