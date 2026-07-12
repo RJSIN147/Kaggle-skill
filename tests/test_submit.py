@@ -31,10 +31,19 @@ import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+import pytest
+
 TESTS_DIR = Path(__file__).resolve().parent
 
 SLUG = "titanic"
 EXP_ID = "exp-007"
+
+# The D-02 reference file submit.py validates against before it spends a slot. Titanic's
+# real sample is `gender_submission.csv` — NOT the conventionally-guessed
+# `sample_submission.csv` — and `_resolve_reference`'s rung-2 glob finds it by name.
+SAMPLE_NAME = "gender_submission.csv"
+DEFAULT_CSV_BODY = "PassengerId,Survived\n892,0\n893,1\n"
+SAMPLE_BODY = DEFAULT_CSV_BODY
 
 # The two client-hardcoded fail-open literals, transcribed live (§R1).
 FAIL_OPEN_404 = (TESTS_DIR / "fixtures" / "submissions" / "submit_404.txt").read_text()
@@ -75,8 +84,15 @@ def _kaggle_row(*, ref, description, date, status="SubmissionStatus.PENDING",
 
 
 def _seed_ws(ws, *, exp_id=EXP_ID, slug=SLUG, csv_body=None, cv_mean=0.84123,
-             comp_type="csv", daily_limit=5, limit_provenance="rules_page"):
-    """A scaffolded workspace: config + ledger + an experiment carrying a submission.csv."""
+             comp_type="csv", daily_limit=5, limit_provenance="rules_page",
+             seed_data=True, sample_body=None):
+    """A scaffolded workspace: config + ledger + data/ + an experiment with a submission.csv.
+
+    ``seed_data`` writes ``data/gender_submission.csv`` — the D-02 reference that submit.py
+    validates against before spending a slot. It defaults ON because a workspace WITHOUT a
+    reference is now a refusal path, not a happy path. ``test_check_submission`` seeds its
+    own ``data/`` and opts out.
+    """
     ctrl = ws / "control"
     (ctrl / "raw").mkdir(parents=True, exist_ok=True)
     (ctrl / "config.json").write_text(
@@ -118,9 +134,16 @@ def _seed_ws(ws, *, exp_id=EXP_ID, slug=SLUG, csv_body=None, cv_mean=0.84123,
     )
     (ctrl / "submissions.jsonl").write_text("")
 
+    if seed_data:
+        data = ws / "data"
+        data.mkdir(parents=True, exist_ok=True)
+        (data / SAMPLE_NAME).write_text(
+            SAMPLE_BODY if sample_body is None else sample_body
+        )
+
     exp_dir = ws / "experiments" / exp_id
     exp_dir.mkdir(parents=True, exist_ok=True)
-    body = csv_body if csv_body is not None else "PassengerId,Survived\n892,0\n893,1\n"
+    body = csv_body if csv_body is not None else DEFAULT_CSV_BODY
     (exp_dir / "submission.csv").write_text(body)
     (exp_dir / "meta.json").write_text(
         json.dumps(
@@ -616,6 +639,104 @@ def test_a_recorded_hash_that_differs_does_not_block(tmp_workspace, monkeypatch)
     )
     assert [c for c in calls if len(c) > 1 and c[1] == "submit"]
     assert len(_read_sub_rows(ws)) == 2
+
+
+# --------------------------------------------------------------------------- #
+# CR-02 / D-02 — NEVER SUBMIT AN UNVALIDATED FILE. Mechanically, inside submit.py.
+#
+# submit.py is the ONLY script that spends the irreversible resource, so it cannot merely
+# TRUST that the free gate (check_submission.py) was run first. Its whole file check used
+# to be `csv_path.is_file()` — existence — while SKILL.md documented exit 65 (sample
+# mismatch) as a submit.py outcome and stated "Never submit an unvalidated file". That
+# invariant lived only in prose, i.e. in the agent remembering to run the gate.
+#
+# The failure is NOT free even though Kaggle does not charge processing errors (D-13): a
+# header/id-set mismatch is frequently SCORED, not errored — a wrong-but-parseable file
+# burns a real slot and lands a garbage score on the board.
+# --------------------------------------------------------------------------- #
+@pytest.mark.parametrize(
+    "case,body",
+    [
+        ("header_mismatch", "PassengerId,Prediction\n892,0\n893,1\n"),
+        ("row_count_mismatch", "PassengerId,Survived\n892,0\n"),
+        ("id_set_mismatch", "PassengerId,Survived\n892,0\n999,1\n"),
+        ("blank_prediction", "PassengerId,Survived\n892,0\n893,\n"),
+        ("nan_prediction", "PassengerId,Survived\n892,0\n893,nan\n"),
+    ],
+)
+def test_refuses_an_unvalidated_submission_csv(tmp_workspace, monkeypatch, case, body):
+    """A file that does not match the competition's sample never reaches the gateway."""
+    mod = _submit()
+    gw = importlib.import_module("kaggle_gateway")
+    ws = _seed_ws(tmp_workspace / case, csv_body=body)
+
+    fake, calls = _fake_gateway(readback=[])
+    monkeypatch.setattr(mod, "run_kaggle", fake)
+
+    rc = _run(mod, ws, "--confirm")
+    assert rc == gw.VALIDATION_FAILED == 65, (
+        f"{case}: submit.py must run the D-02 validation ITSELF and exit 65 — SKILL.md "
+        f"documents exit 65 (sample mismatch) as a submit.py outcome"
+    )
+    assert calls == [], (
+        f"{case}: a structurally invalid file must be caught BEFORE the gateway. Kaggle "
+        f"would frequently SCORE it rather than error it — burning a real, irreversible "
+        f"slot and landing a garbage score on the board"
+    )
+    assert _read_sub_rows(ws) == [], "nothing is recorded for a file that was never sent"
+
+
+def test_refuses_when_there_is_nothing_to_validate_against(tmp_workspace, monkeypatch):
+    """No reference file at all => FAIL CLOSED (65). An unvalidated file is never submitted."""
+    mod = _submit()
+    gw = importlib.import_module("kaggle_gateway")
+    ws = _seed_ws(tmp_workspace, seed_data=False)  # no data/ => nothing to validate against
+
+    fake, calls = _fake_gateway(readback=[])
+    monkeypatch.setattr(mod, "run_kaggle", fake)
+
+    assert _run(mod, ws, "--confirm") == gw.VALIDATION_FAILED
+    assert calls == [], "with nothing to validate against, the slot is never risked"
+
+
+def test_a_valid_csv_still_submits(tmp_workspace, monkeypatch):
+    """The CR-02 guard must not block the happy path: a file matching the sample submits."""
+    mod = _submit()
+    ws = _seed_ws(tmp_workspace)  # the default csv_body MATCHES the seeded sample
+    now = datetime.now(timezone.utc)
+
+    fake, calls = _fake_gateway(
+        readback=lambda: [
+            _kaggle_row(
+                ref=46780678,
+                description=f"{EXP_ID} | cv=0.841230",
+                date=_naive_utc(now + timedelta(seconds=5)),
+                status="SubmissionStatus.COMPLETE",
+                public_score="0.77511",
+            )
+        ]
+    )
+    monkeypatch.setattr(mod, "run_kaggle", fake)
+
+    assert _run(mod, ws, "--confirm") == 0
+    assert [c for c in calls if len(c) > 1 and c[1] == "submit"]
+
+
+def test_dry_run_refuses_an_unvalidated_file(tmp_workspace, monkeypatch):
+    """--dry-run rehearses the REAL pre-flight, so it must surface the validation failure.
+
+    A --dry-run that printed a clean command for a file the real run would refuse would be
+    a rehearsal of the wrong thing.
+    """
+    mod = _submit()
+    gw = importlib.import_module("kaggle_gateway")
+    ws = _seed_ws(tmp_workspace, csv_body="Wrong,Header\n1,2\n")
+
+    fake, calls = _fake_gateway(readback=[])
+    monkeypatch.setattr(mod, "run_kaggle", fake)
+
+    assert _run(mod, ws, "--dry-run") == gw.VALIDATION_FAILED
+    assert calls == []
 
 
 # --------------------------------------------------------------------------- #

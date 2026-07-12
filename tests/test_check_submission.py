@@ -41,8 +41,13 @@ def _check():
 
 def _seed(ws, *, csv_body=GOOD_BODY, comp_type="csv", sample_body=SAMPLE_BODY,
           sample_name=SAMPLE_NAME, in_manifest=True, test_csv=True, **kw):
-    """A scaffolded workspace + the Phase-2 competition-type signals + data/."""
-    _seed_ws(ws, csv_body=csv_body, comp_type=comp_type, **kw)
+    """A scaffolded workspace + the Phase-2 competition-type signals + data/.
+
+    ``seed_data=False``: this suite owns ``data/`` entirely — it drives the whole
+    reference-resolution ladder, INCLUDING rung 4 (no sample and no test.csv anywhere),
+    which _seed_ws's default reference file would silently satisfy.
+    """
+    _seed_ws(ws, csv_body=csv_body, comp_type=comp_type, seed_data=False, **kw)
 
     data = ws / "data"
     data.mkdir(parents=True, exist_ok=True)
