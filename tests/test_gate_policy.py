@@ -178,3 +178,57 @@ def test_zero_remaining_blocks(remaining):
     # And it blocks for the first submission too (nothing special-cases the baseline here).
     first = _decide(gate, best_cv=None, remaining=remaining)
     assert first["recommendation"] == "BLOCKED"
+
+
+# --------------------------------------------------------------------------- #
+# CR-03 — an UNREADABLE candidate CV is never "clear to submit".
+#
+# The empty-comparison-set rule (best_cv is None => the FIRST submission is clear) is
+# correct, but it must NOT be reached before the candidate itself has been read. A ledger
+# SUCCESS row whose `cv_mean` is absent / null / a string / NaN carries NO decision metric
+# at all, and CV is THE decision metric (SCORE-02). Clearing it would spend a scarce,
+# irreversible slot on a number the framework could not read — the exact confident-but-wrong
+# arithmetic this module exists to fail closed against.
+# --------------------------------------------------------------------------- #
+@pytest.mark.parametrize(
+    "cand_cv",
+    [None, "0.81", "", True, float("nan"), float("inf")],
+    ids=["none", "string", "empty", "bool", "nan", "inf"],
+)
+def test_unreadable_candidate_cv_never_clears(cand_cv):
+    gate = _gate()
+
+    # ⚠ The FIRST submission is the dangerous case: `best_cv is None` used to short-circuit
+    # to True BEFORE the candidate was ever examined.
+    assert gate.is_meaningful(cand_cv, 0.01, None, True) is False, (
+        "an unreadable CV must never be 'meaningful' — not even on the first submission, "
+        "where there is no baseline to hide behind"
+    )
+    assert gate.is_meaningful(cand_cv, 0.01, 0.80, True) is False
+
+    for best_cv in (None, 0.80):
+        out = _decide(gate, cand_cv=cand_cv, cand_std=0.01, best_cv=best_cv, remaining=5)
+        assert out["recommendation"] == "BLOCKED", (
+            f"cand_cv={cand_cv!r} / best_cv={best_cv!r} must BLOCK — a slot is never spent "
+            f"on a CV the framework could not read"
+        )
+        # There is nothing coherent to confirm: this is garbage input, not a judgment call.
+        assert out["requires_confirmation"] is False
+        assert any("CV" in reason for reason in out["reasons"]), (
+            "the block must name the REAL cause (no readable CV), not a fold-noise verdict "
+            "derived from a number that does not exist"
+        )
+        assert not any(reason.startswith("SUBMIT") for reason in out["reasons"]), (
+            "a BLOCKED decision must never carry a 'SUBMIT: this is the FIRST submission' "
+            "rationale alongside it"
+        )
+
+
+def test_readable_candidate_cv_still_clears_on_first_submission():
+    """The CR-03 guard must not break the legitimate empty-comparison-set case."""
+    gate = _gate()
+    out = _decide(gate, cand_cv=0.55, cand_std=0.30, best_cv=None, remaining=5)
+    assert out["recommendation"] == "SUBMIT"
+    assert out["requires_confirmation"] is False
+    # A zero CV is a real, readable number — not "missing".
+    assert gate.is_meaningful(0.0, 0.01, None, True) is True

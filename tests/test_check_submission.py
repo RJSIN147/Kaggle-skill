@@ -245,3 +245,34 @@ def test_sample_resolution_ladder(tmp_workspace, monkeypatch, capsys):
     assert _run(mod, ws) == gw.VALIDATION_FAILED, (
         "with no sample AND no test.csv there is nothing to validate against — fail closed"
     )
+
+
+# --------------------------------------------------------------------------- #
+# CR-03 — a candidate with NO readable CV is never rendered "CLEAR to submit".
+# --------------------------------------------------------------------------- #
+def test_missing_cv_is_never_clear(tmp_workspace, monkeypatch, capsys):
+    """A ledger SUCCESS row with a null ``cv_mean`` must BLOCK, not clear (exit 75).
+
+    This is the FIRST-submission path (an empty submissions.jsonl => ``best_cv is None``),
+    which is exactly where the gate used to short-circuit to SUBMIT before it had read the
+    candidate at all. The rendered verdict then said ``CV: None +/- None`` and
+    ``CLEAR to submit`` — and exited 0, which SKILL.md defines as "go spend the slot".
+    """
+    mod = _check()
+    gw = importlib.import_module("kaggle_gateway")
+    ws = _seed(tmp_workspace, csv_body=GOOD_BODY, cv_mean=None)
+
+    fake, calls = _fake_gateway(readback=[])  # empty => full budget, no prior submission
+    monkeypatch.setattr(mod, "run_kaggle", fake)
+
+    rc = _run(mod, ws)
+    out = capsys.readouterr()
+    printed = out.out + out.err
+
+    assert rc == gw.GATE_BLOCKED == 75, (
+        "an experiment whose CV the framework cannot read must never exit 0 — exit 0 means "
+        "CLEAR and the skill proceeds to spend a real, irreversible slot"
+    )
+    assert "CLEAR to submit" not in printed
+    assert "RECOMMENDATION: BLOCKED" in printed
+    assert not [c for c in calls if "submit" in c], "the gate is FREE on this path too"

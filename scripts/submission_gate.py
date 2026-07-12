@@ -90,6 +90,20 @@ def _as_number(value) -> float | None:
     return None
 
 
+def _readable_cv(value) -> float | None:
+    """``value`` as a FINITE float, or ``None`` — a CV we cannot READ is not a CV.
+
+    Stricter than :func:`_as_number` on purpose: ``nan`` and ``inf`` are floats, but they
+    are not scores. A ``nan`` candidate silently loses every comparison it enters (all
+    ``nan`` comparisons are ``False``), so it would slip through a bare numeric check and
+    then be reasoned about as though it were a real number.
+    """
+    number = _as_number(value)
+    if number is None or not math.isfinite(number):
+        return None
+    return number
+
+
 def is_meaningful(cand_cv, cand_std, best_cv, greater_is_better, k=NOISE_K_DEFAULT) -> bool:
     """Does ``cand_cv`` beat ``best_cv`` by MORE THAN fold-noise? (D-06)
 
@@ -101,11 +115,19 @@ def is_meaningful(cand_cv, cand_std, best_cv, greater_is_better, k=NOISE_K_DEFAU
     wrong direction produces a negative margin and can therefore never pass — no special
     case is needed for "worse".
 
-    **The FIRST submission is CLEAR.** ``best_cv is None`` means no prior experiment has
-    been submitted, so the comparison set is EMPTY. An empty comparison set must NEVER
-    manufacture a block: there is nothing to beat, and refusing to make the very first
-    submission because it cannot out-perform a baseline that does not exist would be an
-    absurd, self-inflicted deadlock. Return ``True`` before anything else is examined.
+    **The CANDIDATE IS READ FIRST.** ⚠ ORDER IS LOAD-BEARING (CR-03). A candidate whose
+    ``cand_cv`` is absent / null / a string / ``nan`` carries NO decision metric, and CV is
+    THE decision metric (SCORE-02) — so it is rejected BEFORE any other rule is consulted.
+    Checking the empty-comparison-set shortcut first would declare such a candidate
+    "meaningful" on the very first submission (there is no baseline it must fail against),
+    and a scarce, irreversible slot would be spent on a number the framework could not
+    read. Garbage input is rejected before a shortcut can bless it.
+
+    **The FIRST submission is CLEAR** — once the candidate is known to be readable.
+    ``best_cv is None`` means no prior experiment has been submitted, so the comparison set
+    is EMPTY. An empty comparison set must NEVER manufacture a block: there is nothing to
+    beat, and refusing to make the very first submission because it cannot out-perform a
+    baseline that does not exist would be an absurd, self-inflicted deadlock.
 
     Fail-closed on garbage: a non-numeric ``cand_cv`` / ``best_cv`` / ``cand_std`` / ``k``
     returns ``False``. A numeric ``0.0`` std is NOT garbage — it collapses the bound to
@@ -113,15 +135,21 @@ def is_meaningful(cand_cv, cand_std, best_cv, greater_is_better, k=NOISE_K_DEFAU
     fold-noise to clear). But an ABSENT std (``None``) is unknowable noise, and claiming
     a gain exceeds a bound we could not compute would be a fabricated confidence.
     """
-    # The baseline case, checked FIRST: an empty comparison set is always clear.
+    # ⚠ CR-03: the candidate is validated BEFORE the baseline shortcut. No readable CV =>
+    # nothing to reason about => fail closed. This MUST stay above the `best_cv is None`
+    # return, or a CV-less experiment clears on its first submission.
+    candidate = _readable_cv(cand_cv)
+    if candidate is None:
+        return False
+
+    # The baseline case: an empty comparison set is always clear.
     if best_cv is None:
         return True
 
-    candidate = _as_number(cand_cv)
     baseline = _as_number(best_cv)
     std = _as_number(cand_std)
     multiplier = _as_number(k)
-    if candidate is None or baseline is None or std is None or multiplier is None:
+    if baseline is None or std is None or multiplier is None:
         return False
     if std < 0 or multiplier < 0:
         return False  # a negative noise bound is nonsense input — fail closed.
@@ -163,11 +191,17 @@ def decide(
        nothing coherent to confirm, because we do not know what we would be confirming.
     2. ``remaining <= 0`` — the budget is exhausted. BLOCK regardless of how spectacular
        the CV signal is: a gain cannot buy a slot that does not exist.
-    3. ``limit_provenance == "assumed_default"`` — the daily limit was GUESSED, not read
+    3. ``cand_cv`` is UNREADABLE (absent / null / a string / ``nan``) — the candidate has
+       no decision metric at all. BLOCK, with ``requires_confirmation`` ``False``: there
+       is nothing coherent to confirm about a number we could not read. ⚠ This rule sits
+       ABOVE the empty-comparison-set shortcut on purpose (CR-03) — a first submission
+       has no baseline to fail against, so a CV-less candidate would otherwise sail
+       straight through to SUBMIT.
+    4. ``limit_provenance == "assumed_default"`` — the daily limit was GUESSED, not read
        from the rules page. Warn on EVERY decision (D-08), and gate the LAST assumed slot
        behind explicit confirmation even when the CV says SUBMIT: if the real limit is
        lower than assumed, that "last" slot may never have existed.
-    4. The CV signal (D-06 via :func:`is_meaningful`). Meaningful → SUBMIT. Within noise →
+    5. The CV signal (D-06 via :func:`is_meaningful`). Meaningful → SUBMIT. Within noise →
        BLOCKED **with** ``requires_confirmation`` — D-05's block-by-default plus an
        informed human override, never a silent hard refusal.
 
@@ -228,7 +262,27 @@ def decide(
             "requires_confirmation": False,
         }
 
-    # Rules 3 + 4 — the CV signal, and the last-assumed-slot gate.
+    # Rule 3 — the candidate has NO READABLE CV (CR-03). Checked before the baseline
+    # shortcut below, which would otherwise declare the very first submission clear
+    # without ever looking at the number. CV is the decision metric; there is no
+    # decision to make without one, and no fold-noise verdict worth rendering.
+    # requires_confirmation is False: this is garbage input, not a judgment call — there
+    # is nothing coherent for a human to confirm.
+    if _readable_cv(cand_cv) is None:
+        reasons.append(
+            f"BLOCKED: this experiment has no readable CV score (cv_mean={cand_cv!r}). "
+            "CV is the decision metric (SCORE-02) — a scarce, irreversible slot is never "
+            "spent on a number the framework could not read. Re-run the experiment and "
+            "record it (record_experiment.py) so it carries a real cv_mean."
+        )
+        return {
+            "recommendation": "BLOCKED",
+            "reasons": reasons,
+            "warnings": warnings,
+            "requires_confirmation": False,
+        }
+
+    # Rules 4 + 5 — the CV signal, and the last-assumed-slot gate.
     meaningful = is_meaningful(cand_cv, cand_std, best_cv, greater_is_better, k=k)
 
     std = _as_number(cand_std)
