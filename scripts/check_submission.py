@@ -447,16 +447,35 @@ def fetch_submissions(ws: Path, slug: str, timeout: int = 60):
         )
         return None, rc
     if rc != 0:
-        # A 403 / gate response. ONE classifier owns this (D-11/D-12) — never a second.
         # The raw buffer is quarantined, never echoed: it can carry a token-shaped string.
         dump_path = dump_last_error(ws, out)
-        print(classify_gate(out, slug), file=sys.stderr)
+
+        # ⚠ ONLY A 403 IS A UI GATE (WR-03). Mapping EVERY non-zero rc here told a user with
+        # an expired token to "accept the competition rules and verify your phone" — and
+        # `classify_gate` made a SECOND live Kaggle call (its preflight probe) to reach that
+        # wrong conclusion. A 401 is an HTTPError -> exit 1; so is a 5xx, and so is a dead
+        # network. `submit.py` has always guarded exactly this way; the two scripts must not
+        # classify the same CLI failure differently.
+        if "403" in out or "forbidden" in out.lower():
+            # ONE classifier owns the gate (D-11/D-12) — never a second.
+            print(classify_gate(out, slug), file=sys.stderr)
+            print(
+                f"  (raw CLI output quarantined to {dump_path.relative_to(ws)} — withheld "
+                "from the terminal to avoid leaking a secret)",
+                file=sys.stderr,
+            )
+            return None, UI_GATE
+
         print(
-            f"  (raw CLI output quarantined to {dump_path.relative_to(ws)} — withheld "
-            "from the terminal to avoid leaking a secret)",
+            f"cannot check the budget: the kaggle CLI failed (exit {rc}) and the failure is "
+            "NOT a 403 gate. The raw output is withheld (it can carry a secret) and was "
+            f"quarantined to {dump_path.relative_to(ws)}. Check your credentials "
+            "(check_credentials.py) and the network, then re-run.",
             file=sys.stderr,
         )
-        return None, UI_GATE
+        # rows=None => charged=-1 => remaining=None => BLOCKED. FAIL CLOSED, and the block
+        # is rendered with the real reason rather than a guessed one.
+        return None, None
 
     rows = _parse_json_array(out)
     if not isinstance(rows, list):

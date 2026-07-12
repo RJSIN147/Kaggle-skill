@@ -253,6 +253,88 @@ def test_sample_resolution_ladder(tmp_workspace, monkeypatch, capsys):
 
 
 # --------------------------------------------------------------------------- #
+# WR-03 — a CLI failure is CLASSIFIED, not assumed to be a 403.
+#
+# Every non-zero rc used to be handed to `classify_gate` and rendered as the rules-URL /
+# phone-URL remediation. A 401 (HTTPError -> exit 1), a network blip and any 5xx all landed
+# there, so a user with an expired token was told to "accept the competition rules" — and
+# `classify_gate` then made a SECOND live Kaggle call (preflight_entered) to reach that
+# wrong conclusion. `submit.py` already guards with `if "403" in payload or "forbidden" in
+# payload.lower()`; the two scripts classified the same CLI failure differently.
+# --------------------------------------------------------------------------- #
+@pytest.mark.parametrize(
+    "case,payload",
+    [
+        ("401_auth", "401 Client Error: Unauthorized for url: https://www.kaggle.com/api/v1"),
+        ("500_server", "500 Server Error: Internal Server Error"),
+        ("network", "ConnectionError: Max retries exceeded with url"),
+    ],
+)
+def test_a_non_403_cli_failure_is_not_reported_as_a_ui_gate(
+    tmp_workspace, monkeypatch, capsys, case, payload
+):
+    """A 401 / 5xx / network death FAILS CLOSED (75), it does not claim to be a UI gate.
+
+    RED before WR-03: every one of these exited 77 (UI_GATE) and printed "accept the
+    competition rules" / "phone verification required" — remediation that has nothing to do
+    with an expired token or a dead network, and which the agent would then relay verbatim.
+    """
+    mod = _check()
+    gw = importlib.import_module("kaggle_gateway")
+    ws = _seed(tmp_workspace / case, csv_body=GOOD_BODY)
+
+    fake, calls = _fake_gateway(readback=[], readback_rc=1)
+
+    def _fake_with_payload(*argv, timeout=60):
+        calls.append(tuple(str(a) for a in argv))
+        return 1, payload
+
+    monkeypatch.setattr(mod, "run_kaggle", _fake_with_payload)
+
+    # ⚠ If the code reaches classify_gate, it calls preflight_entered -> the REAL gateway,
+    # escaping the monkeypatch entirely. Trip a wire on that instead of letting it happen.
+    def _boom(*_a, **_kw):
+        raise AssertionError(
+            "classify_gate was called for a non-403 failure — it makes a SECOND live Kaggle "
+            "call and prints rules/phone remediation for what is really an auth or network "
+            "error"
+        )
+
+    monkeypatch.setattr(mod, "classify_gate", _boom)
+
+    rc = _run(mod, ws)
+    assert rc == gw.GATE_BLOCKED == 75, (
+        f"{case}: an unclassifiable CLI failure must FAIL CLOSED on the budget (the count is "
+        f"unknowable => BLOCKED), not be reported as a 403 UI gate (77)"
+    )
+
+    printed = capsys.readouterr()
+    combined = printed.out + printed.err
+    assert "/rules" not in combined and "settings" not in combined, (
+        f"{case}: the rules / phone-verification URLs are 403 remediation. Printing them for "
+        f"an auth failure sends the user to fix something that is not broken"
+    )
+    assert payload not in combined, "the raw CLI buffer is never echoed — it can carry a secret"
+    assert "credential" in combined.lower() or "network" in combined.lower()
+
+
+def test_a_real_403_is_still_a_ui_gate(tmp_workspace, monkeypatch):
+    """The narrowing must not lose the 403 path it was built for: it STILL exits 77."""
+    mod = _check()
+    gw = importlib.import_module("kaggle_gateway")
+    ws = _seed(tmp_workspace, csv_body=GOOD_BODY)
+
+    def _forbidden(*_argv, timeout=60):
+        return 1, "403 Client Error: Forbidden for url: https://www.kaggle.com/api/v1"
+
+    monkeypatch.setattr(mod, "run_kaggle", _forbidden)
+    # Keep classify_gate hermetic: its preflight probe would otherwise hit the real CLI.
+    monkeypatch.setattr(mod, "classify_gate", lambda combined, slug: "accept the rules")
+
+    assert _run(mod, ws) == gw.UI_GATE == 77
+
+
+# --------------------------------------------------------------------------- #
 # CR-03 — a candidate with NO readable CV is never rendered "CLEAR to submit".
 # --------------------------------------------------------------------------- #
 def test_missing_cv_is_never_clear(tmp_workspace, monkeypatch, capsys):
