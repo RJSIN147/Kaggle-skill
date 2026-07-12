@@ -534,7 +534,22 @@ def upsert_row(ws: Path, kaggle_ref, **updates) -> bool:
     SUBMISSION — rather than appending a second event row — is what the D-11 CV↔LB join
     and the D-10 alarm actually want, and the atomic rewrite makes the mutation
     crash-safe. Unknown keys are refused: the schema is closed.
+
+    ⚠ A ``None`` KEY IS REFUSED (WR-05). The match is ``row.get("kaggle_ref") == kaggle_ref``,
+    so ``upsert_row(ws, None)`` would match EVERY row that carries no ref and transition them
+    ALL at once — stamping one submission's status and score across unrelated rows. There is
+    no legitimate caller: a row with no ref cannot be matched against Kaggle in the first
+    place (``fetch_lb._resume`` skips exactly those). Raise rather than corrupt the canonical
+    file; the callers that could reach here (``submit`` after its read-back, ``fetch_lb``
+    after its PENDING scan) both validate the ref before they get this far.
     """
+    if kaggle_ref is None:
+        raise ValueError(
+            "upsert_row: kaggle_ref must not be None — a null key matches EVERY row that "
+            "carries no ref and would transition them all at once. A row with no ref cannot "
+            "be matched against Kaggle; back-fill it with `fetch_lb.py --reconcile` instead."
+        )
+
     unknown = [k for k in updates if k not in SUBMISSION_ROW_KEYS]
     if unknown:
         raise KeyError(f"not submissions.jsonl schema keys: {sorted(unknown)}")

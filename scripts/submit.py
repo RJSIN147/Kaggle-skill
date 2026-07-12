@@ -612,7 +612,29 @@ def main(argv=None) -> int:
         )
         return EXIT_TRANSIENT_FAIL
 
+    # ⚠ THE REF IS KAGGLE-AUTHORED, AND IT IS THE JOIN KEY (WR-05). Every other field
+    # Kaggle sends is treated as untrusted — `description` is matched with an anchored
+    # regex, `status` goes through parse_status, `publicScore` through parse_score — and
+    # `ref` gets the same treatment, because a bad one is the most damaging of all: a row
+    # written with `kaggle_ref: null` can never be resumed (`fetch_lb._resume` skips it),
+    # and `upsert_row(ws, None)` would match EVERY None-keyed row and transition them all at
+    # once. `bool` is excluded explicitly: True is an int in Python.
     ref = confirmed.get("ref")
+    if not isinstance(ref, int) or isinstance(ref, bool):
+        print(
+            f"CANNOT RECORD the submission for {exp_id}: the read-back row carries no usable "
+            f"Kaggle ref ({ref!r}) — and the ref is the key everything else joins on. THE "
+            "SLOT WAS ALMOST CERTAINLY SPENT (the read-back is what proves the submission "
+            "landed), so nothing is being claimed away here; it is only being recorded "
+            "honestly.\n"
+            f"  - check your submissions page: {submissions_url(slug)}\n"
+            "  - run `fetch_lb.py --reconcile` to back-fill the row from Kaggle, which is "
+            "the one source that really knows the ref.\n"
+            "  A row keyed on a bad ref is worse than no row: it would silently corrupt "
+            "every other unkeyed row on the next status transition.",
+            file=sys.stderr,
+        )
+        return EXIT_TRANSIENT_FAIL
 
     # ⚠ WRITE THE PENDING ROW BEFORE POLLING (T-05-05-04). From here on the slot is
     # provably spent, so its provenance (exp_id <-> ref <-> file hash) must survive a

@@ -33,6 +33,8 @@ import json
 import re
 from pathlib import Path
 
+import pytest
+
 FIXTURES = Path(__file__).resolve().parent / "fixtures" / "submissions"
 SCRIPTS = Path(__file__).resolve().parent.parent / "scripts"
 
@@ -373,3 +375,25 @@ def test_atomic_rewrite(tmp_workspace):
     # No .tmp residue survives any of it (tempfile + os.replace).
     assert list((ws / "control").glob("*.tmp")) == []
     assert list((ws / "control").glob("submissions.jsonl*")) == [path]
+
+
+def test_upsert_refuses_a_null_key(tmp_workspace):
+    """⚠ WR-05 — ``upsert_row(ws, None)`` would transition EVERY None-keyed row at once.
+
+    The match is ``row.get("kaggle_ref") == kaggle_ref``, so a ``None`` key matches every
+    row that carries no ref — a MASS mis-transition that would stamp one submission's score
+    across unrelated rows. There is no legitimate caller for it: a row with no ref cannot be
+    matched against Kaggle at all. Refuse loudly rather than corrupt the canonical file.
+    """
+    log = _log()
+    ws = tmp_workspace
+    log.write_rows(ws, [_row(exp_id="exp-001", kaggle_ref=None),
+                        _row(exp_id="exp-002", kaggle_ref=None)])
+
+    before = (ws / "control" / "submissions.jsonl").read_bytes()
+    with pytest.raises(ValueError, match="kaggle_ref"):
+        log.upsert_row(ws, None, status="SCORED", public_score=0.9)
+
+    assert (ws / "control" / "submissions.jsonl").read_bytes() == before, (
+        "the canonical file must not be touched by a refused upsert"
+    )
