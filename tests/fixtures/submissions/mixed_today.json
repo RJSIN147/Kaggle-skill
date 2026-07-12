@@ -1,0 +1,56 @@
+[
+  {
+    "ref": 46780706,
+    "fileName": "submission.csv",
+    "date": "2026-07-12T23:15:42.123000",
+    "description": "exp-014 | cv=0.851200",
+    "status": "SubmissionStatus.COMPLETE",
+    "publicScore": "0.78123",
+    "privateScore": ""
+  },
+  {
+    "ref": 46780705,
+    "fileName": "submission.csv",
+    "date": "2026-07-12T14:03:11.560000",
+    "description": "exp-013 | cv=0.849800",
+    "status": "SubmissionStatus.PENDING",
+    "publicScore": "",
+    "privateScore": ""
+  },
+  {
+    "ref": 46780704,
+    "fileName": "submission.csv",
+    "date": "2026-07-12T09:41:07.220000",
+    "description": "exp-012 | cv=0.812400",
+    "status": "SubmissionStatus.ERROR",
+    "publicScore": "",
+    "privateScore": ""
+  },
+  {
+    "ref": 46780703,
+    "fileName": "submission.csv",
+    "date": "2026-07-12T00:47:19.880000",
+    "description": "exp-011 | cv=0.841230",
+    "status": "SubmissionStatus.COMPLETE",
+    "publicScore": "0.77511",
+    "privateScore": ""
+  },
+  {
+    "ref": 46780702,
+    "fileName": "submission.csv",
+    "date": "2026-07-11T22:58:03.410000",
+    "description": "exp-010 | cv=0.838900",
+    "status": "SubmissionStatus.COMPLETE",
+    "publicScore": "0.76555",
+    "privateScore": ""
+  },
+  {
+    "ref": 46780701,
+    "fileName": "submission.csv",
+    "date": "2026-07-11T08:12:44.005000",
+    "description": "exp-009 | cv=0.830100",
+    "status": "SubmissionStatus.ERROR",
+    "publicScore": "",
+    "privateScore": ""
+  }
+]

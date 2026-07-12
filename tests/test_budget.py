@@ -1,0 +1,195 @@
+"""test_budget.py — RED (Wave 0, 05-01-T2). Pins the D-04 / D-13 charged-submission count
+(SCORE-03). GREEN target: 05-03 Task 2 (``scripts/submissions_log.py``).
+
+There is **NO submission-quota command** in the Kaggle CLI (live-verified: ``kaggle quota``
+reports GPU/TPU hours only). The daily budget must therefore be DERIVED by counting rows
+from Kaggle's own authoritative ``competitions submissions`` list (05-RESEARCH.md §R2).
+
+Pinned contract:
+
+  * ``charged_today(rows, now_utc) -> int`` — counts TODAY's charged submissions.
+      - ``FAILED`` (Kaggle ``ERROR``) rows are NOT charged (D-13 — Kaggle never billed them).
+      - ``PENDING`` rows ARE charged (the slot was accepted and is being scored).
+      - Returns the ``-1`` SENTINEL on any row it cannot account for => the caller FAILS
+        CLOSED. It must NEVER silently skip an unrecognized status: that would UNDERCOUNT
+        (e.g. against a future Kaggle status literal) and let the user submit past the real
+        daily limit. ``FAILED`` is the ONLY legitimate skip.
+  * ``parse_utc(raw)`` — Kaggle's ``date`` is a NAIVE ISO string with no tz suffix. It is
+    treated as UTC (assumption A1). ⚠ THE TRAP: comparing it against ``datetime.now()``
+    (LOCAL) silently miscounts the budget near the day boundary — the exact
+    confident-but-wrong failure this project fails closed against.
+  * ``fetch_submissions(slug, timeout=60) -> list | None`` — ``None`` on any rc != 0 or a
+    non-array payload. The caller must NEVER guess a count.
+
+``now_utc`` is ALWAYS injected — no test here reads the real clock. No CLI process is ever
+spawned: ``run_kaggle`` is monkeypatched on the importing module.
+"""
+
+from __future__ import annotations
+
+import importlib
+import json
+import time
+from datetime import datetime, timezone
+from pathlib import Path
+
+import pytest
+
+FIXTURES = Path(__file__).resolve().parent / "fixtures" / "submissions"
+
+# The fixed "now" the fixtures were authored around: 2026-07-12 is "today",
+# 2026-07-11 is "yesterday". Injected everywhere — never the real clock.
+NOW_UTC = datetime(2026, 7, 12, 12, 0, 0, tzinfo=timezone.utc)
+
+# mixed_today.json holds, on 2026-07-12 (UTC): one COMPLETE at 23:15 (within 2h of the
+# NEXT UTC midnight), one PENDING at 14:03, one ERROR at 09:41, one COMPLETE at 00:47
+# (within 2h of the PREVIOUS UTC midnight). The ERROR is free (D-13) => 3 charged.
+EXPECTED_CHARGED_TODAY = 3
+
+
+def _log():
+    """Import scripts/submissions_log.py (on sys.path via conftest). Absent at RED."""
+    return importlib.import_module("submissions_log")
+
+
+def _fixture(name):
+    return json.loads((FIXTURES / f"{name}.json").read_text())
+
+
+def _fake_gateway(payload, rc=0):
+    """A ``run_kaggle`` stand-in returning ``(rc, payload)``. No CLI process is spawned."""
+
+    def _fake(*argv, timeout=60):
+        return rc, payload
+
+    return _fake
+
+
+# --------------------------------------------------------------------------- #
+# D-04 + D-13: count today, exclude ERROR, include PENDING.
+# --------------------------------------------------------------------------- #
+def test_charged_today():
+    log = _log()
+    rows = _fixture("mixed_today")
+
+    assert log.charged_today(rows, NOW_UTC) == EXPECTED_CHARGED_TODAY
+
+    # D-13: an ERROR row dated TODAY is recorded but NOT charged.
+    err_today = [r for r in rows if "ERROR" in r["status"] and r["date"].startswith("2026-07-12")]
+    assert err_today, "fixture must carry a today-dated ERROR row"
+    assert log.charged_today(err_today, NOW_UTC) == 0
+
+    # A PENDING row dated TODAY IS charged — the slot was accepted and is being scored.
+    pending_today = [
+        r for r in rows if "PENDING" in r["status"] and r["date"].startswith("2026-07-12")
+    ]
+    assert pending_today, "fixture must carry a today-dated PENDING row"
+    assert log.charged_today(pending_today, NOW_UTC) == 1
+
+    # Yesterday's rows never count against today.
+    yesterday = [r for r in rows if r["date"].startswith("2026-07-11")]
+    assert yesterday
+    assert log.charged_today(yesterday, NOW_UTC) == 0
+
+    # An empty list is a real, knowable ZERO — not the -1 sentinel.
+    assert log.charged_today([], NOW_UTC) == 0
+    assert log.charged_today(_fixture("empty"), NOW_UTC) == 0
+
+
+# --------------------------------------------------------------------------- #
+# THE UTC TRAP (Pitfall 4): the count must not move with the developer's TZ.
+# --------------------------------------------------------------------------- #
+@pytest.mark.parametrize("tz", ["Pacific/Kiritimati", "Pacific/Midway", "UTC"])
+def test_utc_day_boundary(monkeypatch, tz):
+    """Identical count under UTC+14 and UTC-11.
+
+    This is the test that proves ``datetime.now()`` / a local-time conversion was NOT used.
+    mixed_today.json deliberately carries rows within 2h of BOTH UTC midnight edges
+    (00:47 and 23:15), so any local-time rendering shifts them across the day boundary and
+    changes the count.
+    """
+    log = _log()
+    monkeypatch.setenv("TZ", tz)
+    time.tzset()
+
+    rows = _fixture("mixed_today")
+    assert log.charged_today(rows, NOW_UTC) == EXPECTED_CHARGED_TODAY, (
+        f"the charged count changed under TZ={tz} — the day boundary is being computed "
+        "in LOCAL time. Kaggle's `date` is a naive ISO string and MUST be read as UTC."
+    )
+
+    # parse_utc yields a tz-AWARE UTC datetime regardless of the ambient TZ.
+    ts = log.parse_utc("2026-07-12T23:15:42.123000")
+    assert ts is not None
+    assert ts.tzinfo is not None and ts.utcoffset().total_seconds() == 0
+    assert (ts.year, ts.month, ts.day, ts.hour) == (2026, 7, 12, 23)
+    assert ts.date() == NOW_UTC.date()
+
+
+# --------------------------------------------------------------------------- #
+# D-04: FAIL CLOSED. Never guess a count.
+# --------------------------------------------------------------------------- #
+def test_fails_closed_when_count_unavailable(monkeypatch):
+    log = _log()
+    rows = _fixture("mixed_today")
+
+    # (1) An UNPARSEABLE STATUS returns the -1 sentinel — it is NOT silently skipped.
+    #     Silently skipping an unrecognized literal (e.g. a FUTURE Kaggle status) would
+    #     UNDERCOUNT the charged submissions and let the user submit past the real limit.
+    unknown_status = rows + [
+        {
+            "ref": 46780799,
+            "fileName": "submission.csv",
+            "date": "2026-07-12T18:00:00.000000",
+            "description": "exp-099",
+            "status": "SubmissionStatus.QUARANTINED",
+            "publicScore": "",
+            "privateScore": "",
+        }
+    ]
+    assert log.charged_today(unknown_status, NOW_UTC) == -1, (
+        "an unrecognized status must FAIL CLOSED (-1), never be skipped — skipping "
+        "undercounts the budget and permits a submission past Kaggle's real daily limit"
+    )
+
+    # (2) An UNPARSEABLE DATE returns the -1 sentinel.
+    bad_date = rows + [
+        {
+            "ref": 46780800,
+            "fileName": "submission.csv",
+            "date": "not-a-timestamp",
+            "description": "exp-100",
+            "status": "SubmissionStatus.COMPLETE",
+            "publicScore": "0.7",
+            "privateScore": "",
+        }
+    ]
+    assert log.charged_today(bad_date, NOW_UTC) == -1
+    assert log.parse_utc("not-a-timestamp") is None
+    assert log.parse_utc(None) is None
+
+    # (3) FAILED is the ONLY legitimate skip — an all-ERROR list still counts cleanly to 0.
+    assert log.charged_today(_fixture("error"), NOW_UTC) == 0
+
+    # (4) fetch_submissions returns None (=> fail closed) on a non-zero rc...
+    monkeypatch.setattr(log, "run_kaggle", _fake_gateway("403 Client Error: Forbidden", rc=1))
+    assert log.fetch_submissions("titanic") is None
+
+    # ...and on a payload that is not a JSON array.
+    monkeypatch.setattr(log, "run_kaggle", _fake_gateway('{"error":"nope"}', rc=0))
+    assert log.fetch_submissions("titanic") is None
+    monkeypatch.setattr(log, "run_kaggle", _fake_gateway("this is not json at all", rc=0))
+    assert log.fetch_submissions("titanic") is None
+
+    # The happy path: a pretty-printed JSON array (CLI 2.2.3 spans many lines) parses.
+    payload = json.dumps(_fixture("mixed_today"), indent=2)
+    assert "\n" in payload, "the CLI pretty-prints --format json across many lines"
+    monkeypatch.setattr(log, "run_kaggle", _fake_gateway(payload, rc=0))
+    fetched = log.fetch_submissions("titanic")
+    assert isinstance(fetched, list) and len(fetched) == len(rows)
+    assert log.charged_today(fetched, NOW_UTC) == EXPECTED_CHARGED_TODAY
+
+    # An empty array is a real, knowable EMPTY list — never None (that would fail closed
+    # on a brand-new competition the user has simply not submitted to yet).
+    monkeypatch.setattr(log, "run_kaggle", _fake_gateway("[]", rc=0))
+    assert log.fetch_submissions("titanic") == []
