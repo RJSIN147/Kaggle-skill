@@ -25,9 +25,11 @@ appears nowhere else).
 
 from __future__ import annotations
 
+import ast
 import hashlib
 import importlib
 import json
+import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -1242,7 +1244,63 @@ def test_dry_run_never_calls_gateway(tmp_workspace, monkeypatch, capsys):
 
 # --------------------------------------------------------------------------- #
 # ⭐ THE IRREVERSIBILITY GUARANTEE (SAFETY). GREEN from the moment it is written.
+#
+# ⚠ WR-07 — THIS IS THE ONLY MECHANICAL GUARANTEE THAT NO TEST CAN SPEND A REAL SLOT, so it
+# is the one guard that must not be fooled by FORMATTING. It used to be a substring test for
+# three exact spellings:
+#
+#     "competitions submit" in src
+#     or '"competitions", "submit"' in src
+#     or "'competitions', 'submit'" in src
+#
+# Every one of these sails past it: `("competitions","submit")` (no space after the comma),
+# an argv wrapped across two lines by a formatter, `run_kaggle(*SUBMIT_ARGV)`, and
+# `import submit; submit.main([...])` — which spends a slot without the argv ever appearing
+# in the file at all. `ruff format` flipping quote style would silently narrow it further.
+#
+# So the guard reads the file's STRUCTURE (ast), not its punctuation: what a source says
+# survives reformatting, and what it IMPORTS is as dangerous as what it spells out.
 # --------------------------------------------------------------------------- #
+def _spends_a_slot(src: str) -> str | None:
+    """Why this source could spend a REAL submission slot, or ``None`` if it cannot.
+
+    Two independent nets, deliberately overlapping:
+
+      1. **ast** — the string literals the file really contains (immune to quote style,
+         comma spacing and line wrapping) and any import of ``submit.py`` (calling
+         ``submit.main()`` spends a slot with no argv in sight).
+      2. **normalized text** — a whitespace-flattened regex, which still catches a token
+         sitting in a comment or an f-string fragment the tree walk would step over.
+
+    An UNPARSEABLE file is an OFFENDER, never a pass: a guard that cannot read a file has
+    not cleared it.
+    """
+    try:
+        tree = ast.parse(src)
+    except SyntaxError as exc:
+        return f"could not be parsed ({exc}); a guard that cannot READ a file has not cleared it"
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            text = " ".join(node.value.split()).lower()
+            # The bare token in any argv-looking position, however it is punctuated — plus
+            # the whole-string form. A live test has no legitimate use for either.
+            if text == "submit" or "competitions submit" in text:
+                return f"names the submit subcommand in a string literal: {node.value!r}"
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name.split(".")[0] == "submit":
+                    return "imports scripts/submit.py — submit.main() spends a REAL slot"
+        if isinstance(node, ast.ImportFrom):
+            if (node.module or "").split(".")[0] == "submit":
+                return "imports from scripts/submit.py — its argv spends a REAL slot"
+
+    flat = " ".join(src.split()).lower()
+    if re.search(r"""["']?competitions["']?\s*[, ]\s*["']?submit["']?""", flat):
+        return "names the `competitions submit` argv"
+    return None
+
+
 def test_no_live_test_ever_submits():
     """HARD RULE: no ``@pytest.mark.live`` test may invoke the submit subcommand.
 
@@ -1254,17 +1312,60 @@ def test_no_live_test_ever_submits():
     live_files = sorted(TESTS_DIR.glob("test_*live*.py"))
     assert live_files, "the live suite vanished — the guard must have something to guard"
 
-    offenders = []
-    for path in live_files:
-        src = path.read_text()
-        if (
-            "competitions submit" in src
-            or '"competitions", "submit"' in src
-            or "'competitions', 'submit'" in src
-        ):
-            offenders.append(path.name)
+    offenders = {
+        path.name: reason
+        for path in live_files
+        for reason in [_spends_a_slot(path.read_text())]
+        if reason is not None
+    }
     assert not offenders, (
-        f"live test(s) {offenders} contain a submit invocation — a live run would spend a "
-        "REAL, IRREVERSIBLE submission slot. Live tests may only READ "
+        f"live test(s) {offenders} could spend a REAL, IRREVERSIBLE submission slot on every "
+        "run of the opt-in live suite. Live tests may only READ "
         "(`competitions submissions`)."
     )
+
+
+# The evasions the three-literal substring guard let through. Each one is a REAL slot spent
+# on every live run; each one was GREEN before WR-07.
+_EVASIONS = {
+    "no space after the comma": 'run_kaggle("competitions","submit", slug)',
+    "single quotes": "run_kaggle('competitions', 'submit', slug)",
+    "line-wrapped argv": 'run_kaggle(\n    "competitions",\n    "submit",\n    slug,\n)',
+    "a splatted constant": 'ARGV = ("competitions", "submit")\nrun_kaggle(*ARGV)',
+    "an indirected subcommand": 'SUBCMD = "submit"\nrun_kaggle("competitions", SUBCMD)',
+    "a list argv": 'run_kaggle(*["competitions", "submit", slug])',
+    "importing submit.py": "import submit\nsubmit.main(['--confirm'])",
+    "importing from submit.py": "from submit import main\nmain(['--confirm'])",
+    "a shell string": 'subprocess.run("kaggle competitions submit -f x.csv", shell=True)',
+    "unparseable": "def broken(:\n    pass",
+}
+
+
+@pytest.mark.parametrize("case", sorted(_EVASIONS))
+def test_the_slot_safety_guard_cannot_be_evaded_by_formatting(case):
+    """⭐ The guard's OWN regression test. It is the only thing standing between the live
+    suite and a real, irreversible slot, so its detection is tested directly rather than
+    trusted."""
+    assert _spends_a_slot(_EVASIONS[case]) is not None, (
+        f"the slot-safety guard MISSED {case!r} — a live test spelling it this way would "
+        "spend a REAL, IRREVERSIBLE Kaggle submission slot on every run"
+    )
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        # The ONE thing a live test IS allowed to do: READ. `submissions` must never be
+        # mistaken for `submit` (it is not a prefix — submi-s vs submi-t).
+        'run_kaggle("competitions", "submissions", slug, "--format", "json")',
+        'run_kaggle("competitions", "list")',
+        # Prose. The live suite's own docstring explains the guard, and the guard must not
+        # trip over the explanation.
+        '"""Never invokes a submit invocation; it only reads competitions submissions."""',
+        "from submissions_log import parse_status",
+    ],
+)
+def test_the_slot_safety_guard_does_not_over_block(case):
+    """The read-only calls a live test legitimately makes must stay legal — a guard that
+    flags them would be turned off, and a guard that is off protects nothing."""
+    assert _spends_a_slot(case) is None, f"the guard over-blocked a READ-ONLY source: {case!r}"
