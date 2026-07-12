@@ -32,9 +32,14 @@ Four more load-bearing postures:
     submission is invisible locally — its provenance is gone forever and its CV→LB gap
     can never be computed. A crash mid-poll must never orphan a spent slot.
   * NO DOUBLE-SPEND. Idempotence here means "re-running is SAFE", not "re-running
-    re-submits": an existing non-FAILED row with the same ``exp_id`` AND the same file
-    hash is REFUSED before the gateway is ever called. A genuine second submission of the
-    same bytes requires an explicit ``--resubmit``.
+    re-submits": an existing non-FAILED row for the same ``exp_id`` whose file hash MATCHES
+    — **or is UNKNOWN** — is REFUSED before the gateway is ever called. The unknown-hash
+    case is the load-bearing one: a row back-filled by ``fetch_lb --reconcile`` carries
+    ``file_sha256: None`` (Kaggle never returns the bytes it was sent), and that is the row
+    the framework's OWN recovery advice produces after a failed read-back. Matching on hash
+    alone would let the recovery path become the double-spend path. Bytes we cannot prove
+    DIFFERENT are treated as possibly the SAME. A genuine second submission requires an
+    explicit ``--resubmit``.
   * TOCTOU. The file is re-hashed immediately before the argv is built; if it changed
     since validation, the bytes about to be uploaded are not the bytes that were checked,
     so the submit is refused.
@@ -181,20 +186,64 @@ def _pre_flight(ws: Path, args):
     return slug, csv_path, file_sha256(csv_path)
 
 
-def _refuse_double_spend(ws: Path, exp_id: str, digest: str) -> bool:
-    """True when this exact file was already submitted for this experiment and NOT failed.
+def _refuse_double_spend(ws: Path, exp_id: str, digest: str) -> tuple[bool, str]:
+    """``(refuse, why)`` — is a re-submit of ``exp_id`` a possible DOUBLE-SPEND?
 
     Re-running submit.py must be SAFE, which means it must not RE-SUBMIT. A FAILED row is
     not a spend (D-13: Kaggle never charged a processing error), so it never blocks.
+
+    ⚠ A ROW WITH NO RECORDED HASH BLOCKS ON ``exp_id`` ALONE. The guard cannot be keyed on
+    sha-equality alone, because the rows produced by the framework's OWN RECOVERY PATH have
+    no sha to compare: ``fetch_lb --reconcile`` back-fills an out-of-band submission with
+    ``file_sha256: None`` — correctly, since Kaggle never returns the bytes it was sent.
+
+    That is precisely the scenario this guard exists for. When submit.py's read-back fails
+    it prints "a slot MAY still have been spent … run `fetch_lb.py --reconcile` to back-fill
+    it". If a hash-less row then failed to match, the user who FOLLOWED THAT ADVICE and
+    re-ran ``submit.py --confirm`` would sail past the guard and spend a SECOND REAL SLOT on
+    the same experiment. The recovery path would BE the double-spend path.
+
+    So the asymmetry decides it: we cannot PROVE the bytes differ, and the cost of being
+    wrong is irreversible. FAIL CLOSED — and reserve ``--resubmit`` as the human's
+    deliberate, explicit "yes, spend another slot".
+
+    A row whose hash IS recorded and DIFFERS is a proven-different file: it never blocks
+    (a genuinely new submission.csv for the same experiment still submits).
     """
     for row in read_rows(ws):
-        if (
-            row.get("exp_id") == exp_id
-            and row.get("file_sha256") == digest
-            and row.get("status") != "FAILED"
-        ):
-            return True
-    return False
+        if row.get("exp_id") != exp_id or row.get("status") == "FAILED":
+            continue
+
+        recorded = row.get("file_sha256")
+        if recorded == digest:
+            return True, (
+                f"REFUSING to submit: {exp_id} already has a non-FAILED submission of these "
+                "EXACT bytes recorded in control/submissions.jsonl (kaggle_ref "
+                f"{row.get('kaggle_ref')}). No slot was spent.\n"
+                "  - to record the leaderboard score of that submission: fetch_lb.py "
+                f"--exp-id {exp_id}\n"
+                "  - to deliberately spend ANOTHER slot on the same file: re-run with "
+                "--resubmit"
+            )
+
+        if not recorded:
+            # An out-of-band / reconciled submission: the bytes are UNKNOWN, not different.
+            return True, (
+                f"REFUSING to submit: {exp_id} already has a non-FAILED submission "
+                f"(kaggle_ref {row.get('kaggle_ref')}) whose file hash was NEVER RECORDED — "
+                "it was back-filled from Kaggle by `fetch_lb.py --reconcile`, and Kaggle "
+                "does not return the bytes it was sent.\n"
+                "  That slot is ALREADY SPENT. Because the hash is unknown, this file cannot "
+                "be PROVEN different from the one already submitted, so the submit is "
+                "REFUSED rather than risk an irreversible double-spend. No slot was spent "
+                "now.\n"
+                "  - to record the leaderboard score of that submission: fetch_lb.py "
+                f"--exp-id {exp_id}\n"
+                "  - if this really is a NEW file and you mean to spend another slot: "
+                "re-run with --resubmit"
+            )
+
+    return False, ""
 
 
 def main(argv=None) -> int:
@@ -207,15 +256,11 @@ def main(argv=None) -> int:
     slug, csv_path, digest = checked
     exp_id = args.exp_id
 
-    if not args.resubmit and _refuse_double_spend(ws, exp_id, digest):
-        print(
-            f"REFUSING to submit: {exp_id} already has a non-FAILED submission of these "
-            "exact bytes recorded in control/submissions.jsonl. No slot was spent.\n"
-            "  - to record the leaderboard score of that submission: fetch_lb.py "
-            f"--exp-id {exp_id}\n"
-            "  - to deliberately spend ANOTHER slot on the same file: re-run with --resubmit"
-        )
-        return GATE_BLOCKED
+    if not args.resubmit:
+        refuse, why = _refuse_double_spend(ws, exp_id, digest)
+        if refuse:
+            print(why)
+            return GATE_BLOCKED
 
     # The -m message is the ONLY exp_id <-> Kaggle correlation channel: it round-trips into
     # the `description` field on read-back, which is how the submission is later confirmed

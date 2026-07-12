@@ -474,6 +474,150 @@ def test_refuses_double_spend(tmp_workspace, monkeypatch, capsys):
     assert len(_read_sub_rows(ws)) == 2, "a genuine second submission appends a second row"
 
 
+def test_refuses_double_spend_after_reconcile(tmp_workspace, monkeypatch, capsys):
+    """⚠ CR-01 — THE RECOVERY PATH MUST NOT BE THE DOUBLE-SPEND PATH.
+
+    This is the trap the double-spend guard exists for, and the one it used to miss. When
+    submit.py's read-back fails, the slot MAY already be spent — and submit.py's own message
+    tells the user: *"if the submission is there, run `fetch_lb.py --reconcile` to back-fill
+    it."* But a reconciled row carries ``file_sha256: null`` (correctly — Kaggle does not
+    return the bytes it was sent), and the guard keyed on ``file_sha256 == digest``. So
+    ``None != digest``, the guard did not fire, and a user who followed the framework's OWN
+    recovery advice and re-ran ``submit.py --confirm`` spent a SECOND REAL SLOT on the same
+    experiment.
+
+    The whole flow is exercised here — reconcile for real, then submit — rather than
+    hand-seeding a row, because it is the SEAM BETWEEN the two scripts that was broken.
+    """
+    mod = _submit()
+    fetch_lb = importlib.import_module("fetch_lb")
+    ws = _seed_ws(tmp_workspace)
+    now = datetime.now(timezone.utc)
+
+    # The submission Kaggle really did accept — the slot IS spent — but which submit.py
+    # never recorded, because its read-back came back empty.
+    spent = [
+        _kaggle_row(
+            ref=46780678,
+            description=f"{EXP_ID} | cv=0.841230",
+            date=_naive_utc(now - timedelta(minutes=5)),
+            status="SubmissionStatus.COMPLETE",
+            public_score="0.77511",
+        )
+    ]
+
+    # --- 1. The user does exactly what submit.py told them to do. ----------------------
+    fake_fl, _ = _fake_gateway(readback=spent)
+    monkeypatch.setattr(fetch_lb, "run_kaggle", fake_fl)
+    assert fetch_lb.main(["--workspace", str(ws), "--reconcile"]) == 0
+
+    rows = _read_sub_rows(ws)
+    assert len(rows) == 1 and rows[0]["exp_id"] == EXP_ID
+    assert rows[0]["file_sha256"] is None, (
+        "a reconciled row genuinely CANNOT know the file hash — Kaggle never returns it. "
+        "That is CORRECT, and it is exactly why sha-equality cannot be the guard's sole key"
+    )
+    assert rows[0]["status"] != "FAILED", "a SCORED row is a SPENT slot"
+
+    # --- 2. ...and then re-runs submit, as the SKILL's exit-75 loop makes natural. ------
+    fake, calls = _fake_gateway(readback=spent)
+    monkeypatch.setattr(mod, "run_kaggle", fake)
+
+    rc = _run(mod, ws, "--confirm")
+    assert rc != 0, "the re-submit after a reconcile must be REFUSED, not honoured"
+    assert not [c for c in calls if len(c) > 1 and c[1] == "submit"], (
+        "NO SECOND SLOT. The recorded row has no hash, so the bytes cannot be PROVEN "
+        "different from the ones already submitted — and the cost of being wrong is an "
+        "irreversible slot. Fail closed on exp_id alone."
+    )
+    assert len(_read_sub_rows(ws)) == 1, "no second row may be appended"
+
+    printed = capsys.readouterr()
+    combined = printed.out + printed.err
+    assert "--resubmit" in combined, (
+        "the refusal must name the DELIBERATE escape hatch — a fail-closed guard with no "
+        "documented override is a dead end, not a safety feature (D-05)"
+    )
+
+    # --- 3. --resubmit remains the explicit, deliberate override. ----------------------
+    fake2, calls2 = _fake_gateway(
+        readback=lambda: [
+            _kaggle_row(
+                ref=46780999,
+                description=f"{EXP_ID} | cv=0.841230",
+                date=_naive_utc(datetime.now(timezone.utc) + timedelta(seconds=5)),
+                status="SubmissionStatus.COMPLETE",
+                public_score="0.77511",
+            )
+        ]
+    )
+    monkeypatch.setattr(mod, "run_kaggle", fake2)
+    assert _run(mod, ws, "--confirm", "--resubmit") == 0
+    assert [c for c in calls2 if len(c) > 1 and c[1] == "submit"], (
+        "--resubmit is the human's conscious 'yes, spend another slot' — it must still work"
+    )
+    assert len(_read_sub_rows(ws)) == 2
+
+
+def test_a_recorded_hash_that_differs_does_not_block(tmp_workspace, monkeypatch):
+    """The CR-01 guard must not OVER-block: a KNOWN, DIFFERENT hash proves new bytes.
+
+    Only an UNKNOWN hash is treated as an unprovable match. When the recorded row carries a
+    real hash and it differs from the file on disk, the bytes are demonstrably not the ones
+    already submitted — that is a genuinely new file for the same experiment, and it submits
+    without needing --resubmit, exactly as before.
+    """
+    mod = _submit()
+    ws = _seed_ws(tmp_workspace)
+    csv_path = ws / "experiments" / EXP_ID / "submission.csv"
+    now = datetime.now(timezone.utc)
+
+    # A prior submission of DIFFERENT bytes (a real, recorded hash that is not ours).
+    (ws / "control" / "submissions.jsonl").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "exp_id": EXP_ID,
+                "kaggle_ref": 46780678,
+                "competition_slug": SLUG,
+                "file": f"experiments/{EXP_ID}/submission.csv",
+                "file_sha256": "sha256:" + "b" * 64,  # a REAL hash — and NOT this file's
+                "message": f"{EXP_ID} | cv=0.841230",
+                "submitted_at": "2026-07-12T14:03:11Z",
+                "status": "SCORED",
+                "public_score": 0.70,
+                "private_score": None,
+                "scored_at": "2026-07-12T14:05:00Z",
+                "override_reason": None,
+                "error_description": None,
+            },
+            separators=(",", ":"),
+        )
+        + "\n"
+    )
+    assert _sha256(csv_path) != "sha256:" + "b" * 64
+
+    fake, calls = _fake_gateway(
+        readback=lambda: [
+            _kaggle_row(
+                ref=46780999,
+                description=f"{EXP_ID} | cv=0.841230",
+                date=_naive_utc(now + timedelta(seconds=5)),
+                status="SubmissionStatus.COMPLETE",
+                public_score="0.78",
+            )
+        ]
+    )
+    monkeypatch.setattr(mod, "run_kaggle", fake)
+
+    assert _run(mod, ws, "--confirm") == 0, (
+        "a genuinely different file for the same experiment is not a double-spend — the "
+        "recorded hash PROVES the bytes differ"
+    )
+    assert [c for c in calls if len(c) > 1 and c[1] == "submit"]
+    assert len(_read_sub_rows(ws)) == 2
+
+
 # --------------------------------------------------------------------------- #
 # D-11 — the experiment folder is IMMUTABLE. The LB score never lands in meta.json.
 # --------------------------------------------------------------------------- #
