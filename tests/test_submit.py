@@ -1054,26 +1054,28 @@ def test_a_meaningful_improvement_still_submits(tmp_workspace, monkeypatch):
 def test_the_budget_gate_reuses_the_injectable_reader(tmp_workspace, monkeypatch):
     """⚠ THE NAMESPACE-BINDING TRAP, pinned mechanically.
 
-    ``submissions_log.fetch_submissions()`` resolves ``run_kaggle`` from its OWN module
-    globals, so monkeypatching the gateway on submit.py would be SILENTLY BYPASSED and the
-    REAL Kaggle CLI would shell out from inside a supposedly-mocked test. It has zero
-    callers, and the budget gate must not become its first: ``fetch_lb.read_submissions(...,
-    runner=run_kaggle)`` is the injectable one.
+    The budget read MUST go through the INJECTABLE ``fetch_lb.read_submissions(...,
+    runner=run_kaggle)``, which takes the gateway as an ARGUMENT. Its predecessor,
+    ``submissions_log.fetch_submissions()``, resolved ``run_kaggle`` from its OWN module
+    globals: monkeypatching the gateway on submit.py would have been SILENTLY BYPASSED and
+    the REAL Kaggle CLI would have shelled out from inside a supposedly-mocked test —
+    spending a real slot from a test run. WR-01 DELETED it, and this test pins that it
+    cannot come back: if submit.py ever grows a module-global-resolving reader again, the
+    only reader left to reach for does not exist.
 
-    If submit.py ever reaches for the other, this fake explodes instead of quietly working.
+    The whole run below is monkeypatched at submit.py's OWN ``run_kaggle`` binding. If any
+    Kaggle call escaped that binding, the fake would not see it — and `calls` would be short.
     """
     mod = _submit()
     sub_log = importlib.import_module("submissions_log")
     ws = _seed_ws(tmp_workspace)
 
-    def _boom(*_a, **_kw):
-        raise AssertionError(
-            "submit.py called submissions_log.fetch_submissions() — it resolves run_kaggle "
-            "from its OWN globals, so a monkeypatched gateway is bypassed and a REAL Kaggle "
-            "call escapes. Use fetch_lb.read_submissions(..., runner=run_kaggle)."
-        )
-
-    monkeypatch.setattr(sub_log, "fetch_submissions", _boom)
+    assert not hasattr(sub_log, "fetch_submissions"), (
+        "submissions_log.fetch_submissions is the namespace-binding footgun (WR-01): it "
+        "resolves run_kaggle from its OWN globals, so a monkeypatched gateway is bypassed "
+        "and a REAL Kaggle call escapes. It must stay deleted — use "
+        "fetch_lb.read_submissions(..., runner=run_kaggle)."
+    )
 
     now = datetime.now(timezone.utc)
     fake, calls = _fake_gateway(

@@ -30,9 +30,11 @@ from __future__ import annotations
 
 import importlib
 import json
+import re
 from pathlib import Path
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures" / "submissions"
+SCRIPTS = Path(__file__).resolve().parent.parent / "scripts"
 
 
 def _log():
@@ -168,6 +170,74 @@ def test_row_schema():
     assert errs and any("status" in e.lower() for e in errs)
     errs = log.validate_row(_row(status="COMPLETE"))
     assert errs, "'COMPLETE' is Kaggle's word, not ours — the row vocabulary is SCORED"
+
+
+# --------------------------------------------------------------------------- #
+# WR-01 — the `competitions submissions` argv has EXACTLY ONE HOME, and the
+# namespace-binding footgun is GONE.
+#
+# This module's own docstring calls itself "the ONE source ... never re-derived per caller",
+# yet the argv had been re-derived in FOUR places across three modules — and the copy that
+# lived HERE (`fetch_submissions`) had ZERO callers and resolved `run_kaggle` from its OWN
+# module globals. A caller who monkeypatched `run_kaggle` on the IMPORTING module would have
+# been silently bypassed and the REAL Kaggle CLI would have shelled out from inside a
+# supposedly-mocked test. Two independent plans hit that rake and each routed around it.
+#
+# A trap with no callers is not harmless: it is a loaded gun waiting for its first caller.
+# It is deleted, and the argv it carried now lives in exactly one function that everyone
+# calls.
+# --------------------------------------------------------------------------- #
+# The argv literal, in the exact live-verified shape (§R2), tolerant of formatting/quoting.
+_SUBMISSIONS_ARGV_RE = re.compile(r"""["']competitions["']\s*,\s*["']submissions["']""")
+
+
+def test_the_mis_binding_fetch_submissions_is_gone():
+    """``submissions_log.fetch_submissions`` must NOT exist — it was the footgun.
+
+    The injectable ``fetch_lb.read_submissions(..., runner=…)`` is the ONE reader. It takes
+    the gateway as an ARGUMENT, so a caller's monkeypatched gateway is honoured rather than
+    silently bypassed.
+    """
+    log = _log()
+    assert not hasattr(log, "fetch_submissions"), (
+        "submissions_log.fetch_submissions resolves run_kaggle from its OWN module globals: "
+        "a caller who patches the gateway in THEIR namespace is bypassed and a REAL Kaggle "
+        "call escapes from inside a mocked test. Use fetch_lb.read_submissions(runner=…)."
+    )
+
+    # It shells out for nothing now — the module imports no gateway at all.
+    assert not hasattr(log, "run_kaggle"), (
+        "the schema module must not hold a process-spawning reference: it OWNS the argv, it "
+        "does not EXECUTE it"
+    )
+
+
+def test_the_submissions_argv_has_exactly_one_home():
+    """The argv is CONSTRUCTED once, in the module that owns the schema, and imported.
+
+    Four independent copies of ``("competitions", "submissions", slug, "--format", "json",
+    "--page-size", "200")`` are four things to keep in sync — and the page-size / format
+    flags are exactly the sort of detail that silently drifts in one copy and poisons a
+    budget count.
+    """
+    log = _log()
+
+    assert log.submissions_argv("titanic") == (
+        "competitions", "submissions", "titanic",
+        "--format", "json", "--page-size", "200",
+    ), "the argv shape is live-verified (§R2): --page-size 200 is the CLI maximum"
+
+    offenders = sorted(
+        path.name
+        for path in SCRIPTS.glob("*.py")
+        if path.name != "submissions_log.py"
+        and _SUBMISSIONS_ARGV_RE.search(path.read_text())
+    )
+    assert offenders == [], (
+        f"{offenders} re-derive the `competitions submissions` argv. submissions_log.py is "
+        "the ONE source of this command — import submissions_argv(slug) instead of building "
+        "a second copy that can drift"
+    )
 
 
 # --------------------------------------------------------------------------- #

@@ -63,8 +63,6 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
-from kaggle_gateway import _parse_json_array, run_kaggle  # noqa: E402
-
 # --------------------------------------------------------------------------- #
 # Schema
 # --------------------------------------------------------------------------- #
@@ -362,34 +360,34 @@ def remaining_slots(daily_limit, charged) -> int | None:
 
 
 # --------------------------------------------------------------------------- #
-# Kaggle read — through the gateway ONLY (D-16). Never a bare shell-out.
+# The Kaggle READ argv — OWNED here, EXECUTED elsewhere (D-16).
 # --------------------------------------------------------------------------- #
-def fetch_submissions(slug: str, timeout: int = 60) -> list | None:
-    """Kaggle's authoritative submission list for ``slug``, or ``None`` (=> fail closed).
+def submissions_argv(slug: str) -> tuple[str, ...]:
+    """The ONE ``competitions submissions`` argv (WR-01). Built here, run by the caller.
 
-    ``None`` on any non-zero rc (the caller classifies — a 403 goes to
-    ``classify_gate`` → exit 77) or on a payload that is not a JSON array. The raw
-    buffer is PARSED, never printed: it can carry a token-shaped string (T-05-03-01).
-    An EMPTY array is a real, knowable ``[]`` — never ``None`` (a brand-new competition
-    the user simply has not submitted to yet must not fail closed).
+    ⚠ This module does NOT run it. It used to own a ``fetch_submissions()`` that shelled
+    out through its OWN module-global ``run_kaggle`` — a namespace-binding footgun: a
+    caller who monkeypatched the gateway in THEIR namespace was silently bypassed and the
+    REAL CLI escaped from inside a supposedly-mocked test. It had zero callers (two
+    independent plans hit the rake and each routed around it), and a trap with no callers
+    is just a loaded gun waiting for its first one. It is gone; the argv it carried lives
+    here, and the ONE reader is the INJECTABLE ``fetch_lb.read_submissions(..., runner=…)``,
+    which takes the gateway as an ARGUMENT.
+
+    Returning the argv rather than the rows is what lets each caller keep the exit-code
+    handling it actually needs — ``check_submission`` must classify a 403 / a missing CLI /
+    a timeout, ``submit``'s poll tick needs the raw ``(rc, payload)`` — while the COMMAND
+    itself is written once. Four copies of these seven tokens were four chances for
+    ``--page-size`` to drift in one of them and silently poison a budget count.
 
     ``--page-size 200`` is the CLI maximum and one page always covers today (the sort is
     date-descending and daily limits are ≤ ~10). Pagination is NOT attempted:
     ``--page-token`` is functionally dead (the CLI discards ``next_page_token``).
     """
-    rc, out = run_kaggle(
-        "competitions", "submissions", slug, "--format", "json", "--page-size", "200",
-        timeout=timeout,
+    return (
+        "competitions", "submissions", slug,
+        "--format", "json", "--page-size", "200",
     )
-    if rc != 0:
-        return None
-    # The CLI PRETTY-PRINTS the array across many lines, so a last-line parse fails on
-    # the closing `]`. The gateway's banner-tolerant whole-payload parse is the ONE
-    # parser for this shape.
-    rows = _parse_json_array(out)
-    if not isinstance(rows, list):
-        return None
-    return rows
 
 
 def find_by_exp_id(rows, exp_id: str, since: datetime | None = None) -> dict | None:

@@ -68,6 +68,7 @@ from submissions_log import (  # noqa: E402
     parse_status,
     parse_utc,
     read_rows,
+    submissions_argv,
     upsert_row,
     write_rows,
 )
@@ -117,19 +118,18 @@ def _now_iso() -> str:
 def read_submissions(slug: str, *, timeout: int = DEFAULT_POLL_TIMEOUT, runner=None):
     """Kaggle's authoritative rows for ``slug``, or ``None`` (⇒ the caller fails closed).
 
-    ``runner`` defaults to THIS module's ``run_kaggle`` and exists so ``submit.py`` can
-    pass its OWN gateway reference: that is the seam the tests monkeypatch, and it is
-    what keeps every Kaggle call in one place instead of two copies of the argv.
+    ⭐ THE ONE READER. ``runner`` defaults to THIS module's ``run_kaggle`` and exists so
+    ``submit.py`` can pass its OWN gateway reference: the gateway is an ARGUMENT, not a
+    module global, so a caller's monkeypatched gateway is HONOURED rather than silently
+    bypassed (WR-01 — the trap that killed ``submissions_log.fetch_submissions``).
 
-    The raw payload is PARSED, never printed — it can carry a token-shaped string.
-    ``--page-size 200`` is the CLI maximum; one page always covers today.
+    The argv itself is not built here either: ``submissions_log.submissions_argv`` owns it,
+    so the command exists in exactly one place (``--page-size 200`` is the CLI maximum; one
+    page always covers today). The raw payload is PARSED, never printed — it can carry a
+    token-shaped string.
     """
     call = runner if runner is not None else run_kaggle
-    rc, payload = call(
-        "competitions", "submissions", slug,
-        "--format", "json", "--page-size", "200",
-        timeout=timeout,
-    )
+    rc, payload = call(*submissions_argv(slug), timeout=timeout)
     if rc != 0:
         return None
     rows = _parse_json_array(payload)
@@ -415,11 +415,8 @@ def _resume(ws: Path, slug: str, args) -> int:
             continue
 
         def _status_fn():
-            return run_kaggle(
-                "competitions", "submissions", slug,
-                "--format", "json", "--page-size", "200",
-                timeout=args.poll_timeout,
-            )
+            # The raw (rc, payload) shape poll_lb wants — but the ARGV is the shared one.
+            return run_kaggle(*submissions_argv(slug), timeout=args.poll_timeout)
 
         result = poll_lb(
             _status_fn,

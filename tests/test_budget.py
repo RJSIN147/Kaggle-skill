@@ -18,11 +18,13 @@ Pinned contract:
     treated as UTC (assumption A1). ⚠ THE TRAP: comparing it against ``datetime.now()``
     (LOCAL) silently miscounts the budget near the day boundary — the exact
     confident-but-wrong failure this project fails closed against.
-  * ``fetch_submissions(slug, timeout=60) -> list | None`` — ``None`` on any rc != 0 or a
-    non-array payload. The caller must NEVER guess a count.
+  * ``fetch_lb.read_submissions(slug, runner=…) -> list | None`` — ``None`` on any rc != 0
+    or a non-array payload. The caller must NEVER guess a count. ⚠ The gateway is an
+    ARGUMENT (WR-01): the module-global-resolving ``submissions_log.fetch_submissions`` it
+    replaced could silently bypass a monkeypatched gateway and shell out for real.
 
 ``now_utc`` is ALWAYS injected — no test here reads the real clock. No CLI process is ever
-spawned: ``run_kaggle`` is monkeypatched on the importing module.
+spawned: the gateway is INJECTED into the reader.
 """
 
 from __future__ import annotations
@@ -198,7 +200,7 @@ def test_the_unknown_status_of_a_today_row_still_fails_closed():
 # --------------------------------------------------------------------------- #
 # D-04: FAIL CLOSED. Never guess a count.
 # --------------------------------------------------------------------------- #
-def test_fails_closed_when_count_unavailable(monkeypatch):
+def test_fails_closed_when_count_unavailable():
     log = _log()
     rows = _fixture("mixed_today")
 
@@ -240,25 +242,28 @@ def test_fails_closed_when_count_unavailable(monkeypatch):
     # (3) FAILED is the ONLY legitimate skip — an all-ERROR list still counts cleanly to 0.
     assert log.charged_today(_fixture("error"), NOW_UTC) == 0
 
-    # (4) fetch_submissions returns None (=> fail closed) on a non-zero rc...
-    monkeypatch.setattr(log, "run_kaggle", _fake_gateway("403 Client Error: Forbidden", rc=1))
-    assert log.fetch_submissions("titanic") is None
+    # (4) The READER returns None (=> fail closed) on a non-zero rc...
+    #
+    # ⚠ WR-01: this is `fetch_lb.read_submissions(..., runner=…)` — the INJECTABLE reader,
+    # which takes the gateway as an ARGUMENT. It replaced `submissions_log.fetch_submissions`,
+    # which resolved `run_kaggle` from its OWN module globals: patching the gateway anywhere
+    # but inside that module was silently bypassed and the REAL Kaggle CLI shelled out from
+    # inside a supposedly-mocked test. Passing `runner=` cannot be bypassed.
+    read = importlib.import_module("fetch_lb").read_submissions
+
+    assert read("titanic", runner=_fake_gateway("403 Client Error: Forbidden", rc=1)) is None
 
     # ...and on a payload that is not a JSON array.
-    monkeypatch.setattr(log, "run_kaggle", _fake_gateway('{"error":"nope"}', rc=0))
-    assert log.fetch_submissions("titanic") is None
-    monkeypatch.setattr(log, "run_kaggle", _fake_gateway("this is not json at all", rc=0))
-    assert log.fetch_submissions("titanic") is None
+    assert read("titanic", runner=_fake_gateway('{"error":"nope"}', rc=0)) is None
+    assert read("titanic", runner=_fake_gateway("this is not json at all", rc=0)) is None
 
     # The happy path: a pretty-printed JSON array (CLI 2.2.3 spans many lines) parses.
     payload = json.dumps(_fixture("mixed_today"), indent=2)
     assert "\n" in payload, "the CLI pretty-prints --format json across many lines"
-    monkeypatch.setattr(log, "run_kaggle", _fake_gateway(payload, rc=0))
-    fetched = log.fetch_submissions("titanic")
+    fetched = read("titanic", runner=_fake_gateway(payload, rc=0))
     assert isinstance(fetched, list) and len(fetched) == len(rows)
     assert log.charged_today(fetched, NOW_UTC) == EXPECTED_CHARGED_TODAY
 
     # An empty array is a real, knowable EMPTY list — never None (that would fail closed
     # on a brand-new competition the user has simply not submitted to yet).
-    monkeypatch.setattr(log, "run_kaggle", _fake_gateway("[]", rc=0))
-    assert log.fetch_submissions("titanic") == []
+    assert read("titanic", runner=_fake_gateway("[]", rc=0)) == []

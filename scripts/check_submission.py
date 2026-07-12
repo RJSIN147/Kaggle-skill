@@ -79,6 +79,7 @@ from submissions_log import (  # noqa: E402
     charged_today,
     read_rows,
     remaining_slots,
+    submissions_argv,
 )
 
 CONFIG_REL = "control/config.json"
@@ -421,13 +422,16 @@ def fetch_submissions(ws: Path, slug: str, timeout: int = 60):
 
     ``run_kaggle`` is called through THIS module's binding (the ``poll_kernel`` posture) so
     the suite can substitute the gateway and assert the exact argv without executing it.
+    The ARGV, though, is not re-derived here: ``submissions_log.submissions_argv`` owns the
+    one true command (WR-01). This function exists separately from
+    ``fetch_lb.read_submissions`` only because it must CLASSIFY the failure — a 403 UI gate,
+    a missing CLI, a timeout each need a different exit code, and that classification is
+    what the free gate is FOR.
+
     An exit code is returned when the caller must terminate on it (a 403 UI gate, a missing
     CLI, a timeout); otherwise ``rows`` is ``None`` and the caller FAILS CLOSED.
     """
-    rc, out = run_kaggle(
-        "competitions", "submissions", slug, "--format", "json", "--page-size", "200",
-        timeout=timeout,
-    )
+    rc, out = run_kaggle(*submissions_argv(slug), timeout=timeout)
     if rc == 127:
         print(
             "cannot check the budget: the kaggle CLI was not found on PATH. Install it "
