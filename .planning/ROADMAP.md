@@ -196,9 +196,9 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 — parallel)*
 
-- [ ] 05-04-PLAN.md — `check_submission.py` (FREE — never spends a slot): D-01 type refusal, D-02 file validation, D-04 budget, D-05/D-06/D-08 block-by-default gate + decision material
-- [ ] 05-05-PLAN.md — `submit.py` (⚠ the CLI is FAIL-OPEN — success is confirmed by READ-BACK, never by rc==0; PENDING row written before the poll) + `fetch_lb.py` (detach fallback + `--reconcile`)
-- [ ] 05-06-PLAN.md — CV→LB gap trend + D-10 rank-inversion divergence alarm (derived join on `exp_id`; `meta.json` never written) spliced into the strategy-regen contract
+- [x] 05-04-PLAN.md — `check_submission.py` (FREE — never spends a slot): D-01 type refusal, D-02 file validation, D-04 budget, D-05/D-06/D-08 block-by-default gate + decision material
+- [x] 05-05-PLAN.md — `submit.py` (⚠ the CLI is FAIL-OPEN — success is confirmed by READ-BACK, never by rc==0; PENDING row written before the poll) + `fetch_lb.py` (detach fallback + `--reconcile`)
+- [x] 05-06-PLAN.md — CV→LB gap trend + D-10 rank-inversion divergence alarm (derived join on `exp_id`; `meta.json` never written) spliced into the strategy-regen contract
 
 **Wave 4** *(blocked on Wave 3)*
 
@@ -214,7 +214,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | 2. Competition Context & Data | 7/7 | Complete   | 2026-07-10 |
 | 3. Local Experiment Loop, Ledger & Strategy | 5/5 | Complete   | 2026-07-11 |
 | 4. Kaggle Kernel Execution (GPU Path) | 6/6 | Complete   | 2026-07-11 |
-| 5. Submission & Leaderboard Tracking | 3/7 | In Progress|  |
+| 5. Submission & Leaderboard Tracking | 6/7 | In Progress|  |
 
 ## Coverage
 
