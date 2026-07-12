@@ -914,6 +914,36 @@ def test_refuses_when_the_budget_is_unknowable(
     assert _read_sub_rows(ws) == []
 
 
+def test_the_unavailable_sentinel_is_never_printed_as_a_count(
+    tmp_workspace, monkeypatch, capsys
+):
+    """⚠ WR-11 — submit.py's gate line must not leak ``charged=-1`` either.
+
+    check_submission renders the same line, and both are read by a human at the moment they
+    decide whether to spend an irreversible slot. ``-1`` is the COUNT_UNAVAILABLE sentinel —
+    ``submissions_log`` says of it "it is not a count: callers MUST fail closed on it and
+    never coerce it" — and printing it as a number invites the "minus one submissions?"
+    misreading in the exact place a misreading is most expensive.
+    """
+    mod = _submit()
+    gw = importlib.import_module("kaggle_gateway")
+    ws = _seed_ws(tmp_workspace)
+
+    # Kaggle's authoritative list could not be read => the count is unknowable => -1.
+    fake, calls = _fake_gateway(readback=[], readback_rc=1)
+    monkeypatch.setattr(mod, "run_kaggle", fake)
+
+    assert _run(mod, ws, "--confirm") == gw.GATE_BLOCKED
+    combined = "".join(capsys.readouterr())
+
+    assert "charged=-1" not in combined, (
+        "the -1 COUNT_UNAVAILABLE sentinel is not a count — it must never be rendered as one "
+        "to the human deciding whether to spend an irreversible slot"
+    )
+    assert "charged=UNKNOWN" in combined
+    assert "UNKNOWN (fail closed)" in combined
+
+
 @pytest.mark.parametrize(
     "case,ledger_text",
     [
