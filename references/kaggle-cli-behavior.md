@@ -274,15 +274,24 @@ privateScore, publicScore, ref, status
 which is *our* LB score, the only thing SCORE-01/02 need. `competitions leaderboard` answers a different
 question (the public standings of all teams) that no requirement asks. It is deliberately not built.
 
-### `submissions_log.fetch_submissions()` — ⚠ a namespace-binding footgun (2026-07-12, post-merge finding)
+### Reading the submissions list — one argv, one reader (WR-01, resolved 2026-07-12)
 
-`scripts/submissions_log.py::fetch_submissions()` ended up with **zero callers**, and that is not an
-accident: it resolves `run_kaggle` from **its own module globals**, so a caller that monkeypatches
-`run_kaggle` in *their* module namespace is **silently bypassed and the real CLI shells out**. Two
-independent plans (05-04, 05-05) hit this and each routed around it — 05-04 with a local fetch, 05-05
-via the injectable `read_submissions(..., runner=…)` in `fetch_lb.py`. Recorded here because a future
-caller would step on the same rake: **prefer the injectable `fetch_lb.read_submissions(..., runner=…)`**;
-do not reach for `submissions_log.fetch_submissions()` without patching it *in its own module*.
+**The argv lives once:** `submissions_log.submissions_argv(slug)` returns the seven live-verified
+tokens (`competitions submissions <slug> --format json --page-size 200`). Every caller imports it;
+nobody re-types it. `tests/test_submissions_log.py::test_the_submissions_argv_has_exactly_one_home`
+enforces that mechanically by grepping `scripts/`.
+
+**The reader is injectable:** `fetch_lb.read_submissions(slug, *, timeout, runner=…)` takes the
+gateway as an **argument**.
+
+⚠ **The footgun that made this necessary (kept as a warning, not as code).** `submissions_log.py`
+once carried its own `fetch_submissions()` which resolved `run_kaggle` from **its own module
+globals** — so a caller who monkeypatched `run_kaggle` in *their* namespace was **silently bypassed
+and the real CLI shelled out**, from inside a supposedly-mocked test, against a surface where a
+mistake spends an irreversible slot. It accumulated **zero callers** precisely because two
+independent plans (05-04, 05-05) each hit the rake and routed around it. It has been **deleted**.
+When a Kaggle call needs a seam, **pass the gateway in** — never resolve it from a module global
+that the caller cannot reach.
 
 ### Assumption A1 — is `submissions.date` UTC? ⏳ **UNRESOLVED — awaiting the first real submission**
 

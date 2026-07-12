@@ -141,6 +141,7 @@ from submissions_log import (  # noqa: E402
     parse_status,
     read_rows,
     remaining_slots,
+    submissions_argv,
 )
 
 SUBMIT_TIMEOUT = 300  # an upload is slower than a status read
@@ -308,10 +309,11 @@ def _gate(ws: Path, args, config: dict, slug: str) -> int | None:
         "plenty left".
 
     The budget read goes through ``fetch_lb.read_submissions(..., runner=run_kaggle)`` — the
-    INJECTABLE reader. ⚠ NOT ``submissions_log.fetch_submissions()``, which resolves
-    ``run_kaggle`` from its OWN module globals: a caller that substituted the gateway would
-    be silently bypassed and a REAL Kaggle call would escape from inside a supposedly-mocked
-    test. It has zero callers and this must not become its first.
+    ONE reader, and the INJECTABLE one: it takes the gateway as an ARGUMENT, so a caller
+    that substituted the gateway is HONOURED rather than silently bypassed. (Its predecessor
+    ``submissions_log.fetch_submissions`` resolved ``run_kaggle`` from its OWN module
+    globals, which would have let a REAL Kaggle call escape from inside a supposedly-mocked
+    test. WR-01 deleted it; the argv now lives once, in ``submissions_log.submissions_argv``.)
     """
     metric = config.get("metric") or {}
     greater_is_better = metric.get("greater_is_better")
@@ -675,13 +677,10 @@ def read_status_payload(slug: str, timeout: int):
     """One read-only leaderboard poll tick, in the ``run_kaggle`` ``(rc, payload)`` shape.
 
     Routed through THIS module's gateway reference so the poll is exercised — and proven
-    read-only — from the captured argv, without ever executing a command.
+    read-only — from the captured argv, without ever executing a command. The ARGV is the
+    shared ``submissions_log.submissions_argv`` (WR-01), never a fourth private copy.
     """
-    return run_kaggle(
-        "competitions", "submissions", slug,
-        "--format", "json", "--page-size", "200",
-        timeout=timeout,
-    )
+    return run_kaggle(*submissions_argv(slug), timeout=timeout)
 
 
 def build_parser() -> argparse.ArgumentParser:
