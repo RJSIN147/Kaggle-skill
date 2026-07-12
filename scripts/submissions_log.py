@@ -291,19 +291,34 @@ def charged_today(rows, now_utc: datetime) -> int:
     near the day boundary — the confident-but-wrong failure this project fails closed
     against everywhere.
 
-    THE FAIL-CLOSED CONTRACT: returns the ``-1`` sentinel on ANY row with an unparseable
-    ``status`` OR an unparseable ``date``. Cannot count => the caller MUST fail closed —
-    never guess a count. Silently SKIPPING a row whose status the parser does not
-    recognize (e.g. a FUTURE Kaggle status literal) would UNDERCOUNT the charged
-    submissions and let the user spend past Kaggle's real daily limit.
+    THE FAIL-CLOSED CONTRACT: returns the ``-1`` sentinel for any row that could be TODAY's
+    and cannot be accounted for. Cannot count => the caller MUST fail closed — never guess a
+    count. Silently SKIPPING a today-dated row whose status the parser does not recognize
+    (e.g. a FUTURE Kaggle status literal) would UNDERCOUNT the charged submissions and let
+    the user spend past Kaggle's real daily limit.
 
-      * unparseable status → ``-1`` immediately (do NOT skip the row)
-      * ``FAILED``         → skip. D-13: Kaggle does NOT charge a processing-error
-        submission, so the arithmetic comes free with no special-casing anywhere else.
-        This is a KNOWN, PARSED status — the ONLY legitimate skip.
-      * unparseable date   → ``-1`` immediately (same contract)
-      * otherwise          → counted iff its UTC date equals ``now_utc``'s UTC date.
-        ``PENDING`` IS counted: the slot was accepted and is being scored.
+    ⚠ THE DATE IS PARSED FIRST, AND THE ORDER IS LOAD-BEARING (WR-06). ``--page-size 200``
+    returns the whole recent HISTORY, so a status-first parse meant that ONE old row with an
+    unrecognized literal (a legacy value, a future enum) returned ``-1`` **permanently** —
+    bricking the budget for that competition on every subsequent day, forever, with no
+    escape that is not an override. The "skipping would UNDERCOUNT" rationale only ever held
+    for rows that COULD be today's: a row whose DATE parses cleanly to a PAST day cannot
+    change today's count no matter what its status says. Narrowing the trigger to the rows
+    that can actually affect the answer keeps the fail-closed guarantee exactly where it
+    protects a slot, and removes the permanent-brick mode.
+
+      * a non-object row → ``-1`` immediately (the payload is not what we think it is)
+      * unparseable date → ``-1`` immediately. An unknowable DAY is ALWAYS fatal — it might
+        BE today. This is the boundary the narrowing must never cross.
+      * a PAST/FUTURE day → skipped without ever consulting the status. It cannot be
+        charged against today.
+      * unparseable status ON A TODAY-DATED ROW → ``-1``. Still fatal: this row IS one of
+        today's and we cannot tell whether Kaggle charged it.
+      * ``FAILED``       → skip. D-13: Kaggle does NOT charge a processing-error submission,
+        so the arithmetic comes free with no special-casing anywhere else. This is a KNOWN,
+        PARSED status — the ONLY legitimate skip of a today-dated row.
+      * otherwise        → counted. ``PENDING`` IS counted: the slot was accepted and is
+        being scored.
 
     An empty list is a real, knowable ``0`` — not the sentinel.
     """
@@ -313,18 +328,23 @@ def charged_today(rows, now_utc: datetime) -> int:
         if not isinstance(row, dict):
             return COUNT_UNAVAILABLE
 
+        # DATE FIRST (WR-06). An unknowable day is always fatal; a knowable PAST day is
+        # always irrelevant. Only what is left can affect today's count.
+        ts = parse_utc(row.get("date"))
+        if ts is None:
+            return COUNT_UNAVAILABLE
+        if ts.date() != today:
+            continue
+
         status = parse_status(row.get("status"))
         if status is None:
-            # Unrecognized literal: we cannot account for this row. FAIL CLOSED.
+            # An unrecognized literal on one of TODAY's rows: we cannot account for it.
+            # FAIL CLOSED — skipping it would undercount the budget.
             return COUNT_UNAVAILABLE
         if status == "FAILED":
             continue  # D-13 — never charged.
 
-        ts = parse_utc(row.get("date"))
-        if ts is None:
-            return COUNT_UNAVAILABLE
-        if ts.date() == today:
-            count += 1
+        count += 1
 
     return count
 
