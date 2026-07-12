@@ -253,6 +253,53 @@ def test_sample_resolution_ladder(tmp_workspace, monkeypatch, capsys):
 
 
 # --------------------------------------------------------------------------- #
+# WR-09 — an unreadable REFERENCE file exits cleanly; it does not crash the gate.
+#
+# `validate_submission` wraps `_read_csv` in `except (OSError, UnicodeDecodeError,
+# csv.Error)`. `_resolve_reference` calls the same function twice and did NOT. A reference
+# file with a NUL byte (`csv.Error: line contains NUL`), a non-UTF-8 encoding, or a
+# permissions problem therefore produced a raw TRACEBACK out of the FREE gate — which
+# SKILL.md promises is "argparse in, exit code out". A gate that crashes is a gate the agent
+# may route around, and routing around this one costs an irreversible slot.
+# --------------------------------------------------------------------------- #
+# Bytes that are not valid UTF-8. `Path.open()` decodes with the default codec, so this
+# raises UnicodeDecodeError out of `_read_csv` — a real, plausible corruption (a
+# latin-1/UTF-16 file, a truncated download) and the one the stdlib genuinely refuses.
+_UNDECODABLE = b"PassengerId,Survived\n892,\xff\xfe1\n893,1\n"
+
+
+@pytest.mark.parametrize("rung", ["sample_file", "test_csv_fallback"])
+def test_an_unreadable_reference_file_fails_closed(tmp_workspace, monkeypatch, capsys, rung):
+    """A corrupt reference exits 65 (fail closed) — never a traceback."""
+    mod = _check()
+    gw = importlib.import_module("kaggle_gateway")
+
+    if rung == "sample_file":
+        ws = _seed(tmp_workspace / rung, csv_body=GOOD_BODY)
+        (ws / "data" / SAMPLE_NAME).write_bytes(_UNDECODABLE)
+    else:
+        # No sample anywhere => rung 3, the test.csv id-set fallback — same unguarded read.
+        ws = _seed(
+            tmp_workspace / rung, csv_body=GOOD_BODY, sample_body=None, in_manifest=False
+        )
+        (ws / "data" / "test.csv").write_bytes(_UNDECODABLE)
+
+    fake, calls = _fake_gateway(readback=[])
+    monkeypatch.setattr(mod, "run_kaggle", fake)
+
+    rc = _run(mod, ws)  # must NOT raise
+    assert rc == gw.VALIDATION_FAILED == 65, (
+        f"{rung}: an unreadable reference file must FAIL CLOSED with an exit code — the free "
+        "gate is 'argparse in, exit code out', and a crashed gate is one the agent routes "
+        "around"
+    )
+    assert calls == [], "nothing is validated, so nothing is read from Kaggle either"
+
+    combined = "".join(capsys.readouterr())
+    assert "could not be read" in combined.lower() or "nothing to validate" in combined.lower()
+
+
+# --------------------------------------------------------------------------- #
 # WR-03 — a CLI failure is CLASSIFIED, not assumed to be a 403.
 #
 # Every non-zero rc used to be handed to `classify_gate` and rendered as the rules-URL /
