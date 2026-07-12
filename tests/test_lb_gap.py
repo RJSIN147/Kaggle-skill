@@ -12,8 +12,13 @@ Pinned contract (05-RESEARCH.md Pattern 4):
     SCORED submissions with a NON-None ``public_score`` only. A PENDING / FAILED / unscored
     row is EXCLUDED (never coerced to 0.0 — that would fabricate a gap and fire a bogus
     alarm). ``gap = lb_score - cv_mean``.
-  * ``rank_inversions(pairs, greater_is_better) -> [(better_cv_id, better_lb_id, dcv, dlb)]``
-    where ``pairs`` is ``[(exp_id, cv_mean, lb_score)]``. Fires when CV says B beats A but
+  * ``rank_inversions(pairs, greater_is_better) -> [(better_cv_id, better_lb_id, dcv, dlb,
+    (cv, lb) of the CV-winner, (cv, lb) of the LB-winner)]``
+    where ``pairs`` is ``[(exp_id, cv_mean, lb_score)]``. The COMPARED SCORES travel with the
+    inversion (WR-08): ``exp_id`` is not unique over scored submissions — a RE-SUBMITTED
+    experiment appears once per submission — so they can never be re-looked-up by id without
+    the renderer printing one submission's leaderboard score beside another's Δlb.
+    Fires when CV says B beats A but
     the LEADERBOARD says A beats B — i.e. CV has stopped predicting LB. SCALE-FREE, so it
     needs no per-competition tuning, and direction-aware for BOTH ``greater_is_better``
     values (Kaggle reports ``publicScore`` in the competition's own metric).
@@ -25,6 +30,8 @@ Pinned contract (05-RESEARCH.md Pattern 4):
 from __future__ import annotations
 
 import importlib
+import math
+import re
 
 
 def _gap():
@@ -181,3 +188,72 @@ def test_alarm_needs_two_points():
     fired = gap.alarm_body([("exp-A", 0.81, 0.77), ("exp-B", 0.84, 0.75)], True)
     assert "needs >=2 scored submissions" not in fired
     assert "exp-A" in fired and "exp-B" in fired
+
+
+# --------------------------------------------------------------------------- #
+# WR-08 — a RE-SUBMITTED experiment must not make the alarm print numbers that
+# contradict the inversion it detected.
+#
+# `join_cv_lb` deliberately emits ONE ROW PER SCORED SUBMISSION ("MANY SUBMISSIONS PER
+# EXPERIMENT are handled naturally") and `to_pairs` preserves that. But `alarm_body` then
+# collapsed them back with `lookup = {i: (cv, lb) for i, cv, lb in pairs}` — LAST WRITE WINS.
+# So with two scored submissions of the same experiment, the alarm could fire on one pair and
+# then RENDER the other pair's leaderboard score, printing an lb and a Δlb that do not
+# correspond to each other. This is the one section whose entire premise is "TOOLING-WRITTEN,
+# the AI can never fabricate an LB score" — a line whose own arithmetic does not add up is
+# indistinguishable from a fabricated one, and it is what the strategy doc shows the human.
+# --------------------------------------------------------------------------- #
+_LINE = re.compile(
+    r"\*\*(?P<cv_id>[\w-]+)\*\* has the better CV \((?P<cv_a>[\d.e+-]+) vs (?P<cv_b>[\d.e+-]+), "
+    r"Δcv (?P<dcv>[\d.e+-]+)\).*?\((?P<lb_a>[\d.e+-]+) vs (?P<lb_b>[\d.e+-]+), "
+    r"Δlb (?P<dlb>[\d.e+-]+)\)"
+)
+
+
+def test_a_resubmitted_experiment_renders_the_pair_that_actually_inverted():
+    """Every number on an alarm line must belong to the SAME compared pair."""
+    gap = _gap()
+
+    # exp-007 was submitted TWICE (LB 0.75, then a worse 0.70); exp-008 once. Both of
+    # exp-007's submissions invert against exp-008 (better CV, worse LB) — but with
+    # DIFFERENT Δlb (0.03 and 0.08). The de-duplicating lookup kept only the LAST (0.70).
+    pairs = [
+        ("exp-007", 0.90, 0.75),
+        ("exp-007", 0.90, 0.70),
+        ("exp-008", 0.80, 0.78),
+    ]
+    body = gap.alarm_body(pairs, True)
+
+    lines = _LINE.finditer(body)
+    checked = 0
+    for m in lines:
+        checked += 1
+        cv_a, cv_b = float(m["cv_a"]), float(m["cv_b"])
+        lb_a, lb_b = float(m["lb_a"]), float(m["lb_b"])
+        dcv, dlb = float(m["dcv"]), float(m["dlb"])
+
+        assert math.isclose(abs(cv_a - cv_b), dcv, abs_tol=1e-9), (
+            f"Δcv {dcv} does not match the CVs printed beside it ({cv_a} vs {cv_b}) — the "
+            f"line names numbers from a different pair than the one that inverted:\n{m[0]}"
+        )
+        assert math.isclose(abs(lb_a - lb_b), dlb, abs_tol=1e-9), (
+            f"Δlb {dlb} does not match the LB scores printed beside it ({lb_a} vs {lb_b}) — "
+            "the alarm fired on one submission's LB and then RENDERED another's. This "
+            f"section's whole premise is that its numbers are tooling-written:\n{m[0]}"
+        )
+        # The experiment named as CV-better must really have the worse LB on this line.
+        assert lb_a < lb_b, f"the named CV-winner must be the LB-loser on its own line:\n{m[0]}"
+        checked_ids = (m["cv_id"],)
+        assert checked_ids[0] == "exp-007"
+
+    assert checked == 2, (
+        "BOTH of exp-007's scored submissions invert against exp-008, so BOTH must be "
+        f"rendered — one row per SCORED SUBMISSION, not one per experiment (got {checked})"
+    )
+
+    # The pair that inverted with the 0.75 leaderboard score must appear AS 0.75 — it was
+    # silently overwritten by 0.70 before.
+    assert "0.75" in body, (
+        "exp-007's FIRST scored submission (LB 0.75) inverted too; its real leaderboard "
+        "score must be the one printed on its own line"
+    )

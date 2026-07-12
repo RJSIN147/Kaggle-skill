@@ -138,8 +138,18 @@ def rank_inversions(pairs, greater_is_better: bool) -> list[tuple]:
 
     `pairs` is `[(exp_id, cv_mean, lb_score)]`, SCORED submissions only. For each unordered pair
     an INVERSION exists when CV says one experiment wins and the LEADERBOARD says the other does.
-    Returns `(better_cv_id, better_lb_id, cv_delta, lb_delta)` so the renderer can name the actual
-    numbers rather than assert a conclusion.
+    Returns `(better_cv_id, better_lb_id, cv_delta, lb_delta, (cv, lb) of the CV-winner,
+    (cv, lb) of the LB-winner)` so the renderer can name the actual numbers rather than assert a
+    conclusion.
+
+    ⚠ THE COMPARED SCORES TRAVEL WITH THE INVERSION (WR-08). They are returned, not left to be
+    LOOKED UP AGAIN by `exp_id`, because `exp_id` IS NOT UNIQUE HERE: `join_cv_lb` emits one row
+    per SCORED SUBMISSION, so a RE-SUBMITTED experiment appears more than once with different
+    leaderboard scores. `alarm_body` used to rebuild a `{exp_id: (cv, lb)}` dict — last write
+    wins — and could therefore fire on one submission's LB while printing another's, rendering
+    an `lb` and a `Δlb` that do not add up. In the one section whose whole premise is that its
+    numbers are TOOLING-WRITTEN and can never be fabricated, a line whose own arithmetic
+    contradicts itself is indistinguishable from a fabricated one.
 
     SCALE-FREE and DIRECTION-AWARE: no threshold, no per-competition tuning; flipping
     `greater_is_better` flips the verdict. Requires >= 2 points to fire — with 0 or 1 the pair
@@ -155,10 +165,14 @@ def rank_inversions(pairs, greater_is_better: bool) -> list[tuple]:
     for (a_id, a_cv, a_lb), (b_id, b_cv, b_lb) in itertools.combinations(clean, 2):
         # CV says B wins, the leaderboard says A wins.
         if _better(b_cv, a_cv, greater_is_better) and _better(a_lb, b_lb, greater_is_better):
-            inversions.append((b_id, a_id, abs(b_cv - a_cv), abs(a_lb - b_lb)))
+            inversions.append(
+                (b_id, a_id, abs(b_cv - a_cv), abs(a_lb - b_lb), (b_cv, b_lb), (a_cv, a_lb))
+            )
         # ...or the mirror image: CV says A wins, the leaderboard says B wins.
         elif _better(a_cv, b_cv, greater_is_better) and _better(b_lb, a_lb, greater_is_better):
-            inversions.append((a_id, b_id, abs(a_cv - b_cv), abs(b_lb - a_lb)))
+            inversions.append(
+                (a_id, b_id, abs(a_cv - b_cv), abs(b_lb - a_lb), (a_cv, a_lb), (b_cv, b_lb))
+            )
     return inversions
 
 
@@ -187,6 +201,10 @@ def alarm_body(pairs, greater_is_better: bool) -> str:
       * fewer than 2 scored points → the shortfall, naming HOW MANY points there actually are;
       * >= 2 points, no inversion  → CV ordering still predicts LB ordering;
       * >= 2 points, an inversion  → the alarm, naming BOTH experiments and BOTH their numbers.
+
+    Every number on a line comes from the inversion tuple itself (WR-08) — the four scores that
+    were actually COMPARED. It is never re-looked-up by `exp_id`, which is not a unique key over
+    scored submissions: a re-submitted experiment has several, with different leaderboard scores.
     """
     state = alarm_state(pairs, greater_is_better)
     if not state["can_fire"]:
@@ -200,7 +218,6 @@ def alarm_body(pairs, greater_is_better: bool) -> str:
             "CV ordering still predicts leaderboard ordering."
         )
 
-    lookup = {i: (cv, lb) for i, cv, lb in pairs}
     lines = [
         f"**Divergence alarm: RANK INVERSION across {n} scored submissions.** "
         "CV ordering has stopped predicting leaderboard ordering, so CV is no longer a "
@@ -209,9 +226,8 @@ def alarm_body(pairs, greater_is_better: bool) -> str:
         "CV-based comparison.",
         "",
     ]
-    for better_cv_id, better_lb_id, cv_delta, lb_delta in inversions:
-        cv_a, lb_a = lookup.get(better_cv_id, (None, None))
-        cv_b, lb_b = lookup.get(better_lb_id, (None, None))
+    for better_cv_id, better_lb_id, cv_delta, lb_delta, cv_win, lb_win in inversions:
+        (cv_a, lb_a), (cv_b, lb_b) = cv_win, lb_win
         lines.append(
             f"- **{better_cv_id}** has the better CV ({_fmt(cv_a)} vs {_fmt(cv_b)}, "
             f"Δcv {_fmt(cv_delta)}) but the WORSE leaderboard score "
