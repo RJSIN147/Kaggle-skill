@@ -181,6 +181,31 @@ verification, so nothing busy-loops (criterion 3):
   could not be extracted from the rules text (D-13). Ask the user for the number and re-invoke
   with `--daily-limit N`; if they do not know, re-invoke with `--assume-default-limit`
   (records `5/day (assumed …)`, provenance-tagged). Everything else was already written.
+- **Exit 69 (`SUBMIT_UNSUPPORTED`)** from `check_submission.py` / `submit.py`: `competition.type`
+  is `code` or `unknown`, so the CSV path **refuses** rather than risk a slot (D-01). Tell the user
+  plainly: a code competition submits a **pushed kernel version**, not a CSV upload, and that path
+  is **out of scope for v1**. Do **not** retry, do **not** work around it, do **not** attempt a submit.
+- **Exit 65 (`VALIDATION_FAILED`)** from `check_submission.py` / `submit.py`: `submission.csv` does
+  not match the competition's sample. Surface the **exact** mismatch the script printed (header /
+  row count / id set / blank-or-NaN cell), fix the experiment or the harness, **re-run the
+  experiment**, then re-invoke `check_submission.py`. **Never submit an unvalidated file.**
+- **Exit 75 (`GATE_BLOCKED`)** from `check_submission.py` — ⭐ **THE HUMAN DECISION POINT (D-05).**
+  The framework has taken a position: this submission is **NOT RECOMMENDED** (the CV gain does not
+  beat fold-noise, or the budget is exhausted, or this is the **last assumed** slot). It is **not**
+  an error and **not** a hard refusal. Present the decision material the script printed **verbatim**
+  — this experiment's CV ± std, the best already-submitted CV, the margin vs. the noise bound (with
+  `k` stated), the remaining slots today, the CV→LB divergence state, and any ASSUMED-budget warning
+  — then **ASK the user** whether to submit anyway. Only on an explicit go-ahead, re-invoke:
+
+  ```bash
+  python3 scripts/submit.py --workspace <cwd> --exp-id exp-NNN --confirm [--reason "..."]
+  ```
+
+  ⚠ `--reason` is **OPTIONAL** (D-07). **Never require the user to justify spending their own slot** —
+  record a reason only when they volunteered one.
+  ⚠ **Never auto-confirm. Never submit on the user's behalf without an explicit go-ahead.** This is
+  PROJECT.md's core principle: human-in-the-loop reasoning is the point; an agent that quietly burns
+  a scarce, irreversible budget is the anti-pattern.
 
 ### Untrusted competition prose + commit hygiene
 
@@ -346,6 +371,53 @@ for the local run. Sequence (each `python3 scripts/<x>.py --workspace <cwd> --ex
 
 ---
 
+## Submission & leaderboard (SCORE-*)
+
+A submission slot is **scarce and irreversible**. CV stays the **decision metric** (SCORE-02) — the
+CV→LB gap is *observed and trended*, **never** used to pick an experiment. The loop is
+**check (free) → [THE HUMAN DECIDES] → submit (spends the slot) → fetch**; as everywhere else, the
+scripts are non-interactive and **the SKILL holds the human loop** via the reserved exit codes above.
+
+1. **Check — FREE, never spends a slot.** Always run this first.
+
+   ```bash
+   python3 scripts/check_submission.py --workspace <cwd> --exp-id exp-NNN
+   ```
+
+   Refuses a non-CSV competition (**69**), validates `submission.csv` against the sample (**65**),
+   counts the Kaggle-authoritative remaining budget, and renders the decision material.
+   **Exit 0 = clear to submit · exit 75 = blocked → present the material and ASK the user** (D-05).
+
+2. **The human decides.** On exit 75, follow the exit-75 gate entry above — present, ask, and pass
+   `--confirm` **only** on an explicit go-ahead. `--reason` is optional (D-07).
+
+3. **Submit — spends the slot.**
+
+   ```bash
+   python3 scripts/submit.py --workspace <cwd> --exp-id exp-NNN --confirm [--reason "..."] [--resubmit] [--dry-run]
+   ```
+
+   `--dry-run` prints the exact argv without calling Kaggle. Exit **0** = SCORED · **2** = the
+   submission FAILED (Kaggle scored it ERROR) · **3** = **DETACHED** · **4** = transient/fail-closed.
+   ⚠ **Exit 3 is NOT a failure:** the slot **IS** spent and the PENDING row **IS** already recorded —
+   only our poll budget expired. Re-run `fetch_lb.py` later to record the score. **Never re-submit
+   to "retry" a detach.**
+
+4. **Fetch — the detach fallback, read-only, never submits.**
+
+   ```bash
+   python3 scripts/fetch_lb.py --workspace <cwd> [--exp-id exp-NNN] [--reconcile]
+   ```
+
+   Re-runnable: transitions the PENDING row in `control/submissions.jsonl` to SCORED/FAILED in place.
+   `--reconcile` back-fills out-of-band submissions made outside the framework.
+
+5. **Regenerate the strategy** — the same `regen_strategy.py` step as the experiment loop; it now
+   also renders the **CV→LB gap trend + the rank-inversion divergence alarm** (a warning that CV has
+   stopped tracking the LB — *never* a selection signal).
+
+---
+
 ## Security & egress (SETUP-04)
 
 - **Never echo, log, or commit credential values.** The scripts mask output and the pre-commit
@@ -379,7 +451,11 @@ for the local run. Sequence (each `python3 scripts/<x>.py --workspace <cwd> --ex
 | `scripts/pull_kernel.py` | EXP-05/D-14 `kernels output` + `logs`→`kernel_log.txt` (untrusted, file-only) + `pull -m` image/machine provenance merged into `kernel_run.json` |
 | `scripts/record_experiment.py` | EXP-04/D-05/06 the anti-lie recorder: recompute the mean, attach provenance, persist `meta.json` + ledger row + `VERDICT.md`; a bad run is FAILED-with-verdict. Kernel path (`--kernel-log`) scans the log FIRST — a marker ⇒ FAILED(`kernel_error`) even with COMPLETE status + valid `result.json` |
 | `scripts/rebuild_ledger.py` | MEM-01/D-10 rebuild `control/ledger.jsonl` as a pure function of the `meta.json` folders (corrupt metas skipped-and-warned; atomic replace) |
-| `scripts/regen_strategy.py` | MEM-02/03/D-12 regenerate `strategy.md` from the ledger: tooling FACTS (current-best + tried-list) + AI `--reasoning-file`, full atomic overwrite |
+| `scripts/regen_strategy.py` | MEM-02/03/D-12 regenerate `strategy.md` from the ledger: tooling FACTS (current-best + tried-list + the CV→LB gap trend and rank-inversion alarm) + AI `--reasoning-file`, full atomic overwrite |
+| `scripts/check_submission.py` | SCORE-01/03 D-02/04/05 the **FREE** pre-submit gate — **never spends a slot**: refuses a non-CSV competition (69), validates `submission.csv` against the sample (exact headers, exact row count, order-independent id set, no blanks/NaN → 65), counts the **Kaggle-authoritative** remaining budget (UTC day; ERROR rows are not charged), renders the decision material + a recommendation. Exit 0 = clear / 75 = blocked → the human decides |
+| `scripts/submit.py` | SCORE-01 D-01/03 spends the slot **only** when explicitly `--confirm`ed. The CLI is **FAIL-OPEN** (exit 0 on a 404 slug and on a failed upload) so success is **confirmed by READ-BACK**, never by the exit code; the PENDING row is written BEFORE the poll so a spent slot is never lost; bounded poll then DETACH (0/2/3/4). `--dry-run` prints the exact argv without calling Kaggle |
+| `scripts/fetch_lb.py` | SCORE-01/02 D-03/11 the detach fallback — **never submits**: re-runnable, transitions a PENDING `submissions.jsonl` row to SCORED/FAILED in place; `--reconcile` back-fills out-of-band submissions from Kaggle |
+| `scripts/lb_gap.py` | SCORE-02 pure CV→LB join + the rank-inversion divergence alarm rendered by `regen_strategy.py`. CV stays the DECISION metric — the gap is observed, never used to select |
 
 Read `references/egress-allowlist.md` (egress hosts + portability) and
 `references/kaggle-cli-behavior.md` (observed CLI exit-codes / precedence) only when needed.

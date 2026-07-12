@@ -19,6 +19,16 @@ control/raw/last-error.txt
 
 # Phase 3 experiment artifacts — declared now so .gitignore isn't rewritten later (D-13)
 experiments/*/artifacts/
+# NOTE (Phase 5, CONSCIOUS DECISION — not an accident): `experiments/*/*.csv` sweeps up
+# `submission.csv`, and it STAYS IGNORED BY DESIGN — deliberately NO un-ignore negation is
+# added for it below. Rationale:
+#   - a submission CSV is a HEAVY, DERIVED artifact — same class as data/, *.npy, artifacts/;
+#   - provenance is preserved BETTER by the `file_sha256` recorded in control/submissions.jsonl
+#     (D-11 requires it anyway), which proves exactly WHICH BYTES were uploaded — a tracked copy
+#     of the CSV proves less and costs more;
+#   - reproducibility is preserved by the TRACKED experiment.py + seed + git_commit.
+# ⚠ If a rule here is ever added/changed, editing this template does NOT update an
+# already-scaffolded workspace — `kaggle_gateway._append_line_if_absent` is the retrofit mechanism.
 experiments/*/*.csv
 experiments/*/*.zip
 experiments/*/*.pkl
@@ -29,6 +39,10 @@ experiments/*/*.parquet
 # execution log; keep the small kernel_run.json provenance TRACKED (D-03/D-14).
 experiments/*/*.npy
 experiments/*/kernel_log.txt
+# Phase 5 submission record: control/submissions.jsonl is TRACKED BY DESIGN — no rule covers it,
+# and none should. It is small, diffable, append-only git-backed provenance (exp_id, kaggle_ref,
+# file_sha256, status, scores) — the same posture as control/raw/*.json (Phase 2 D-03). It is the
+# canonical LB record and the ONLY place an LB score is written (meta.json is immutable — D-11).
 # Tracked-but-anticipated exceptions: keep experiment code + meta.json (Phase 3) and
 # the kernel_run.json provenance (Phase 4)
 !experiments/*/*.py
