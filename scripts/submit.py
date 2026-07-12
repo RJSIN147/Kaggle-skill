@@ -1,0 +1,438 @@
+#!/usr/bin/env python3
+"""submit.py — the ONE place in this codebase that spends a real submission slot (SCORE-01).
+
+⚠ A Kaggle submission is IRREVERSIBLE and consumes a scarce daily slot. This script is
+therefore the most safety-critical file in the framework, and it is built around a single
+hard-won fact:
+
+  **`kaggle competitions submit` is FAIL-OPEN on its exit code.** Read from the installed
+  CLI 2.2.3 source: a 404 slug and a failed upload BOTH print a message and exit **0** —
+  the client swallows its own 404 before it can propagate, and a failed upload returns a
+  message object rather than an error. ``rc == 0`` is therefore NOT proof that the
+  submission landed.
+
+    | bad/closed slug (404) | exit 0 ⚠ | a known failure literal on stdout |
+    | upload failed         | exit 0 ⚠ | a known failure literal on stdout |
+    | auth failure (401)    | exit 1   | HTTPError                         |
+    | 403 rules gate        | exit 1   | -> classify_gate -> UI_GATE (77)  |
+    | success               | exit 0   | a SERVER-AUTHORED message — NEVER PARSED |
+
+  So success is established by READ-BACK, not by an exit code: a NEW row in
+  ``competitions submissions`` whose ``description`` carries our ``exp-NNN`` and whose
+  date is at/after this run started. That read-back is simultaneously (a) the proof, (b)
+  the only channel that yields the Kaggle ``ref`` id — the submit call DISCARDS it — and
+  (c) the first tick of the leaderboard poll. This is structurally identical to Phase 4's
+  "a kernel can report COMPLETE and still have lied".
+
+Four more load-bearing postures:
+
+  * ⚠ WRITE ORDERING. The PENDING row (exp_id + ref + file hash) is appended to
+    ``control/submissions.jsonl`` BEFORE the poll begins. The slot is spent the instant
+    Kaggle accepts the upload; if the poll then crashes and nothing was written, the
+    submission is invisible locally — its provenance is gone forever and its CV→LB gap
+    can never be computed. A crash mid-poll must never orphan a spent slot.
+  * NO DOUBLE-SPEND. Idempotence here means "re-running is SAFE", not "re-running
+    re-submits": an existing non-FAILED row with the same ``exp_id`` AND the same file
+    hash is REFUSED before the gateway is ever called. A genuine second submission of the
+    same bytes requires an explicit ``--resubmit``.
+  * TOCTOU. The file is re-hashed immediately before the argv is built; if it changed
+    since validation, the bytes about to be uploaded are not the bytes that were checked,
+    so the submit is refused.
+  * D-11. The leaderboard score is written ONLY to ``control/submissions.jsonl``.
+    ``experiments/exp-NNN/meta.json`` is NEVER touched — the experiment folder is
+    immutable after record, and per-experiment CV→LB views are DERIVED by joining on
+    ``exp_id``.
+
+Kaggle's raw output is MATCHED, never echoed (it can carry a token-shaped string): it is
+quarantined via ``dump_last_error`` to the gitignored ``control/raw/last-error.txt``.
+
+Portability + safety (CLAUDE.md): stdlib-only, self-locating (``Path(__file__)``),
+``--workspace``-driven, NEVER interactive — the human-confirmation loop lives in SKILL.md
+and arrives here as ``--confirm`` (D-05). Every Kaggle call routes through
+``kaggle_gateway.run_kaggle`` (D-16).
+
+Exit codes: 0 = SCORED | 2 = submission FAILED (Kaggle ERROR) | 3 = DETACHED (PENDING —
+re-run fetch_lb.py) | 4 = transient / fail-closed | 65 = the submission file is missing or
+unusable | 69 = this competition is not a CSV-submit competition (D-01) | 75 = the gate
+declined to spend a slot | 77 = a UI gate. 124/127 from the gateway are surfaced VERBATIM.
+"""
+
+from __future__ import annotations
+
+import argparse
+import random
+import re
+import sys
+import time
+from datetime import datetime, timezone
+from pathlib import Path
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
+
+from fetch_lb import (  # noqa: E402
+    # The terminal codes (2 = FAILED, 3 = DETACHED) are returned by record_outcome, which
+    # is the ONE recorder both entry points share — so they are deliberately not re-imported.
+    DEFAULT_POLL_TIMEOUT,
+    EXIT_SCORED,
+    EXIT_TRANSIENT_FAIL,
+    LB_BUDGET_S,
+    MAX_CONSECUTIVE_ERRORS,
+    by_ref,
+    cv_mean,
+    poll_lb,
+    read_config,
+    read_submissions,
+    record_outcome,
+    submissions_url,
+)
+from kaggle_gateway import (  # noqa: E402
+    GATE_BLOCKED,
+    SUBMIT_UNSUPPORTED,
+    UI_GATE,
+    VALIDATION_FAILED,
+    classify_gate,
+    dump_last_error,
+    run_kaggle,
+)
+from submissions_log import (  # noqa: E402
+    append_row,
+    file_sha256,
+    find_by_exp_id,
+    new_row,
+    parse_status,
+    read_rows,
+)
+
+SUBMIT_TIMEOUT = 300  # an upload is slower than a status read
+SUBMISSION_CSV = "submission.csv"
+
+# The exp id is OURS (argv), not Kaggle's — but it becomes a path component, so it is
+# validated against the exact minted shape before it is ever joined to a directory.
+_EXP_ID_RE = re.compile(r"^exp-\d{3}$")
+
+# ⚠ THE FAIL-OPEN SIGNATURES. These two strings are hardcoded in the CLI client and are
+# printed WHILE IT EXITS 0. Matching them is what turns a silent lie into a loud failure.
+# They are MATCHED here and never echoed — the framework authors its own message, because
+# the surrounding buffer can carry a secret.
+FAIL_OPEN_MARKERS = (
+    "Could not find competition",
+    "Could not submit to competition",
+)
+
+
+def _pre_flight(ws: Path, args):
+    """Resolve config + the submission file, or return an exit code.
+
+    Returns ``(slug, csv_path, digest)`` on success, or an ``int`` exit code on refusal.
+    """
+    config = read_config(ws)
+    if config is None:
+        return EXIT_TRANSIENT_FAIL
+
+    slug = config.get("competition_slug")
+    if not isinstance(slug, str) or not slug:
+        print("cannot submit: control/config.json has no competition_slug.", file=sys.stderr)
+        return EXIT_TRANSIENT_FAIL
+
+    # D-01: a CODE competition submits a KERNEL, not a file. There is no safe CSV path
+    # here, so refuse BEFORE the gateway is touched rather than spend a slot discovering it.
+    competition = config.get("competition")
+    comp_type = competition.get("type") if isinstance(competition, dict) else None
+    if comp_type != "csv":
+        print(
+            f"cannot submit: competition.type is {comp_type!r}, not 'csv'. A code/notebook "
+            "competition submits a KERNEL, not a file, and an 'unknown' type is not proven "
+            "safe to submit to. Refusing rather than spending a slot on a guess.",
+            file=sys.stderr,
+        )
+        return SUBMIT_UNSUPPORTED
+
+    if not _EXP_ID_RE.match(args.exp_id or ""):
+        print(
+            f"cannot submit: --exp-id {args.exp_id!r} is not of the form exp-NNN.",
+            file=sys.stderr,
+        )
+        return VALIDATION_FAILED
+
+    # CONFINE the experiment path under ws/experiments/ — a resolved child, never an escape.
+    exp_root = (ws / "experiments").resolve()
+    exp_dir = (exp_root / args.exp_id).resolve()
+    if exp_dir.parent != exp_root:
+        print(
+            f"cannot submit: {args.exp_id} does not resolve inside {exp_root}.",
+            file=sys.stderr,
+        )
+        return VALIDATION_FAILED
+
+    csv_path = exp_dir / SUBMISSION_CSV
+    if not csv_path.is_file():
+        print(
+            f"cannot submit: no {csv_path}. The experiment harness writes it — run the "
+            "experiment first (run_local.py, or pull_kernel.py for the kernel path). Note "
+            "submission.csv is gitignored by design: its provenance is the file hash "
+            "recorded in control/submissions.jsonl, not the git tree.",
+            file=sys.stderr,
+        )
+        return VALIDATION_FAILED
+
+    return slug, csv_path, file_sha256(csv_path)
+
+
+def _refuse_double_spend(ws: Path, exp_id: str, digest: str) -> bool:
+    """True when this exact file was already submitted for this experiment and NOT failed.
+
+    Re-running submit.py must be SAFE, which means it must not RE-SUBMIT. A FAILED row is
+    not a spend (D-13: Kaggle never charged a processing error), so it never blocks.
+    """
+    for row in read_rows(ws):
+        if (
+            row.get("exp_id") == exp_id
+            and row.get("file_sha256") == digest
+            and row.get("status") != "FAILED"
+        ):
+            return True
+    return False
+
+
+def main(argv=None) -> int:
+    args = build_parser().parse_args(argv)
+    ws = args.workspace.resolve()
+
+    checked = _pre_flight(ws, args)
+    if isinstance(checked, int):
+        return checked
+    slug, csv_path, digest = checked
+    exp_id = args.exp_id
+
+    if not args.resubmit and _refuse_double_spend(ws, exp_id, digest):
+        print(
+            f"REFUSING to submit: {exp_id} already has a non-FAILED submission of these "
+            "exact bytes recorded in control/submissions.jsonl. No slot was spent.\n"
+            "  - to record the leaderboard score of that submission: fetch_lb.py "
+            f"--exp-id {exp_id}\n"
+            "  - to deliberately spend ANOTHER slot on the same file: re-run with --resubmit"
+        )
+        return GATE_BLOCKED
+
+    # The -m message is the ONLY exp_id <-> Kaggle correlation channel: it round-trips into
+    # the `description` field on read-back, which is how the submission is later confirmed
+    # and matched. The exp_id PREFIX is the load-bearing part; the CV score is a courtesy.
+    cv = cv_mean(ws, exp_id)
+    message = f"{exp_id} | cv={cv:.6f}" if cv is not None else exp_id
+
+    # The competition is POSITIONAL (never -c). No code-competition flag and no host/admin
+    # flag is EVER passed: the real dry run is --dry-run, right below.
+    submit_argv = (
+        "competitions", "submit", slug,
+        "-f", str(csv_path),
+        "-m", message,
+    )
+
+    if args.dry_run:
+        print("--dry-run: NO slot spent, nothing written. This is the exact command:")
+        print("  kaggle " + " ".join(submit_argv))
+        return EXIT_SCORED
+
+    # D-05: block by default. The human's confirmation loop lives in SKILL.md and arrives
+    # here as an explicit flag — this script is never interactive.
+    if not args.confirm:
+        print(
+            "REFUSING to submit without --confirm: a submission is IRREVERSIBLE and spends "
+            "one of a small number of daily slots. Inspect the exact command with --dry-run, "
+            "then re-run with --confirm.",
+            file=sys.stderr,
+        )
+        return GATE_BLOCKED
+
+    # TOCTOU (T-05-05-03): the bytes validated must be the bytes uploaded.
+    if file_sha256(csv_path) != digest:
+        print(
+            f"REFUSING to submit: {csv_path.name} changed while this command was preparing. "
+            "The validated bytes are not the bytes that would be sent. No slot was spent — "
+            "re-run to re-validate the current file.",
+            file=sys.stderr,
+        )
+        return EXIT_TRANSIENT_FAIL
+
+    # ------------------------------------------------------------------ #
+    # SPEND THE SLOT. Everything below treats rc == 0 as ADVISORY ONLY.
+    # ------------------------------------------------------------------ #
+    started = datetime.now(timezone.utc)
+    rc, payload = run_kaggle(*submit_argv, timeout=SUBMIT_TIMEOUT)
+
+    if rc != 0:
+        dump_last_error(ws, payload)
+        if rc in (124, 127):
+            # Gateway-reserved: a timeout / a missing CLI. Surfaced VERBATIM, never remapped.
+            print(
+                f"submit did not run (gateway exit {rc}: the CLI is missing from PATH, or "
+                "the call timed out). No slot was spent.",
+                file=sys.stderr,
+            )
+            return rc
+        if "403" in payload or "forbidden" in payload.lower():
+            print(classify_gate(payload, slug), file=sys.stderr)
+            return UI_GATE
+        print(
+            f"submit failed (exit {rc}) — Kaggle rejected the call, so NO slot was spent. "
+            "The raw CLI output is withheld (it can carry a secret) and was quarantined to "
+            "control/raw/last-error.txt.",
+            file=sys.stderr,
+        )
+        return EXIT_TRANSIENT_FAIL
+
+    # ⚠ rc == 0 AND a known failure literal ⇒ a FAIL-OPEN LIE, detected by MATCHING the
+    # output. Nothing landed and nothing is recorded as spent.
+    if any(marker in payload for marker in FAIL_OPEN_MARKERS):
+        dump_last_error(ws, payload)
+        print(
+            "submit exited 0 but its output matched a known FAILURE signature. The Kaggle "
+            "CLI exits 0 EVEN WHEN THE SUBMISSION FAILED (an unknown or closed competition, "
+            "or an upload that did not land), so the framework detected this by matching the "
+            "CLI's output rather than by trusting its exit code. NOTHING was submitted and "
+            "NO slot was spent.\n"
+            f"  - check that '{slug}' in control/config.json is the right competition and is "
+            "still accepting submissions.\n"
+            "  - the raw CLI output was withheld (it can carry a secret) and quarantined to "
+            "control/raw/last-error.txt.",
+            file=sys.stderr,
+        )
+        return EXIT_TRANSIENT_FAIL
+
+    # rc == 0 with no failure literal is STILL NOT PROOF. The success string is
+    # server-authored and deliberately un-pinned — it is never parsed.
+
+    # ------------------------------------------------------------------ #
+    # CONFIRM BY READ-BACK. This IS the proof, it recovers the Kaggle ref, and it is the
+    # first poll tick.
+    # ------------------------------------------------------------------ #
+    kaggle_rows = read_submissions(slug, timeout=args.poll_timeout, runner=run_kaggle)
+    confirmed = (
+        find_by_exp_id(kaggle_rows, exp_id, since=started)
+        if kaggle_rows is not None
+        else None
+    )
+    if confirmed is None:
+        print(
+            f"CANNOT CONFIRM the submission for {exp_id}: the read-back shows no matching "
+            "Kaggle submission at or after this run started. NOT claiming success — the "
+            "CLI's exit code is not proof, and only a read-back is. A slot MAY still have "
+            "been spent.\n"
+            f"  - check your submissions page: {submissions_url(slug)}\n"
+            "  - if the submission is there, run `fetch_lb.py --reconcile` to back-fill it.",
+            file=sys.stderr,
+        )
+        return EXIT_TRANSIENT_FAIL
+
+    ref = confirmed.get("ref")
+
+    # ⚠ WRITE THE PENDING ROW BEFORE POLLING (T-05-05-04). From here on the slot is
+    # provably spent, so its provenance (exp_id <-> ref <-> file hash) must survive a
+    # crash, a network death, or a Ctrl-C during the poll below. D-07: --reason is
+    # recorded only when supplied; its absence is never an error.
+    append_row(ws, new_row(
+        exp_id=exp_id,
+        kaggle_ref=ref,
+        competition_slug=slug,
+        file=f"experiments/{exp_id}/{SUBMISSION_CSV}",
+        file_sha256=digest,
+        message=message,
+        submitted_at=started.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        status="PENDING",
+        public_score=None,
+        private_score=None,
+        scored_at=None,
+        override_reason=args.reason or None,
+        error_description=None,
+    ))
+
+    # The confirming read-back doubles as the first poll tick: when Kaggle has already
+    # scored the submission, there is nothing left to wait for.
+    status = parse_status(confirmed.get("status"))
+    if status in ("SCORED", "FAILED"):
+        result = {
+            "terminal": True,
+            "status": status,
+            "reason": "terminal",
+            "row": confirmed,
+            "last_out": "",
+        }
+    else:
+        def _status_fn():
+            return read_status_payload(slug, args.poll_timeout)
+
+        try:
+            result = poll_lb(
+                _status_fn,
+                now=time.monotonic,
+                sleep=time.sleep,
+                rng=random.Random(),
+                budget_s=args.budget_s,
+                max_consecutive_errors=MAX_CONSECUTIVE_ERRORS,
+                select=lambda krows: by_ref(krows, ref),
+            )
+        except Exception as exc:  # noqa: BLE001 — a crashed poll must not eat the slot
+            print(
+                f"the leaderboard poll crashed ({type(exc).__name__}). The submission WAS "
+                f"accepted (ref {ref}) and its PENDING row is already on disk, so NOTHING "
+                "was lost — run `fetch_lb.py` to record the score.",
+                file=sys.stderr,
+            )
+            return EXIT_TRANSIENT_FAIL
+
+    # D-11: the outcome lands in control/submissions.jsonl and NOWHERE else. meta.json is
+    # never written — the experiment folder is immutable after record.
+    return record_outcome(ws, slug, result, exp_id=exp_id, ref=ref)
+
+
+def read_status_payload(slug: str, timeout: int):
+    """One read-only leaderboard poll tick, in the ``run_kaggle`` ``(rc, payload)`` shape.
+
+    Routed through THIS module's gateway reference so the poll is exercised — and proven
+    read-only — from the captured argv, without ever executing a command.
+    """
+    return run_kaggle(
+        "competitions", "submissions", slug,
+        "--format", "json", "--page-size", "200",
+        timeout=timeout,
+    )
+
+
+def build_parser() -> argparse.ArgumentParser:
+    ap = argparse.ArgumentParser(
+        prog="submit.py",
+        description="Submit an experiment's submission.csv to Kaggle. IRREVERSIBLE: it "
+                    "spends one of a small number of daily slots. Success is confirmed by "
+                    "READ-BACK, never by the CLI's (fail-open) exit code.",
+    )
+    ap.add_argument("--workspace", type=Path, default=Path.cwd(),
+                    help="Target workspace directory (default: cwd).")
+    ap.add_argument("--exp-id", required=True,
+                    help="The experiment whose submission.csv to submit (exp-NNN).")
+    ap.add_argument("--confirm", action="store_true",
+                    help="The human's explicit confirmation (D-05). Without it, nothing is "
+                         "submitted.")
+    ap.add_argument("--resubmit", action="store_true",
+                    help="Deliberately spend ANOTHER slot on a file already submitted for "
+                         "this experiment (defeats the double-spend guard).")
+    ap.add_argument("--dry-run", action="store_true",
+                    help="Print the exact command and exit 0 WITHOUT calling Kaggle. This "
+                         "is the only safe rehearsal; the CLI has no such mode.")
+    ap.add_argument("--reason",
+                    help="Optional free-text note recorded with the submission (e.g. why a "
+                         "gate was overridden). Never required (D-07).")
+    ap.add_argument("--budget-s", "--budget", dest="budget_s", type=float,
+                    default=float(LB_BUDGET_S),
+                    help="Wall-clock leaderboard-poll budget in seconds before detaching "
+                         f"(default: {LB_BUDGET_S}). On expiry the row stays PENDING and "
+                         "fetch_lb.py records the score later.")
+    ap.add_argument("--poll-timeout", type=int, default=DEFAULT_POLL_TIMEOUT,
+                    help=f"Per-call gateway timeout (default: {DEFAULT_POLL_TIMEOUT}).")
+    return ap
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
