@@ -19,6 +19,13 @@ Two halves, deliberately split by who authors them:
     queue + next action) is spliced into the doc VERBATIM. The tool never authors reasoning; if
     the file is missing it BLOCKS (mechanical sections stay tooling-owned).
 
+Phase 5 (SCORE-02) EXTENDS this contract with ONE more FACTS renderer — it does not fork it.
+`_lb_gap_body` joins `control/submissions.jsonl` (the canonical LB record) against the ledger on
+`exp_id` (the DERIVED D-11 view — the experiment folder is never reopened) and renders the CV→LB
+gap trend plus the D-10 rank-inversion alarm. Those LB numbers are FACTS, exactly like
+current-best: they come only from the two JSONL files and the AI can never type them. CV remains
+the DECISION metric everywhere; the gap is observed and trended, never used to pick an experiment.
+
 Unlike competition.md's section-safe-merge helper (competition_doc), strategy.md is
 FULLY OVERWRITTEN ATOMICALLY each cycle (D-12, the deliberate opposite): render header + FACTS
 + REASONING to a sibling `.tmp` and `os.replace` it onto `strategy.md`. A crash mid-write leaves
@@ -35,6 +42,13 @@ import json
 import os
 import sys
 from pathlib import Path
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
+
+import lb_gap  # noqa: E402
+import submissions_log  # noqa: E402
 
 # The verbatim D-12 header note every regenerated strategy.md carries so a human reading it
 # knows it is machine-owned and any manual edit will be overwritten on the next cycle.
@@ -154,7 +168,56 @@ def _tried_list_body(rows: list[dict]) -> str:
     return "\n".join(lines)
 
 
-def _render(slug: str, rows: list[dict], greater_is_better: bool, reasoning: str) -> str:
+def _lb_gap_body(sub_rows: list[dict], ledger_rows: list[dict], greater_is_better: bool) -> str:
+    """FACT: the CV→LB gap trend + the D-10 divergence alarm (SCORE-02).
+
+    The THIRD tooling-rendered facts section, sourced ONLY by joining `control/submissions.jsonl`
+    against `control/ledger.jsonl` on `exp_id` (`lb_gap.join_cv_lb` — the DERIVED D-11 view). Like
+    current-best, every number here is TOOLING-WRITTEN: the AI's `--reasoning-file` cannot
+    fabricate an LB score or a gap, and a stale copy cannot drift (T-05-06-01).
+
+    Renders, in order: the per-submission gap table ordered by `scored_at` (the TREND), a plain
+    count of the submissions that carry no number yet, and the alarm — which is HONEST below two
+    scored points rather than printing a fabricated all-clear (T-05-06-03).
+
+    CV stays the DECISION metric: this section OBSERVES and WARNS. It never picks an experiment,
+    and no LB number here is allowed to override a CV-based decision (SCORE-02).
+    """
+    joined = lb_gap.join_cv_lb(sub_rows, ledger_rows)
+
+    blocks: list[str] = []
+    if not joined:
+        blocks.append("None yet.")
+    else:
+        lines = [
+            "| exp | cv_mean | lb_score | gap (lb − cv) |",
+            "| --- | --- | --- | --- |",
+        ]
+        for r in joined:
+            lines.append(
+                f"| {r['exp_id']} | {r['cv_mean']:g} | {r['lb_score']:g} | {r['gap']:+g} |"
+            )
+        blocks.append("\n".join(lines))
+
+    # Submissions that carry no number yet — stated plainly, never counted as a score.
+    pending = sum(1 for r in sub_rows if isinstance(r, dict) and r.get("status") == "PENDING")
+    failed = sum(1 for r in sub_rows if isinstance(r, dict) and r.get("status") == "FAILED")
+    notes: list[str] = []
+    if pending:
+        notes.append(
+            f"{pending} submission(s) PENDING (not yet scored) — run `fetch_lb.py` to score them."
+        )
+    if failed:
+        notes.append(f"{failed} submission(s) FAILED — Kaggle does not charge these (D-13).")
+    if notes:
+        blocks.append("\n".join(f"_{n}_" for n in notes))
+
+    blocks.append(lb_gap.alarm_body(lb_gap.to_pairs(joined), greater_is_better))
+    return "\n\n".join(blocks)
+
+
+def _render(slug: str, rows: list[dict], sub_rows: list[dict], greater_is_better: bool,
+            reasoning: str) -> str:
     """Assemble the full strategy.md document (header + FACTS + verbatim REASONING)."""
     title = f"# Strategy — {slug}" if slug else "# Strategy"
     return (
@@ -164,6 +227,8 @@ def _render(slug: str, rows: list[dict], greater_is_better: bool, reasoning: str
         f"{_current_best_body(rows, greater_is_better)}\n\n"
         f"## Tried-list digest\n\n"
         f"{_tried_list_body(rows)}\n\n"
+        f"## CV-to-LB gap\n\n"
+        f"{_lb_gap_body(sub_rows, rows, greater_is_better)}\n\n"
         f"## Reasoning (hypothesis queue & next action)\n\n"
         f"{reasoning.strip()}\n"
     )
@@ -220,9 +285,13 @@ def main(argv=None) -> int:
         return 1
 
     rows = _read_ledger(ws / "control" / "ledger.jsonl")
+    # The LB record is Phase-5-new: a workspace that has never submitted simply has no
+    # submissions.jsonl, and read_rows returns [] for it (fail-clear, skip-and-warn on a
+    # corrupt line — T-05-06-05). Regen must never fail because nothing has been submitted.
+    sub_rows = submissions_log.read_rows(ws)
     slug = _read_slug(config_path)
 
-    rendered = _render(slug, rows, greater_is_better, reasoning)
+    rendered = _render(slug, rows, sub_rows, greater_is_better, reasoning)
     _atomic_write(ws / "strategy.md", rendered)
 
     best = _current_best_body(rows, greater_is_better)

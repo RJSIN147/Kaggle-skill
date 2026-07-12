@@ -3,11 +3,17 @@
 > Generated each cycle from control/ledger.jsonl — manual edits are overwritten.
 > This stub stands in until the first `regen_strategy.py` cycle; from then on the doc is
 > REGENERATED and FULLY OVERWRITTEN each cycle (D-12): tooling renders the FACTS
-> (current-best by metric direction + the tried-list digest) from the ledger and splices
-> the AI's `--reasoning-file` (hypothesis queue + next action). Do not hand-edit.
+> (current-best by metric direction, the tried-list digest, and the CV→LB gap joined from
+> `control/submissions.jsonl`) from the ledger and splices the AI's `--reasoning-file`
+> (hypothesis queue + next action). Do not hand-edit — the numbers are tooling-written.
 
 ## Current best
 _None yet — no experiments have been run._
+
+## CV-to-LB gap
+None yet.
+
+Divergence alarm: needs >=2 scored submissions (have 0).
 
 ## Hypothesis queue
 1. _TODO: first idea to try (e.g. a LightGBM baseline with a leakage-safe CV split)._
