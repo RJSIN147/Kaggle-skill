@@ -1,0 +1,1 @@
+Could not find competition - please verify that you entered the correct competition ID and that the competition is still accepting submissions.
