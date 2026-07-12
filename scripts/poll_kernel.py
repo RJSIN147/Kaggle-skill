@@ -98,20 +98,34 @@ def classify_status(combined: str) -> str | None:
     return m.group(1) if m else None
 
 
-def compute_delay(attempt: int, rng: random.Random | None = None) -> float:
+def compute_delay(
+    attempt: int,
+    rng: random.Random | None = None,
+    *,
+    base: float = BASE_DELAY,
+    multiplier: float = BACKOFF_MULTIPLIER,
+    cap: float = MAX_DELAY,
+) -> float:
     """Exponential-with-cap backoff for poll ``attempt`` (0-indexed), full-jitter.
 
     With ``rng is None`` returns the deterministic capped base
-    ``min(BASE_DELAY * MULTIPLIER**attempt, MAX_DELAY)`` (monotonic in
-    ``attempt``, capped at ``MAX_DELAY``). With an ``rng`` returns
-    ``rng.uniform(0, base)`` — FULL jitter, so the sleep is always in
-    ``(0, base]`` and therefore can never exceed the cap (budget-safe, decorrelated
-    across independent RNG states).
+    ``min(base * multiplier**attempt, cap)`` (monotonic in ``attempt``, capped at
+    ``cap``). With an ``rng`` returns ``rng.uniform(0, base)`` — FULL jitter, so the
+    sleep is always in ``(0, base]`` and therefore can never exceed the cap
+    (budget-safe, decorrelated across independent RNG states).
+
+    ``base`` / ``multiplier`` / ``cap`` are KEYWORD-ONLY and DEFAULT to this module's
+    kernel constants, so every existing caller is unaffected. They exist so a caller
+    working at a DIFFERENT TIME SCALE reuses this (already-tested) jitter math instead
+    of forking it: the Phase-5 leaderboard poll (``fetch_lb.poll_lb``) scores in
+    seconds-to-minutes, not the hours a kernel takes, so it passes
+    ``base=LB_BASE_DELAY`` / ``cap=LB_MAX_DELAY`` — a 10s first tick and a 2-minute
+    sleep would be absurd against a 30-second scorer.
     """
-    base = min(BASE_DELAY * (BACKOFF_MULTIPLIER ** attempt), MAX_DELAY)
+    delay = min(base * (multiplier ** attempt), cap)
     if rng is None:
-        return base
-    return rng.uniform(0.0, base)
+        return delay
+    return rng.uniform(0.0, delay)
 
 
 def poll_loop(
