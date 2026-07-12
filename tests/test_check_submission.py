@@ -318,6 +318,34 @@ def test_a_non_403_cli_failure_is_not_reported_as_a_ui_gate(
     assert "credential" in combined.lower() or "network" in combined.lower()
 
 
+def test_the_unavailable_sentinel_is_never_printed_as_a_count(
+    tmp_workspace, monkeypatch, capsys
+):
+    """⚠ WR-11 — ``charged=-1`` is a SENTINEL, not "minus one submissions".
+
+    ``submissions_log`` says of it, in as many words: *"it is not a count: callers MUST fail
+    closed on it and never coerce it"*. The ``budget`` half of this line was already handled
+    (``UNKNOWN (fail closed)``); the ``charged`` half leaked the raw sentinel straight to the
+    terminal — and SKILL.md instructs the agent to relay this exact line to the user
+    VERBATIM. "-1" invites precisely the misreading the sentinel exists to prevent.
+    """
+    mod = _check()
+    ws = _seed(tmp_workspace, csv_body=GOOD_BODY)
+
+    # An unparseable payload: rc == 0, but the count cannot be established => -1 => None.
+    monkeypatch.setattr(mod, "run_kaggle", lambda *_a, **_kw: (0, "not json at all"))
+
+    _run(mod, ws)
+    combined = "".join(capsys.readouterr())
+
+    assert "charged=-1" not in combined, (
+        "the -1 COUNT_UNAVAILABLE sentinel must never be rendered as if it were a count — "
+        "SKILL.md tells the agent to relay this line verbatim to the user"
+    )
+    assert "charged=UNKNOWN" in combined
+    assert "UNKNOWN (fail closed)" in combined, "the budget half must stay honest too"
+
+
 def test_a_real_403_is_still_a_ui_gate(tmp_workspace, monkeypatch):
     """The narrowing must not lose the 403 path it was built for: it STILL exits 77."""
     mod = _check()

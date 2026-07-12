@@ -374,7 +374,12 @@ def _gate(ws: Path, args, config: dict, slug: str) -> int | None:
     # The material is printed BEFORE the slot goes, on EVERY path — cleared, overridden or
     # refused. The user who skipped the free gate is still shown the numbers.
     budget = "UNKNOWN (fail closed)" if remaining is None else str(remaining)
-    print(f"gate: {budget} slot(s) left today (UTC day; charged={charged})")
+    # ⚠ WR-11 — the -1 COUNT_UNAVAILABLE sentinel is NOT a count and is never rendered as
+    # one. check_submission prints the same line; both are read by a human at the moment
+    # they decide whether to spend an irreversible slot, and "charged=-1" invites exactly
+    # the "minus one submissions?" misreading the sentinel exists to prevent.
+    charged_text = "UNKNOWN" if charged == COUNT_UNAVAILABLE else str(charged)
+    print(f"gate: {budget} slot(s) left today (UTC day; charged={charged_text})")
     for line in verdict["reasons"]:
         print(f"  - {line}")
     for line in verdict["warnings"]:

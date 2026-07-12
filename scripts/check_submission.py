@@ -736,13 +736,19 @@ def main(argv=None) -> int:
         else f"{best_cv:.6f}"
     )
     budget = "UNKNOWN (fail closed)" if remaining is None else str(remaining)
+    # ⚠ WR-11 — `charged` is -1 (COUNT_UNAVAILABLE) when the count could not be established,
+    # and that is a SENTINEL, not a number: submissions_log says of it "it is not a count:
+    # callers MUST fail closed on it and never coerce it". SKILL.md tells the agent to relay
+    # this line to the user VERBATIM, so "charged=-1" would put "minus one submissions" in
+    # front of a human at the exact moment they decide whether to spend an irreversible slot.
+    charged_text = "UNKNOWN" if charged == COUNT_UNAVAILABLE else str(charged)
 
     print()
     print(f"experiment:     {exp_id}")
     print(f"CV:             {cand_cv} +/- {cand_std}  ({metric_name}, {direction})")
     print(f"best submitted: {baseline}")
     print(f"noise bound:    k={noise_k} * cv_std")
-    print(f"slots left:     {budget} today (UTC day; charged={charged})")
+    print(f"slots left:     {budget} today (UTC day; charged={charged_text})")
     print(f"CV->LB:         {_divergence_line(ws, ledger)}")
     print()
 
