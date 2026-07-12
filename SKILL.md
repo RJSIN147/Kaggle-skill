@@ -190,16 +190,31 @@ verification, so nothing busy-loops (criterion 3):
   row count / id set / blank-or-NaN cell), fix the experiment or the harness, **re-run the
   experiment**, then re-invoke `check_submission.py`. **Never submit an unvalidated file.**
 - **Exit 75 (`GATE_BLOCKED`)** from `check_submission.py` — ⭐ **THE HUMAN DECISION POINT (D-05).**
-  The framework has taken a position: this submission is **NOT RECOMMENDED** (the CV gain does not
-  beat fold-noise, or the budget is exhausted, or this is the **last assumed** slot). It is **not**
-  an error and **not** a hard refusal. Present the decision material the script printed **verbatim**
-  — this experiment's CV ± std, the best already-submitted CV, the margin vs. the noise bound (with
-  `k` stated), the remaining slots today, the CV→LB divergence state, and any ASSUMED-budget warning
-  — then **ASK the user** whether to submit anyway. Only on an explicit go-ahead, re-invoke:
+  The framework has taken a position: this submission is **NOT RECOMMENDED**. It is **not** an error.
+  Present the decision material the script printed **verbatim** — this experiment's CV ± std, the best
+  already-submitted CV, the margin vs. the noise bound (with `k` stated), the remaining slots today,
+  the CV→LB divergence state, and any ASSUMED-budget warning — then **ASK the user**. Only on an
+  explicit go-ahead, re-invoke:
 
   ```bash
   python3 scripts/submit.py --workspace <cwd> --exp-id exp-NNN --confirm [--reason "..."]
   ```
+
+  ⚠ **`submit.py` RE-RUNS BOTH GATES ITSELF and can exit 75 too** — it never trusts that the free
+  gate was run. Two kinds of block exist, and **`--confirm` only overrides one of them**:
+
+  | Gate block | `--confirm` overrides? | What to do |
+  |---|---|---|
+  | The CV gain does **not beat fold-noise** | ✅ **YES** — it is a judgment call | Present the numbers, **ask**, and pass `--confirm` only on an explicit go-ahead |
+  | The **last ASSUMED** slot (D-08) | ✅ **YES** — same | Surface the assumed-limit warning, ask, then `--confirm` |
+  | The budget is **EXHAUSTED** (0 slots left today) | ❌ **NO** | Wait for the UTC day to roll over. **Do not retry, do not "override".** If the recorded `daily_limit` is genuinely wrong, fix the **number** (`capture_competition.py --daily-limit N`) — never override a count you believe is wrong |
+  | The budget is **UNKNOWABLE** (Kaggle's list was unfetchable, or a row carried an unparseable status/date) | ❌ **NO** | Fail closed. Run `check_submission.py` (**free**) — it classifies the cause precisely (403 rules gate / missing CLI / timeout). Fix the cause, then re-check. **Never guess a count** |
+  | The experiment has **no readable CV** | ❌ **NO** | CV is the decision metric (SCORE-02). Record the experiment (`record_experiment.py`) so it carries a real `cv_mean` |
+
+  The ❌ rows are the fail-closed states: `submission_gate` marks them `requires_confirmation: false` —
+  *there is nothing coherent to confirm, because we do not know what we would be confirming.*
+  `--confirm` is the user's acknowledgement that a slot will be **spent**; it is **not** a licence to
+  spend one that does not exist, or one the framework could not account for.
 
   ⚠ `--reason` is **OPTIONAL** (D-07). **Never require the user to justify spending their own slot** —
   record a reason only when they volunteered one.
@@ -398,7 +413,9 @@ scripts are non-interactive and **the SKILL holds the human loop** via the reser
    ```
 
    `--dry-run` prints the exact argv without calling Kaggle. Exit **0** = SCORED · **2** = the
-   submission FAILED (Kaggle scored it ERROR) · **3** = **DETACHED** · **4** = transient/fail-closed.
+   submission FAILED (Kaggle scored it ERROR) · **3** = **DETACHED** · **4** = transient/fail-closed ·
+   **75** = a gate block (it **re-runs** the budget + CV gates itself — see the exit-75 table above
+   for which blocks `--confirm` overrides and which it does **not**).
    ⚠ **Exit 3 is NOT a failure:** the slot **IS** spent and the PENDING row **IS** already recorded —
    only our poll budget expired. Re-run `fetch_lb.py` later to record the score. **Never re-submit
    to "retry" a detach.**
@@ -453,7 +470,7 @@ scripts are non-interactive and **the SKILL holds the human loop** via the reser
 | `scripts/rebuild_ledger.py` | MEM-01/D-10 rebuild `control/ledger.jsonl` as a pure function of the `meta.json` folders (corrupt metas skipped-and-warned; atomic replace) |
 | `scripts/regen_strategy.py` | MEM-02/03/D-12 regenerate `strategy.md` from the ledger: tooling FACTS (current-best + tried-list + the CV→LB gap trend and rank-inversion alarm) + AI `--reasoning-file`, full atomic overwrite |
 | `scripts/check_submission.py` | SCORE-01/03 D-02/04/05 the **FREE** pre-submit gate — **never spends a slot**: refuses a non-CSV competition (69), validates `submission.csv` against the sample (exact headers, exact row count, order-independent id set, no blanks/NaN → 65), counts the **Kaggle-authoritative** remaining budget (UTC day; ERROR rows are not charged), renders the decision material + a recommendation. Exit 0 = clear / 75 = blocked → the human decides |
-| `scripts/submit.py` | SCORE-01 D-01/03 spends the slot **only** when explicitly `--confirm`ed. The CLI is **FAIL-OPEN** (exit 0 on a 404 slug and on a failed upload) so success is **confirmed by READ-BACK**, never by the exit code; the PENDING row is written BEFORE the poll so a spent slot is never lost; bounded poll then DETACH (0/2/3/4). `--dry-run` prints the exact argv without calling Kaggle |
+| `scripts/submit.py` | SCORE-01 D-01/03 spends the slot **only** when explicitly `--confirm`ed. **Re-enforces every gate itself** (never trusts that the free `check_submission.py` was run): the D-02 sample validation (65), and the D-04 budget + D-06 CV gates (75) — an exhausted/unknowable budget or an unreadable CV is **not** `--confirm`-overridable. The CLI is **FAIL-OPEN** (exit 0 on a 404 slug and on a failed upload) so success is **confirmed by READ-BACK**, never by the exit code; the PENDING row is written BEFORE the poll so a spent slot is never lost; bounded poll then DETACH (0/2/3/4). `--dry-run` prints the exact argv without calling Kaggle |
 | `scripts/fetch_lb.py` | SCORE-01/02 D-03/11 the detach fallback — **never submits**: re-runnable, transitions a PENDING `submissions.jsonl` row to SCORED/FAILED in place; `--reconcile` back-fills out-of-band submissions from Kaggle |
 | `scripts/lb_gap.py` | SCORE-02 pure CV→LB join + the rank-inversion divergence alarm rendered by `regen_strategy.py`. CV stays the DECISION metric — the gap is observed, never used to select |
 
