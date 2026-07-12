@@ -253,6 +253,54 @@ def test_sample_resolution_ladder(tmp_workspace, monkeypatch, capsys):
 
 
 # --------------------------------------------------------------------------- #
+# WR-10 — `--exp-dir` is CONFINED under experiments/, and the root is not "under" itself.
+#
+# The containment predicate read `if candidate != root and root not in candidate.parents`.
+# When `candidate == root` the first clause is False and the `and` SHORT-CIRCUITS, so the
+# refusal never fired: `--exp-dir experiments` resolved to the experiments ROOT, yielding
+# `exp_id = "experiments"` — a nonsense id that then flows into the ledger join, the
+# submissions join, and (worst) the copy-pasteable `submit.py --exp-id experiments --confirm`
+# override command the gate PRINTS for the human. It exits 65 in practice today only because
+# `experiments/submission.csv` happens not to exist; that is a coincidence, not containment.
+# --------------------------------------------------------------------------- #
+@pytest.mark.parametrize(
+    "exp_dir",
+    [
+        "experiments",       # ⭐ WR-10: the root ITSELF — the short-circuit hole.
+        "experiments/",      # ...and the same thing with a trailing slash.
+        "..",                # the classic escape.
+        "../../etc",
+        "control",           # inside the workspace, but not an experiment.
+    ],
+)
+def test_exp_dir_is_confined_to_the_experiments_root(tmp_workspace, monkeypatch, capsys,
+                                                     exp_dir):
+    """A path that is not a CHILD of experiments/ is refused — including the root itself."""
+    mod = _check()
+    ws = _seed(tmp_workspace / exp_dir.replace("/", "_").replace(".", "dot"))
+
+    fake, calls = _fake_gateway(readback=[])
+    monkeypatch.setattr(mod, "run_kaggle", fake)
+
+    rc = mod.main(["--workspace", str(ws), "--exp-dir", exp_dir])
+
+    assert rc == 1, (
+        f"--exp-dir {exp_dir!r} is not an experiment directory under {ws / 'experiments'} — "
+        "it must be REFUSED by the containment check, not merely happen to fail later"
+    )
+    assert calls == [], "a refused path never reaches Kaggle"
+
+    err = capsys.readouterr().err
+    assert "refusing to read" in err.lower()
+
+    combined = "".join(capsys.readouterr())
+    assert "--exp-id experiments" not in combined, (
+        "a nonsense exp_id must never reach the printed override command — that line is a "
+        "copy-pasteable instruction to spend an irreversible slot"
+    )
+
+
+# --------------------------------------------------------------------------- #
 # WR-09 — an unreadable REFERENCE file exits cleanly; it does not crash the gate.
 #
 # `validate_submission` wraps `_read_csv` in `except (OSError, UnicodeDecodeError,

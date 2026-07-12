@@ -601,6 +601,17 @@ def _resolve_exp_dir(ws: Path, args) -> Path | None:
 
     Resolved and then containment-checked, so no ``--exp-dir ../../etc`` can point the
     validator (or a printed path) outside the workspace.
+
+    ⚠ THE ROOT IS NOT "UNDER" ITSELF (WR-10). The check requires ``candidate`` to be a
+    STRICT DESCENDANT of ``experiments/`` — an experiment directory, not the directory that
+    holds them. The predicate used to read ``candidate != root and root not in
+    candidate.parents``, whose first clause SHORT-CIRCUITS the refusal away for
+    ``candidate == root``: ``--exp-dir experiments`` sailed through and yielded
+    ``exp_id = "experiments"``. That id is nonsense, and it does not stay local — it is
+    joined against the ledger and the submissions log, and it is interpolated into the
+    copy-pasteable ``submit.py --exp-id experiments --confirm`` override line this gate
+    PRINTS. A garbage id inside an instruction to spend an irreversible slot is not
+    something to leave to the coincidence that ``experiments/submission.csv`` does not exist.
     """
     root = (ws / "experiments").resolve()
     if args.exp_id:
@@ -615,10 +626,11 @@ def _resolve_exp_dir(ws: Path, args) -> Path | None:
         raw = Path(args.exp_dir)
         candidate = (raw if raw.is_absolute() else ws / raw).resolve()
 
-    if candidate != root and root not in candidate.parents:
+    if root not in candidate.parents:
         print(
-            f"refusing to read {candidate} — it is outside {root}. The experiment path "
-            "is confined to the workspace.",
+            f"refusing to read {candidate} — it is not an experiment directory under {root} "
+            "(the experiments root itself is not one either). The experiment path is "
+            "confined to a child of the workspace's experiments/ directory.",
             file=sys.stderr,
         )
         return None
