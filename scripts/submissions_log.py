@@ -92,14 +92,23 @@ SUBMISSION_ROW_KEYS = (
 
 SCHEMA_VERSION = 1
 
-# Keys that must additionally be non-empty for the row to be auditable: which
-# experiment, which Kaggle submission, which competition, which file, when, and what
-# state. The score keys are legitimately null on a PENDING row, so they are NOT here.
+# Keys that must additionally be non-empty for the row to be auditable: which Kaggle
+# submission, which competition, when, and what state. These are the keys that are
+# genuinely ALWAYS KNOWABLE — Kaggle's own row tells us every one of them.
+#
+# ⚠ ``exp_id`` and ``file`` are deliberately NOT here (WR-04). A submission made
+# OUT-OF-BAND (on the website, on another machine, in a prior session) and back-filled by
+# ``fetch_lb --reconcile`` genuinely has NEITHER: its description carries no ``exp-NNN``,
+# and Kaggle never returns the bytes it was sent, so the local file and its hash are
+# UNKNOWN. ``_row_from_kaggle`` writes them as ``None`` — correctly; a value we were never
+# given is never invented. A schema that demanded them would REJECT the rows its own
+# sibling module deliberately produces, which is how this validator came to disagree with
+# reality while nobody was calling it.
+#
+# The score keys are legitimately null on a PENDING row, so they are not here either.
 REQUIRED_NONEMPTY_KEYS = (
-    "exp_id",
     "kaggle_ref",
     "competition_slug",
-    "file",
     "submitted_at",
     "status",
 )
@@ -240,13 +249,16 @@ def new_row(
 def validate_row(row: dict) -> list[str]:
     """Return human-readable error strings; ``[]`` means well-formed.
 
-    The CALLER decides to skip/block — a row that fails validation is NEVER fabricated
-    into a plausible one (the ``experiment_meta.validate_meta`` contract).
+    The CALLER decides what to do — a row that fails validation is NEVER fabricated into a
+    plausible one (the ``experiment_meta.validate_meta`` contract). :func:`_warn_invalid`
+    wires it into the write path (WR-04): it is REPORTED, and still WRITTEN. See there for
+    why a refusal would be the more dangerous choice.
 
     Checks: the row is an object; every one of the 14 schema keys is PRESENT; the
-    auditable subset is non-empty; ``status`` is one of OUR ``SUB_STATUSES`` (Kaggle's
-    raw ``"SubmissionStatus.COMPLETE"`` / bare ``"COMPLETE"`` is REFUSED — the parse
-    belongs upstream, at :func:`parse_status`, never in the persisted row).
+    always-knowable subset (:data:`REQUIRED_NONEMPTY_KEYS`) is non-empty; ``status`` is one
+    of OUR ``SUB_STATUSES`` (Kaggle's raw ``"SubmissionStatus.COMPLETE"`` / bare
+    ``"COMPLETE"`` is REFUSED — the parse belongs upstream, at :func:`parse_status`, never
+    in the persisted row).
     """
     if not isinstance(row, dict):
         return [f"row must be a JSON object, got {type(row).__name__}"]
@@ -480,13 +492,34 @@ def read_rows(ws: Path) -> list[dict]:
     return rows
 
 
+def _warn_invalid(rows) -> None:
+    """Run :func:`validate_row` over everything about to be written; WARN, never refuse.
+
+    ⚠ THE SCHEMA CONTRACT IS ENFORCED BY REPORTING, NOT BY REFUSING — and that asymmetry is
+    deliberate (WR-04). ``append_row`` is called by ``submit.py`` **after the slot has been
+    irreversibly spent**. Raising there would destroy the provenance of a submission that
+    really happened — precisely the "a crash mid-poll must never orphan a spent slot"
+    failure the whole write-ordering design exists to prevent — and ``write_rows`` is the
+    self-healing ``--reconcile`` path, which must not be bricked by one hand-corrupted local
+    line it is trying to repair.
+
+    So a malformed row is written AND said out loud. What it must never be is silently
+    swallowed (a lost slot) or silently blessed (a wrong schema nobody checks).
+    """
+    for row in rows:
+        for error in validate_row(row):
+            print(f"submissions: ⚠ malformed row written as-is: {error}.", file=sys.stderr)
+
+
 def write_rows(ws: Path, rows) -> None:
     """Rewrite the WHOLE log atomically (tempfile + ``os.replace``)."""
+    _warn_invalid(rows)
     _atomic_write(_path(ws), _render(rows))
 
 
 def append_row(ws: Path, row: dict) -> None:
     """Append ONE row — the earlier lines' bytes are never rewritten."""
+    _warn_invalid([row])
     path = _path(ws)
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a") as fh:
