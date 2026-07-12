@@ -170,14 +170,39 @@ Plans:
   3. Submissions are gated on meaningful CV improvement (or an explicit stated calibration reason) and blocked otherwise; remaining daily budget is tracked with UTC-aware reset.
   4. A malformed submission file (wrong row count, NaNs, misaligned ids) is caught by pre-submit validation so a budget slot is never wasted.
 
-**Plans**: TBD (suggested 3)
+**Plans**: 7 plans in 4 waves
+
+> **Deliberate deviation from the suggested 3-plan split (recorded, not forgotten):**
+> (a) roadmap plan `05-02` named a *"CV-based final-selection rule"* — the user **explicitly scoped
+> final selection / nomination OUT of v1** (05-CONTEXT D-12). It is **not planned anywhere**; the
+> submissions history + the divergence alarm are what the user nominates from, manually, in the
+> Kaggle UI.
+> (b) 05-CONTEXT D-09 surfaced a **discovered gap the roadmap did not anticipate**: Phase 3's `run_cv`
+> harness is CV-only, so **`submission.csv` does not exist today**. Producing it is a prerequisite for
+> everything else here and gets its own early-wave plan (05-02).
+> (c) The Nyquist Wave-0 RED suite is split out (05-01) because a real `competitions submit` is
+> irreversible: the tests that make the submit path provably slot-free must exist before it does.
 
 Plans:
 
-- [ ] 05-01: kaggle competitions submit + async LB read-back into submissions.jsonl + pre-submit file validation
-- [ ] 05-02: CV-to-LB gap computation and trend per experiment with divergence alarm; CV-based final-selection rule
-- [ ] 05-03: Submission-budget model (UTC reset) + CV-improvement gating policy + remaining-slots tracking
+**Wave 1**
 
+- [ ] 05-01-PLAN.md — Nyquist Wave 0: live-captured submissions fixtures + every RED test module (fail-open guards, budget, gate matrix, alarm, source guard forbidding any live test from submitting)
+
+**Wave 2** *(blocked on Wave 1 — parallel)*
+
+- [ ] 05-02-PLAN.md — D-09: extend `run_cv` to emit fold-averaged `submission.csv` (type-aware: `label` metrics vote, never mean) + scaffold the submission header
+- [ ] 05-03-PLAN.md — Foundation: reserved exit codes 65/69/75 + `submissions_log.py` (row schema, status/score parse, UTC-safe Kaggle-authoritative budget count, atomic I/O) + configurable `noise_k`
+
+**Wave 3** *(blocked on Wave 2 — parallel)*
+
+- [ ] 05-04-PLAN.md — `check_submission.py` (FREE — never spends a slot): D-01 type refusal, D-02 file validation, D-04 budget, D-05/D-06/D-08 block-by-default gate + decision material
+- [ ] 05-05-PLAN.md — `submit.py` (⚠ the CLI is FAIL-OPEN — success is confirmed by READ-BACK, never by rc==0; PENDING row written before the poll) + `fetch_lb.py` (detach fallback + `--reconcile`)
+- [ ] 05-06-PLAN.md — CV→LB gap trend + D-10 rank-inversion divergence alarm (derived join on `exp_id`; `meta.json` never written) spliced into the strategy-regen contract
+
+**Wave 4** *(blocked on Wave 3)*
+
+- [ ] 05-07-PLAN.md — SKILL.md gate protocol (65/69/75; the human decides, `--reason` optional) + `references/kaggle-cli-behavior.md` submit/submissions entries + stated `.gitignore` decision + **blocking human-verify checkpoint: the first real submission verifies assumption A1 (is `submissions.date` UTC?)**
 ## Progress
 
 **Execution Order:**
