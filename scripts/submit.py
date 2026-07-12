@@ -56,10 +56,17 @@ Portability + safety (CLAUDE.md): stdlib-only, self-locating (``Path(__file__)``
 and arrives here as ``--confirm`` (D-05). Every Kaggle call routes through
 ``kaggle_gateway.run_kaggle`` (D-16).
 
+  * D-02. The file is VALIDATED against the competition's own reference sample (exact
+    header, exact row count, order-independent id set, no blank/NaN predictions) INSIDE
+    this script, immediately before the TOCTOU re-hash. check_submission.py runs the same
+    checks for free, but "never submit an unvalidated file" cannot be an invariant that
+    depends on the caller having remembered to run the free gate first.
+
 Exit codes: 0 = SCORED | 2 = submission FAILED (Kaggle ERROR) | 3 = DETACHED (PENDING —
-re-run fetch_lb.py) | 4 = transient / fail-closed | 65 = the submission file is missing or
-unusable | 69 = this competition is not a CSV-submit competition (D-01) | 75 = the gate
-declined to spend a slot | 77 = a UI gate. 124/127 from the gateway are surfaced VERBATIM.
+re-run fetch_lb.py) | 4 = transient / fail-closed | 65 = the submission file is missing, or
+does not validate against the competition's sample (D-02) | 69 = this competition is not a
+CSV-submit competition (D-01) | 75 = the gate declined to spend a slot | 77 = a UI gate.
+124/127 from the gateway are surfaced VERBATIM.
 """
 
 from __future__ import annotations
@@ -77,6 +84,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
+from check_submission import _resolve_reference, validate_submission  # noqa: E402
 from fetch_lb import (  # noqa: E402
     # The terminal codes (2 = FAILED, 3 = DETACHED) are returned by record_outcome, which
     # is the ONE recorder both entry points share — so they are deliberately not re-imported.
@@ -179,6 +187,54 @@ def _pre_flight(ws: Path, args):
             "experiment first (run_local.py, or pull_kernel.py for the kernel path). Note "
             "submission.csv is gitignored by design: its provenance is the file hash "
             "recorded in control/submissions.jsonl, not the git tree.",
+            file=sys.stderr,
+        )
+        return VALIDATION_FAILED
+
+    # ------------------------------------------------------------------ #
+    # D-02 — NEVER SUBMIT AN UNVALIDATED FILE.
+    #
+    # check_submission.py runs exactly this validation for FREE, and the agent is told to
+    # run it first. But submit.py is the ONE script that spends the irreversible resource,
+    # so it must not TRUST that the free gate was run — an invariant enforced only by
+    # "the caller remembered to" is not enforced. Every other irreversible invariant in
+    # this script (the D-01 type refusal, TOCTOU, the double-spend guard, --confirm) is
+    # mechanical; this one is too.
+    #
+    # ⚠ And the failure is NOT free, even though Kaggle does not charge processing errors
+    # (D-13): a header / id-set mismatch is frequently SCORED rather than rejected. A
+    # wrong-but-parseable file burns a real slot AND lands a garbage score on the board.
+    #
+    # The validators are IMPORTED from check_submission, never re-derived here: a second
+    # copy would be a second thing to keep in sync, and a validator that silently drifted
+    # from the one the human was shown would be worse than no validator at all.
+    # ------------------------------------------------------------------ #
+    ref = _resolve_reference(ws)
+    if ref is None:
+        print(
+            "REFUSING to submit: there is nothing to validate submission.csv AGAINST — no "
+            "reference file under data/ (neither the Phase 2 manifest signal nor a "
+            "*submission*.csv scan found one) and no data/test.csv to derive the id set "
+            "from. An unvalidated file is NEVER submitted (D-02). No slot was spent — "
+            "re-download the competition data and re-run.",
+            file=sys.stderr,
+        )
+        return VALIDATION_FAILED
+
+    # PRINT the chosen reference (as check_submission does): the Phase 2 signal takes the
+    # FIRST manifest match and is flagged WEAK by its own author, so a human must be able
+    # to spot a wrong pick — a silently-wrong reference validates a garbage file clean.
+    print(f"validating {csv_path.name} against reference: {ref.label} ({ref.count} rows)")
+
+    reason, message = validate_submission(csv_path, ref)
+    if reason is not None:
+        print(
+            f"REFUSING to submit [{reason}]: {message}\n"
+            "  NO SLOT WAS SPENT. Kaggle only refuses a file it cannot process (D-13) — a "
+            "structurally wrong but PARSEABLE file is SCORED, which would burn a real, "
+            "irreversible slot and land a garbage score on the leaderboard.\n"
+            "  Fix the harness, re-run the experiment, then re-check with "
+            "check_submission.py.",
             file=sys.stderr,
         )
         return VALIDATION_FAILED
