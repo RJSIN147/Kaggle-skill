@@ -17,7 +17,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 2: Competition Context & Data** - Machine-derived competition "constitution" plus local data, UI gates cleared (verification gaps_found 2026-07-10 — gap closure pending) (completed 2026-07-10)
 - [x] **Phase 3: Local Experiment Loop, Ledger & Strategy** - The full idea-to-verdict-to-ledger-to-strategy cycle, local & CV-only (MVP / core value) (completed 2026-07-11)
 - [x] **Phase 4: Kaggle Kernel Execution (GPU Path)** - Run the same experiment on Kaggle GPU compute, silent-failure caught (all 5 plans executed; verification gaps_found 2026-07-12 — gap closure pending: anti-silent-failure guarantee has a hole, CR-01/VERIFICATION) (completed 2026-07-11)
-- [ ] **Phase 5: Submission & Leaderboard Tracking** - Submit under CV-first discipline with budget gating and CV-to-LB gap tracking
+- [x] **Phase 5: Submission & Leaderboard Tracking** - Submit under CV-first discipline with budget gating and CV-to-LB gap tracking (completed 2026-07-12)
 
 ## Phase Details
 
@@ -202,7 +202,7 @@ Plans:
 
 **Wave 4** *(blocked on Wave 3)*
 
-- [ ] 05-07-PLAN.md — SKILL.md gate protocol (65/69/75; the human decides, `--reason` optional) + `references/kaggle-cli-behavior.md` submit/submissions entries + stated `.gitignore` decision + **blocking human-verify checkpoint: the first real submission verifies assumption A1 (is `submissions.date` UTC?)**
+- [x] 05-07-PLAN.md — SKILL.md gate protocol (65/69/75; the human decides, `--reason` optional) + `references/kaggle-cli-behavior.md` submit/submissions entries + stated `.gitignore` decision + **blocking human-verify checkpoint: the first real submission verifies assumption A1 (is `submissions.date` UTC?)**
 ## Progress
 
 **Execution Order:**
@@ -214,7 +214,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | 2. Competition Context & Data | 7/7 | Complete   | 2026-07-10 |
 | 3. Local Experiment Loop, Ledger & Strategy | 5/5 | Complete   | 2026-07-11 |
 | 4. Kaggle Kernel Execution (GPU Path) | 6/6 | Complete   | 2026-07-11 |
-| 5. Submission & Leaderboard Tracking | 6/7 | In Progress|  |
+| 5. Submission & Leaderboard Tracking | 7/7 | Complete   | 2026-07-12 |
 
 ## Coverage
 
