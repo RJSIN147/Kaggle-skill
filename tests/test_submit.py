@@ -401,8 +401,9 @@ def test_pending_row_written_before_poll(tmp_workspace, monkeypatch):
     ws = _seed_ws(tmp_workspace)
     now = datetime.now(timezone.utc)
 
-    # The first read-back CONFIRMS the submission (still PENDING). Every subsequent poll
-    # tick explodes — simulating a crash/network death mid-poll.
+    # READ #1 is the WR-02 budget gate (read-only, before the slot is spent); READ #2 is the
+    # read-back that CONFIRMS the submission (still PENDING). Every subsequent poll tick
+    # explodes — simulating a crash/network death mid-poll, which is what this test is about.
     fake, calls = _fake_gateway(
         readback=[
             _kaggle_row(
@@ -412,7 +413,7 @@ def test_pending_row_written_before_poll(tmp_workspace, monkeypatch):
                 status="SubmissionStatus.PENDING",
             )
         ],
-        raise_on_readback_after=1,
+        raise_on_readback_after=2,
     )
     monkeypatch.setattr(mod, "run_kaggle", fake)
 
@@ -737,6 +738,359 @@ def test_dry_run_refuses_an_unvalidated_file(tmp_workspace, monkeypatch):
 
     assert _run(mod, ws, "--dry-run") == gw.VALIDATION_FAILED
     assert calls == []
+
+
+# --------------------------------------------------------------------------- #
+# WR-02 — THE BUDGET GATE + THE CV GATE ARE ENFORCED BY submit.py ITSELF.
+#
+# Phase 5's goal is "submit under CV-first discipline WITH BUDGET GATING". Until now that
+# was only half true in code: submit.py imported neither `submission_gate` nor
+# `submissions_log.remaining_slots`, so BOTH gates were enforced only by the FREE, advisory
+# check_submission.py and by prose in SKILL.md. A user who skipped the free gate and ran
+# `submit.py --confirm` directly got NEITHER — and spent a real, irreversible slot.
+#
+# This is the CR-02 asymmetry exactly: submit.py is the ONE script that spends the
+# irreversible resource, so it cannot TRUST that the free gate was run first. The gate logic
+# is IMPORTED from submission_gate/submissions_log, never re-derived — a second, drifting
+# copy would be worse than none, because the whole point is that the human and the machine
+# see the SAME decision.
+#
+# ⭐ WHAT --confirm DOES AND DOES NOT OVERRIDE — the line is drawn by `decide`'s OWN
+# `requires_confirmation` flag, not by a new policy invented here:
+#
+#   * requires_confirmation TRUE  (a within-noise CV gain; the last ASSUMED slot) — a
+#     genuine judgment call. --confirm IS the human's informed "yes" (D-05). It overrides.
+#   * requires_confirmation FALSE (an EXHAUSTED budget; an UNKNOWABLE budget; an experiment
+#     with NO READABLE CV) — the gate module's own words: "there is nothing coherent to
+#     confirm, because we do not know what we would be confirming." --confirm does NOT
+#     override. It is an acknowledgement that a slot will be spent, never a licence to spend
+#     one that does not exist or that the framework could not account for.
+# --------------------------------------------------------------------------- #
+def _charged_rows(n, *, status="SubmissionStatus.COMPLETE"):
+    """``n`` Kaggle rows dated TODAY (UTC) — i.e. ``n`` slots already charged.
+
+    The exp ids are deliberately exp-1NN, never EXP_ID: these are OTHER submissions eating
+    the budget, not a double-spend of ours (that guard is tested separately above).
+    """
+    now = datetime.now(timezone.utc)
+    return [
+        _kaggle_row(
+            ref=1000 + i,
+            description=f"exp-{100 + i:03d} | cv=0.700000",
+            date=_naive_utc(now - timedelta(minutes=i + 1)),
+            status=status,
+            public_score="0.70",
+        )
+        for i in range(n)
+    ]
+
+
+def _seed_prior_submission(ws, *, exp_id="exp-001", cv=0.84, ref=46770000):
+    """A previously SUBMITTED experiment: a ledger SUCCESS row + a SCORED submissions row.
+
+    This is what gives ``best_submitted_cv`` a real baseline to compare the candidate
+    against — without it every candidate is the FIRST submission, which is never blocked.
+    """
+    ledger = ws / "control" / "ledger.jsonl"
+    ledger.write_text(
+        ledger.read_text()
+        + json.dumps(
+            {
+                "exp_id": exp_id,
+                "status": "SUCCESS",
+                "idea": "an earlier, already-submitted experiment",
+                "metric": "accuracy",
+                "greater_is_better": True,
+                "cv_mean": cv,
+                "cv_std": 0.01,
+                "git_commit": "def5678",
+                "seed": 42,
+                "created": "2026-07-11T10:00:00Z",
+                "verdict_path": f"experiments/{exp_id}/VERDICT.md",
+            },
+            separators=(",", ":"),
+        )
+        + "\n"
+    )
+    subs = ws / "control" / "submissions.jsonl"
+    subs.write_text(
+        subs.read_text()
+        + json.dumps(
+            {
+                "schema_version": 1,
+                "exp_id": exp_id,
+                "kaggle_ref": ref,
+                "competition_slug": SLUG,
+                "file": f"experiments/{exp_id}/submission.csv",
+                "file_sha256": "sha256:" + "a" * 64,
+                "message": f"{exp_id} | cv={cv:.6f}",
+                "submitted_at": "2026-07-11T14:03:11Z",
+                "status": "SCORED",
+                "public_score": 0.77,
+                "private_score": None,
+                "scored_at": "2026-07-11T14:05:00Z",
+                "override_reason": None,
+                "error_description": None,
+            },
+            separators=(",", ":"),
+        )
+        + "\n"
+    )
+    return ws
+
+
+def test_refuses_when_no_slots_remain(tmp_workspace, monkeypatch, capsys):
+    """⚠ THE BUDGET GATE. An EXHAUSTED budget is not overridable by --confirm.
+
+    RED before WR-02: submit.py never read the budget at all, so `--confirm` sailed straight
+    past a spent-out day and spent a slot Kaggle had already charged away.
+    """
+    mod = _submit()
+    gw = importlib.import_module("kaggle_gateway")
+    ws = _seed_ws(tmp_workspace, daily_limit=5)
+
+    # Kaggle's OWN authoritative list: five submissions charged today => 0 slots left.
+    fake, calls = _fake_gateway(readback=_charged_rows(5))
+    monkeypatch.setattr(mod, "run_kaggle", fake)
+
+    rc = _run(mod, ws, "--confirm")
+    assert rc == gw.GATE_BLOCKED == 75, (
+        "a submission with NO SLOTS LEFT must be refused by submit.py itself — the budget "
+        "gate cannot live only in the FREE, skippable check_submission.py"
+    )
+    assert not [c for c in calls if len(c) > 1 and c[1] == "submit"], (
+        "NO SLOT MAY BE SPENT. The budget refusal must happen BEFORE the gateway — even "
+        "with --confirm: a gain cannot buy a slot that does not exist"
+    )
+    assert _read_sub_rows(ws) == [], "nothing is recorded for a submission never sent"
+
+    combined = "".join(capsys.readouterr())
+    assert "slot" in combined.lower()
+
+
+@pytest.mark.parametrize(
+    "case,gateway_kwargs",
+    [
+        # (a) A row Kaggle sent us whose status literal we cannot classify (a FUTURE enum
+        #     value). charged_today returns the -1 COUNT_UNAVAILABLE sentinel rather than
+        #     SKIP the row — skipping would UNDERCOUNT and let the user spend past the limit.
+        ("unparseable_status", {"readback": _charged_rows(2)[:1] + [
+            _kaggle_row(
+                ref=9999,
+                description="exp-199 | cv=0.70",
+                date=_naive_utc(datetime.now(timezone.utc)),
+                status="SubmissionStatus.QUARANTINED",
+            )
+        ]}),
+        # (b) Kaggle's authoritative list could not be READ at all (a 403 / a dead network).
+        #     read_submissions returns None => the count is unknowable => fail closed.
+        ("unreadable_list", {"readback": [], "readback_rc": 1}),
+    ],
+)
+def test_refuses_when_the_budget_is_unknowable(
+    tmp_workspace, monkeypatch, capsys, case, gateway_kwargs
+):
+    """⚠ FAIL CLOSED. `remaining_slots() is None` means BLOCK — never "plenty left".
+
+    The -1 / None sentinel chain exists precisely so an unknowable budget is a REFUSAL to
+    spend. submit.py never consulted it, so an unknowable budget was silently treated as
+    permission. RED before WR-02.
+    """
+    mod = _submit()
+    gw = importlib.import_module("kaggle_gateway")
+    ws = _seed_ws(tmp_workspace / case, daily_limit=5)
+
+    fake, calls = _fake_gateway(**gateway_kwargs)
+    monkeypatch.setattr(mod, "run_kaggle", fake)
+
+    rc = _run(mod, ws, "--confirm")
+    assert rc == gw.GATE_BLOCKED == 75, (
+        f"{case}: an UNKNOWABLE budget must BLOCK. --confirm cannot confirm a count the "
+        f"framework could not establish — there is nothing coherent to confirm"
+    )
+    assert not [c for c in calls if len(c) > 1 and c[1] == "submit"], (
+        f"{case}: a slot is NEVER spent against a budget we could not read"
+    )
+    assert _read_sub_rows(ws) == []
+
+
+@pytest.mark.parametrize(
+    "case,ledger_text",
+    [
+        # No SUCCESS row at all: the framework knows nothing about this experiment's CV.
+        ("no_ledger_row", ""),
+        # A row whose cv_mean is not a readable number. `nan` loses every comparison it
+        # enters (all nan comparisons are False), so a bare numeric check would pass it.
+        ("null_cv", json.dumps({
+            "exp_id": EXP_ID, "status": "SUCCESS", "cv_mean": None, "cv_std": 0.01,
+        }) + "\n"),
+        ("string_cv", json.dumps({
+            "exp_id": EXP_ID, "status": "SUCCESS", "cv_mean": "n/a", "cv_std": 0.01,
+        }) + "\n"),
+    ],
+)
+def test_refuses_an_experiment_with_no_readable_cv(
+    tmp_workspace, monkeypatch, case, ledger_text
+):
+    """⚠ THE CV GATE, at its hardest edge: --confirm does NOT override an unreadable CV.
+
+    CV is THE decision metric (SCORE-02). A scarce, irreversible slot is never spent on a
+    number the framework could not read — and there is nothing coherent for a human to
+    confirm about one, so `decide` sets requires_confirmation False and submit.py honours it.
+
+    RED before WR-02: submit.py's only use of the CV was to DECORATE the -m message
+    (`cv_mean(...)` → `exp-007` with no `| cv=`), so an experiment with no ledger row at all
+    submitted happily.
+    """
+    mod = _submit()
+    gw = importlib.import_module("kaggle_gateway")
+    ws = _seed_ws(tmp_workspace / case)
+    (ws / "control" / "ledger.jsonl").write_text(ledger_text)
+
+    fake, calls = _fake_gateway(readback=[])
+    monkeypatch.setattr(mod, "run_kaggle", fake)
+
+    rc = _run(mod, ws, "--confirm")
+    assert rc == gw.GATE_BLOCKED == 75, (
+        f"{case}: an experiment with no readable CV carries no decision metric — refuse"
+    )
+    assert not [c for c in calls if len(c) > 1 and c[1] == "submit"], (
+        f"{case}: no slot is spent on a CV the framework could not read"
+    )
+    assert _read_sub_rows(ws) == []
+
+
+def test_a_within_noise_cv_is_blocked_but_confirm_overrides(tmp_workspace, monkeypatch, capsys):
+    """⭐ BOTH DIRECTIONS of the --confirm contract, on the case it is FOR (D-05).
+
+    The candidate's gain over the best already-submitted CV (+0.005) does NOT exceed the
+    fold-noise bound (k=1.0 * cv_std=0.01). The gate BLOCKS — but with
+    requires_confirmation True, because this is a genuine judgment call about a real number
+    the human can weigh. --confirm is that informed "yes", and it MUST still get through:
+    D-05 guarantees the framework never silently HARD-refuses, and SKILL.md's exit-75 loop
+    (check → human → `submit.py --confirm`) is exactly this path.
+
+    The block is surfaced AT THE POINT OF SPEND, so a user who skipped the free gate still
+    sees the numbers before the slot goes.
+    """
+    mod = _submit()
+    ws = _seed_ws(tmp_workspace, cv_mean=0.845)     # candidate: 0.845 +/- 0.01
+    _seed_prior_submission(ws, cv=0.84)             # baseline:  0.840  => margin +0.005
+    now = datetime.now(timezone.utc)
+
+    fake, calls = _fake_gateway(
+        readback=lambda: [
+            _kaggle_row(
+                ref=46780678,
+                description=f"{EXP_ID} | cv=0.845000",
+                date=_naive_utc(now + timedelta(seconds=5)),
+                status="SubmissionStatus.COMPLETE",
+                public_score="0.77511",
+            )
+        ]
+    )
+    monkeypatch.setattr(mod, "run_kaggle", fake)
+
+    assert _run(mod, ws, "--confirm") == 0, (
+        "--confirm MUST still let a within-noise candidate the human has reasoned about "
+        "through — the gate takes a POSITION, it does not hold a veto (D-05)"
+    )
+    assert [c for c in calls if len(c) > 1 and c[1] == "submit"], "the slot really is spent"
+
+    combined = "".join(capsys.readouterr())
+    assert "BLOCKED" in combined, (
+        "the human must SEE the gate's position at the point of spend — a silent override "
+        "is indistinguishable from no gate at all"
+    )
+
+
+def test_a_within_noise_cv_never_submits_without_confirm(tmp_workspace, monkeypatch):
+    """The other direction: no --confirm, no slot — and no gateway call whatsoever."""
+    mod = _submit()
+    gw = importlib.import_module("kaggle_gateway")
+    ws = _seed_ws(tmp_workspace, cv_mean=0.845)
+    _seed_prior_submission(ws, cv=0.84)
+
+    fake, calls = _fake_gateway(readback=[])
+    monkeypatch.setattr(mod, "run_kaggle", fake)
+
+    assert _run(mod, ws) == gw.GATE_BLOCKED
+    assert calls == [], "without --confirm nothing is submitted and nothing is even read"
+    assert [r["exp_id"] for r in _read_sub_rows(ws)] == ["exp-001"], (
+        "only the seeded PRIOR submission remains — nothing was appended for the candidate"
+    )
+
+
+def test_a_meaningful_improvement_still_submits(tmp_workspace, monkeypatch):
+    """The gates must not OVER-block: a real gain, with slots left, submits as before.
+
+    Candidate 0.90 vs the best submitted 0.84 => margin +0.06, far beyond k*cv_std = 0.01.
+    """
+    mod = _submit()
+    ws = _seed_ws(tmp_workspace, cv_mean=0.90, daily_limit=5)
+    _seed_prior_submission(ws, cv=0.84)
+    now = datetime.now(timezone.utc)
+
+    charged = _charged_rows(2)  # 2 of 5 slots used => 3 left
+    fake, calls = _fake_gateway(
+        readback=lambda: charged + [
+            _kaggle_row(
+                ref=46780678,
+                description=f"{EXP_ID} | cv=0.900000",
+                date=_naive_utc(now + timedelta(seconds=5)),
+                status="SubmissionStatus.COMPLETE",
+                public_score="0.81",
+            )
+        ]
+    )
+    monkeypatch.setattr(mod, "run_kaggle", fake)
+
+    assert _run(mod, ws, "--confirm") == 0, "the legitimate happy path must still submit"
+    assert [c for c in calls if len(c) > 1 and c[1] == "submit"]
+    rows = _read_sub_rows(ws)
+    assert [r for r in rows if r["exp_id"] == EXP_ID and r["status"] == "SCORED"]
+
+
+def test_the_budget_gate_reuses_the_injectable_reader(tmp_workspace, monkeypatch):
+    """⚠ THE NAMESPACE-BINDING TRAP, pinned mechanically.
+
+    ``submissions_log.fetch_submissions()`` resolves ``run_kaggle`` from its OWN module
+    globals, so monkeypatching the gateway on submit.py would be SILENTLY BYPASSED and the
+    REAL Kaggle CLI would shell out from inside a supposedly-mocked test. It has zero
+    callers, and the budget gate must not become its first: ``fetch_lb.read_submissions(...,
+    runner=run_kaggle)`` is the injectable one.
+
+    If submit.py ever reaches for the other, this fake explodes instead of quietly working.
+    """
+    mod = _submit()
+    sub_log = importlib.import_module("submissions_log")
+    ws = _seed_ws(tmp_workspace)
+
+    def _boom(*_a, **_kw):
+        raise AssertionError(
+            "submit.py called submissions_log.fetch_submissions() — it resolves run_kaggle "
+            "from its OWN globals, so a monkeypatched gateway is bypassed and a REAL Kaggle "
+            "call escapes. Use fetch_lb.read_submissions(..., runner=run_kaggle)."
+        )
+
+    monkeypatch.setattr(sub_log, "fetch_submissions", _boom)
+
+    now = datetime.now(timezone.utc)
+    fake, calls = _fake_gateway(
+        readback=lambda: [
+            _kaggle_row(
+                ref=46780678,
+                description=f"{EXP_ID} | cv=0.841230",
+                date=_naive_utc(now + timedelta(seconds=5)),
+                status="SubmissionStatus.COMPLETE",
+                public_score="0.77511",
+            )
+        ]
+    )
+    monkeypatch.setattr(mod, "run_kaggle", fake)
+
+    assert _run(mod, ws, "--confirm") == 0
+    assert all(c[1] != "submit" or c[0] == "competitions" for c in calls if len(c) > 1)
 
 
 # --------------------------------------------------------------------------- #
