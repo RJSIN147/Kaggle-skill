@@ -196,7 +196,14 @@ class Reference:
 
 
 def _read_csv(path: Path):
-    """``(header, data_rows)`` via the stdlib ``csv`` module. Trailing blank lines dropped."""
+    """``(header, data_rows)`` via the stdlib ``csv`` module. Trailing blank lines dropped.
+
+    RAISES on an unreadable file (``OSError`` / ``UnicodeDecodeError`` / ``csv.Error``).
+    :func:`validate_submission` catches those to author a precise ``unreadable_file``
+    reason; every other caller goes through :func:`_read_csv_or_none`, which fails closed.
+    ⚠ There is no third option: an UNGUARDED call here is a raw traceback out of a gate
+    SKILL.md promises is "argparse in, exit code out" (WR-09).
+    """
     with path.open(newline="") as fh:
         rows = [row for row in csv.reader(fh)]
     while rows and not any(cell.strip() for cell in rows[-1]):
@@ -204,6 +211,25 @@ def _read_csv(path: Path):
     if not rows:
         return [], []
     return [c.strip() for c in rows[0]], rows[1:]
+
+
+def _read_csv_or_none(path: Path, *, role: str):
+    """:func:`_read_csv`, or ``None`` after a clear message — never a traceback (WR-09).
+
+    A reference file with a non-UTF-8 encoding, a NUL byte, or a permissions problem is a
+    real, plausible corruption (a truncated download; a latin-1/UTF-16 file). Crashing on
+    one takes the FREE gate out of the "exit code out" contract entirely — and a gate that
+    crashes is a gate the agent may route around, which costs an irreversible slot.
+    """
+    try:
+        return _read_csv(path)
+    except (OSError, UnicodeDecodeError, csv.Error) as exc:
+        print(
+            f"the {role} {path.name} could not be READ ({type(exc).__name__}: {exc}). "
+            "FAILING CLOSED — a file we cannot read is not a file we can validate against.",
+            file=sys.stderr,
+        )
+        return None
 
 
 def _resolve_reference(ws: Path) -> Reference | None:
@@ -244,7 +270,14 @@ def _resolve_reference(ws: Path) -> Reference | None:
                 break
 
     if chosen is not None:
-        header, rows = _read_csv(chosen)
+        # WR-09: an unreadable reference is `None` => FAIL CLOSED, never a traceback. It
+        # deliberately does NOT fall through to the weaker test.csv rung: a corrupt sample
+        # is a broken workspace, and silently validating against a different, weaker
+        # reference would hide that from the human who has to trust the result.
+        read = _read_csv_or_none(chosen, role="reference file")
+        if read is None:
+            return None
+        header, rows = read
         if len(header) >= 2 and rows:
             return Reference(
                 label=chosen.name,
@@ -256,7 +289,10 @@ def _resolve_reference(ws: Path) -> Reference | None:
     # Rung 3 — the test.csv fallback: the ids we must predict for are exactly test.csv's.
     test_path = data_dir / "test.csv"
     if test_path.is_file():
-        header, rows = _read_csv(test_path)
+        read = _read_csv_or_none(test_path, role="id-set fallback")
+        if read is None:
+            return None
+        header, rows = read
         if header and rows:
             return Reference(
                 label="test.csv (id column fallback — no reference submission file found)",
@@ -393,7 +429,13 @@ def label_trap_warning(csv_path: Path, ref: Reference, metric_name: str) -> str 
     if ref.header is None or not _looks_integral(ref.pred_values):
         return None
 
-    _, rows = _read_csv(csv_path)
+    # WR-09: guarded like every other read outside validate_submission. In practice main()
+    # has already validated this exact file (so it IS readable), but a warning helper is the
+    # last place that should be able to crash the gate it is decorating.
+    read = _read_csv_or_none(csv_path, role="submission file")
+    if read is None:
+        return None
+    _, rows = read
     offenders = [
         row[1].strip()
         for row in rows
