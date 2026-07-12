@@ -27,12 +27,18 @@ ML code lives entirely in the template this script writes. Self-locating + `--wo
 from __future__ import annotations
 
 import argparse
+import csv
 import json
 import re
 import sys
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
+
+# Phase 2 wrote the sample-submission filename here (capture_competition.py). REUSE the
+# signal — never re-derive the heuristic, and never hard-code a guessed
+# `sample_submission.csv` (titanic's file is `gender_submission.csv`).
+TYPE_SIGNALS_REL = "control/raw/competition-type-signals.json"
 
 # Charset gate for values that get rendered into the executed experiment.py (CR-01).
 # The primary defense is repr()-quoting every rendered literal (so ANY value is inert);
@@ -76,6 +82,74 @@ def _read_control_json(path: Path):
 def _json_inner(value: str) -> str:
     """JSON-escape a string WITHOUT the surrounding quotes (the template supplies them)."""
     return json.dumps(value)[1:-1]
+
+
+def _find_sample_submission(ws: Path) -> Path | None:
+    """Locate the competition's sample-submission file under ``data/`` (the R4 ladder).
+
+    1. ``control/raw/competition-type-signals.json`` -> ``signals.submission_csv_in_manifest``
+       (Phase 2's heuristic — CONSUMED, not re-derived), if that file exists under ``data/``.
+    2. Else a case-insensitive ``data/*submission*.csv`` scan.
+    3. Else None -> the header is unresolvable and NOTHING is guessed.
+
+    ⚠ The Phase 2 signal takes the FIRST manifest match, so a competition shipping several
+    ``*submission*.csv`` files could mis-pick. main() PRINTS the chosen file so a human can
+    spot a wrong pick, and check_submission.py's validation against it is the real backstop.
+    """
+    data_dir = ws / "data"
+    signals_path = ws / TYPE_SIGNALS_REL
+    if signals_path.exists():
+        try:
+            signals = (json.loads(signals_path.read_text()) or {}).get("signals") or {}
+        except (json.JSONDecodeError, AttributeError):
+            signals = {}  # a corrupt/odd signals file degrades to the glob — never blocks
+        named = signals.get("submission_csv_in_manifest")
+        if isinstance(named, str) and named:
+            # Basename only — the signal is a manifest name, never a path to follow.
+            candidate = data_dir / Path(named).name
+            if candidate.is_file():
+                return candidate
+
+    if data_dir.is_dir():
+        for path in sorted(data_dir.iterdir()):
+            name = path.name.lower()
+            if path.is_file() and "submission" in name and name.endswith(".csv"):
+                return path
+    return None
+
+
+def _read_submission_header(path: Path) -> list[str]:
+    """Return the sample file's header row (stdlib csv), or [] if it has none."""
+    try:
+        with path.open(newline="") as fh:
+            return next(csv.reader(fh), [])
+    except OSError:
+        return []
+
+
+def _render_submission_header(src: str, id_column, target_column) -> str | None:
+    """Rewrite the template's ``ID_COLUMN`` / ``TARGET_COLUMN`` default lines with literals.
+
+    The harness WRITES submission.csv, and on a Kaggle kernel it can read neither
+    ``control/`` nor any skill code (D-03) — so the header must be baked in as a LITERAL at
+    scaffold time, exactly like SLUG / EXP_ID / METRIC_NAME / CV_SCHEME. Values are rendered
+    via ``repr()`` (a lambda replacement, so a backslash in a header can never be read as a
+    regex escape), keeping every config/data-sourced literal inert (CR-01).
+
+    None => the harness skips submission emission entirely and still records a valid CV
+    result (graceful, D-09). Returns None if the template no longer carries the lines to
+    rewrite (block, don't silently emit a header-less harness).
+    """
+    for name, value in (("ID_COLUMN", id_column), ("TARGET_COLUMN", target_column)):
+        src, n = re.subn(
+            rf"(?m)^{name} = .*$",
+            lambda _m, v=value, k=name: f"{k} = {v!r}",
+            src,
+            count=1,
+        )
+        if n != 1:
+            return None
+    return src
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -167,9 +241,20 @@ def main(argv=None) -> int:
         )
         return 1
 
+    # Submission header (D-09): read the id/target column names off the competition's OWN
+    # sample-submission file so the harness writes a correctly-headed submission.csv by
+    # construction. Unresolvable => both render as None => no submission is emitted (the
+    # experiment still records a valid CV result). NEVER guess a header.
+    sample_path = _find_sample_submission(ws)
+    id_column = target_column = None
+    header: list[str] = []
+    if sample_path is not None:
+        header = _read_submission_header(sample_path)
+    if len(header) >= 2:
+        id_column, target_column = header[0], header[1]
+
     exp_id = f"exp-{n:03d}"
     exp_dir = ws / "experiments" / exp_id
-    (exp_dir / "artifacts").mkdir(parents=True, exist_ok=True)
 
     # Render the harness template with the resolved registry_entry literal + cv scheme.
     # Every config-sourced value is rendered as a PROPERLY QUOTED Python literal via
@@ -187,7 +272,17 @@ def main(argv=None) -> int:
             "registry_entry": repr(registry_entry),
         },
     )
-    create_if_absent(exp_dir / "experiment.py", experiment_src)
+    rendered = _render_submission_header(experiment_src, id_column, target_column)
+    if rendered is None:
+        print(
+            "cannot scaffold: experiment.py.tmpl no longer carries the ID_COLUMN / "
+            "TARGET_COLUMN submission-header lines to render (block, don't guess).",
+            file=sys.stderr,
+        )
+        return 1
+
+    (exp_dir / "artifacts").mkdir(parents=True, exist_ok=True)
+    create_if_absent(exp_dir / "experiment.py", rendered)
 
     # Meta STUB: idea/hypothesis/created/exp_id filled; numeric fields stay null/[] (the
     # recorder fills them and carries these stub fields forward — 03-04). status="pending"
@@ -217,6 +312,25 @@ def main(argv=None) -> int:
         return rc
 
     print(f"scaffolded {exp_id} at experiments/{exp_id} (metric={metric_name}, cv={cv_scheme}).")
+
+    # Always say WHERE the submission header came from — the Phase 2 signal takes the first
+    # manifest match, so a human must be able to spot a wrong pick.
+    if id_column is None:
+        print(
+            "  submission header: NONE found (no data/*submission*.csv) — the experiment "
+            "will record a CV result but emit no submission.csv (D-09)."
+        )
+    else:
+        print(
+            f"  submission header: id={id_column!r}, target={target_column!r} "
+            f"(read from data/{sample_path.name})."
+        )
+        if len(header) > 2:
+            print(
+                f"  NOTE: {sample_path.name} has {len(header)} columns (multi-target). "
+                f"Rendered columns 0 and 1; override via run_cv(submission_agg=...) or a "
+                f"hand-edited writer if that is wrong."
+            )
     return 0
 
 

@@ -20,9 +20,11 @@ VALIDATES then PERSISTS it. Do not hand-type a CV score anywhere.
 """
 
 import argparse
+import csv
 import json
 import sys
 import time
+from collections import Counter
 from math import inf  # noqa: F401  (keeps the rendered registry_entry literal's inf ranges valid)
 from pathlib import Path
 from statistics import mean, pstdev
@@ -39,6 +41,19 @@ CV_SCHEME = $cv_scheme_literal
 METRIC_NAME = $metric_name_literal
 DEFAULT_SEED = 42  # D-09: fixed default seed, per-experiment override via --seed.
 registry_entry = $registry_entry
+
+# --------------------------------------------------------------------------- #
+# Submission header (D-09). scaffold_experiment.py REWRITES these two lines with the
+# id/target column names read from the competition's own sample-submission file (resolved
+# via Phase 2's `signals.submission_csv_in_manifest`). They are LITERALS — not a lookup —
+# because the harness writes submission.csv on a Kaggle kernel, where `control/` does not
+# exist and no skill code is importable (D-03).
+#
+# None => no header could be resolved => run_cv emits NO submission.csv and the experiment
+# still records a valid CV result (graceful, D-09). A header is NEVER guessed.
+# --------------------------------------------------------------------------- #
+ID_COLUMN = None
+TARGET_COLUMN = None
 
 
 def resolve_data_dir(slug, override=None):
@@ -97,9 +112,39 @@ def _resolve_metric(metric, registry_entry):
     return fn, ptype
 
 
+def _default_agg(test_preds, ptype, test_probas=None, classes=None):
+    """Aggregate the per-fold TEST predictions into one submission column (D-09).
+
+    The aggregation is TYPE-AWARE, keyed on the metric's `prediction_type`:
+
+      * "proba" / "raw" -> MEAN across folds. A soft ensemble — correct and standard.
+      * "label"         -> ⚠ MEAN IS WRONG. Averaging five folds of 0/1 hard labels yields
+                           0.4 / 0.6, which is NOT a member of the label set. Kaggle wants
+                           0/1, and the pre-submit validator (headers / row count / id set /
+                           blanks) would happily PASS such a file — so a real, irreversible
+                           submission slot would be spent on garbage. Titanic's default
+                           metric is `accuracy`, so this is the DEFAULT path, not an edge
+                           case. Soft-vote (mean of predict_proba) then argmax over
+                           model.classes_; majority-vote when predict_proba is absent.
+    """
+    import numpy as np
+
+    if ptype == "label":
+        if test_probas is not None and len(test_probas) and classes is not None:
+            # Preferred: a calibrated soft ensemble — mean the fold probabilities, argmax.
+            mean_proba = np.mean(np.asarray(test_probas), axis=0)
+            return np.asarray(classes)[np.argmax(mean_proba, axis=1)]
+        # Fallback (no predict_proba): a per-row MAJORITY VOTE over the fold labels.
+        stacked = np.vstack([np.asarray(p).reshape(1, -1) for p in test_preds])
+        return np.array([Counter(col.tolist()).most_common(1)[0][0] for col in stacked.T])
+    return np.mean(np.asarray(test_preds), axis=0)
+
+
 def run_cv(*, X, y, model_factory, preprocess_factory=None, feature_fn=None,
            metric, registry_entry, cv_scheme, n_splits=5, seed=DEFAULT_SEED,
-           groups=None, splitter=None, exp_dir=".", prediction_type=None):
+           groups=None, splitter=None, exp_dir=".", prediction_type=None,
+           X_test=None, test_ids=None, id_column=None, target_column=None,
+           submission_agg=None):
     """Leakage-safe CV fold loop. Writes result.json (D-04) and OOF; returns the result dict.
 
     model_factory():      -> a FRESH, UNFITTED estimator per fold.
@@ -109,6 +154,28 @@ def run_cv(*, X, y, model_factory, preprocess_factory=None, feature_fn=None,
     feature_fn(X)->X:     optional; default assumes X is already the feature matrix.
     metric:               a registry name (str) OR a callable(y_true, y_pred)->float.
     splitter:             optional pre-built splitter to fully bypass scheme selection.
+
+    SUBMISSION (D-09) — all five kwargs below default None, so a pure-diagnostic experiment
+    behaves EXACTLY as before (no submission.csv, no error) and still records a valid CV
+    result. When X_test is given, each fold's ALREADY-FITTED model predicts the test rows —
+    free (no second training run, which on a GPU kernel is real money) and a mild ensemble in
+    which every contributing model was actually CV-scored.
+
+    X_test:         the test feature matrix (same columns as X).
+    test_ids:       the submission's id column values, one per X_test row.
+    id_column:      the sample file's id header (rendered by scaffold_experiment.py).
+    target_column:  the sample file's prediction header (likewise).
+    submission_agg: (test_preds, ptype, test_probas, classes) -> the final column. THE
+                    ESCAPE HATCH — override the aggregation without editing the harness.
+
+    ⚠ Test rows are transformed by THAT fold's fitted `pp` (never a pp that saw the val
+    fold, never raw), so the anti-leakage contract holds for test exactly as it does for val.
+
+    ⚠ `prediction_type` describes what the METRIC consumes, not necessarily what the
+    SUBMISSION FILE wants. They usually coincide (an AUC competition wants probabilities; an
+    accuracy competition wants labels) — but not always. Do NOT try to auto-detect this: the
+    pre-submit validation against the competition's sample file (D-02) is the backstop, and
+    `submission_agg=` is the escape hatch.
     """
     import numpy as np
 
@@ -119,6 +186,10 @@ def run_cv(*, X, y, model_factory, preprocess_factory=None, feature_fn=None,
     split = splitter or _make_splitter(cv_scheme, n_splits, seed)
     Xv = np.asarray(X)
     yv = np.asarray(y)
+    Xte_v = None
+    if X_test is not None:
+        Xte_v = np.asarray(feature_fn(X_test) if feature_fn is not None else X_test)
+    test_preds, test_probas, classes = [], [], None
     fold_scores, oof = [], np.full(len(yv), np.nan, dtype=float)
     t0 = time.time()
     split_args = (Xv, yv, groups) if cv_scheme == "GroupKFold" else (Xv, yv)
@@ -138,6 +209,18 @@ def run_cv(*, X, y, model_factory, preprocess_factory=None, feature_fn=None,
         fold_scores.append(float(metric_fn(yv[va], pred)))
         if ptype != "proba" or (hasattr(pred, "ndim") and pred.ndim == 1):
             oof[va] = np.asarray(pred).reshape(-1)[: len(va)]
+        if Xte_v is not None:
+            # THIS fold's fitted pp — the anti-leakage contract extends to test (D-09).
+            Xte = pp.transform(Xte_v) if preprocess_factory is not None else Xte_v
+            if ptype == "proba":
+                p = model.predict_proba(Xte)
+                test_preds.append(p[:, 1] if p.shape[1] == 2 else p)
+            elif ptype == "label" and hasattr(model, "predict_proba"):
+                test_probas.append(model.predict_proba(Xte))  # soft-vote material
+                test_preds.append(model.predict(Xte))         # majority-vote fallback
+            else:
+                test_preds.append(model.predict(Xte))
+            classes = getattr(model, "classes_", classes)
 
     result = {
         "schema_version": 1,
@@ -154,10 +237,29 @@ def run_cv(*, X, y, model_factory, preprocess_factory=None, feature_fn=None,
         "oof_path": "artifacts/oof.npy",
         "written_by": "run_cv",
         "artifacts": ["artifacts/oof.npy"],
+        # Always PRESENT (None when no submission was written) — record_experiment.py's
+        # result gate is presence-only, so this additive key needs no recorder change.
+        "submission_path": None,
     }
     art_dir = Path(exp_dir) / "artifacts"
     art_dir.mkdir(parents=True, exist_ok=True)  # scaffolder creates it; guard for standalone runs
     np.save(art_dir / "oof.npy", oof)
+
+    # Submission (D-09): only when test predictions exist AND a header was resolved. Written
+    # FLAT at the experiment root — NOT under artifacts/ — because pull_kernel.py deposits
+    # kernel output as flat files into experiments/exp-NNN/, so the Kaggle-Kernel path lands
+    # submission.csv in exactly the same place as the local path with ZERO pull_kernel changes.
+    # stdlib `csv` only: run_cv stays pandas-free (numpy is its sole heavy import).
+    if test_preds and test_ids is not None and id_column and target_column:
+        agg = submission_agg or _default_agg
+        final = np.asarray(agg(test_preds, ptype, test_probas, classes)).reshape(-1)
+        with open(Path(exp_dir) / "submission.csv", "w", newline="") as fh:
+            writer = csv.writer(fh)
+            writer.writerow([id_column, target_column])
+            writer.writerows(zip(list(test_ids), final.tolist()))
+        result["submission_path"] = "submission.csv"
+        result["artifacts"].append("submission.csv")
+
     (Path(exp_dir) / "result.json").write_text(json.dumps(result, indent=2) + "\n")
     return result
 
@@ -206,6 +308,18 @@ def main(argv=None):
     train = pd.read_csv(data_dir / "train.csv")
     y = train["target"]
     X = train.drop(columns=["target"])
+
+    # Test data is OPTIONAL (D-09) and pre-loaded GUARDED, so the common case emits a
+    # submission with zero extra effort while a pure-diagnostic experiment (no test.csv, or
+    # no resolvable submission header) still runs and records a valid CV result.
+    test_path = data_dir / "test.csv"
+    test = pd.read_csv(test_path) if test_path.exists() else None
+    X_test, test_ids = None, None
+    if test is not None and ID_COLUMN and ID_COLUMN in test.columns:
+        test_ids = test[ID_COLUMN].tolist()
+        # X_test must carry the SAME columns as X — adjust alongside the X above.
+        X_test = test[list(X.columns)] if set(X.columns) <= set(test.columns) else test
+
     model_factory, preprocess_factory, feature_fn = build_experiment(args.seed)
 
     result = run_cv(
@@ -218,6 +332,8 @@ def main(argv=None):
         cv_scheme=CV_SCHEME,
         seed=args.seed,
         exp_dir=args.exp_dir,
+        X_test=X_test, test_ids=test_ids,
+        id_column=ID_COLUMN, target_column=TARGET_COLUMN,
     )
     # A summary line only — the RECORDER, not stdout, is the source of truth (D-05).
     print(json.dumps({"cv_mean": result["cv_mean"], "n_folds": result["n_folds"]}),
