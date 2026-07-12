@@ -1096,6 +1096,64 @@ def test_the_budget_gate_reuses_the_injectable_reader(tmp_workspace, monkeypatch
 
 
 # --------------------------------------------------------------------------- #
+# WR-05 — the Kaggle `ref` recovered from the read-back is UNTRUSTED like everything else
+# Kaggle authors.
+#
+# Every other Kaggle-authored field in this phase is treated as untrusted: `description` is
+# matched with an anchored regex, `status` goes through parse_status, `publicScore` through
+# parse_score. `ref` was taken on faith — and it is the JOIN KEY.
+#
+# A null/absent `ref` is not a cosmetic blemish. `by_ref(rows, None)` matches the FIRST row
+# whose ref is None, and `upsert_row(ws, None)` updates EVERY local row whose kaggle_ref is
+# None — a mass mis-transition that would stamp one submission's score across unrelated
+# rows. `fetch_lb._resume` could never resume such a row either ("it carries no kaggle_ref").
+# --------------------------------------------------------------------------- #
+@pytest.mark.parametrize("bad_ref", [None, "46780678", 46780678.0, True])
+def test_refuses_to_record_a_readback_with_no_usable_ref(
+    tmp_workspace, monkeypatch, capsys, bad_ref
+):
+    """A read-back without a usable int ref is NOT recorded — and says the slot was spent.
+
+    The slot IS gone at this point (the read-back is what proves it landed), so the honest
+    outcome is a transient failure that points at the recovery path — NOT a corrupt row
+    keyed on None that would go on to poison every other None-keyed row in the file.
+    """
+    mod = _submit()
+    fl = importlib.import_module("fetch_lb")
+    ws = _seed_ws(tmp_workspace / f"ref_{bad_ref!r}")
+    now = datetime.now(timezone.utc)
+
+    fake, calls = _fake_gateway(
+        readback=lambda: [
+            _kaggle_row(
+                ref=bad_ref,
+                description=f"{EXP_ID} | cv=0.841230",
+                date=_naive_utc(now + timedelta(seconds=5)),
+                status="SubmissionStatus.COMPLETE",
+                public_score="0.77511",
+            )
+        ]
+    )
+    monkeypatch.setattr(mod, "run_kaggle", fake)
+
+    rc = _run(mod, ws, "--confirm")
+    assert rc == fl.EXIT_TRANSIENT_FAIL == 4, (
+        f"a read-back row carrying ref={bad_ref!r} cannot be recorded — the ref is the JOIN "
+        "KEY, and a null one mass-updates every other None-keyed row"
+    )
+    assert _read_sub_rows(ws) == [], (
+        "no row may be written with an unusable kaggle_ref: `upsert_row(ws, None)` would "
+        "then transition EVERY None-keyed row in the file at once"
+    )
+
+    combined = "".join(capsys.readouterr())
+    assert "--reconcile" in combined, (
+        "the slot WAS spent — the user must be pointed at the back-fill path, not left with "
+        "an invisible submission"
+    )
+
+
+# --------------------------------------------------------------------------- #
 # D-11 — the experiment folder is IMMUTABLE. The LB score never lands in meta.json.
 # --------------------------------------------------------------------------- #
 def test_meta_json_untouched(tmp_workspace, monkeypatch):
