@@ -173,6 +173,90 @@ def test_row_schema():
 
 
 # --------------------------------------------------------------------------- #
+# WR-04 — the schema contract must AGREE with the rows the schema's own sibling writes,
+# and it must actually be ENFORCED.
+#
+# `validate_row` was defined, documented as the `experiment_meta.validate_meta` contract,
+# and never invoked anywhere in scripts/. It was not merely dead — it DISAGREED with the
+# code that writes rows: `REQUIRED_NONEMPTY_KEYS` demanded `exp_id` and `file`, but
+# `fetch_lb._row_from_kaggle` legitimately writes BOTH as None for an out-of-band
+# submission (Kaggle never returns the bytes it was sent, and a website submission carries
+# no exp-NNN). So the validator, had it ever been wired up as written, would have REJECTED
+# rows the schema owner's own sibling module deliberately produces.
+#
+# An unenforced, WRONG contract in the module that claims to own the schema is the worst of
+# the three options. Fixed by doing both halves: relax the required set to the keys that
+# are genuinely always knowable, and CALL it on the write path.
+# --------------------------------------------------------------------------- #
+def _reconciled_row():
+    """The row `fetch_lb --reconcile` back-fills for a submission made out-of-band.
+
+    exp_id is None (no `exp-NNN` in the description — it was made on the website), and
+    file / file_sha256 are None because the local bytes are genuinely UNKNOWN. All three
+    are CORRECT: a value we were never given is never invented.
+    """
+    return _row(exp_id=None, file=None, file_sha256=None, message="my website submission")
+
+
+def test_the_schema_accepts_the_rows_reconcile_writes():
+    """A reconciled row is WELL-FORMED. It was the CONTRACT that was wrong, not the row."""
+    log = _log()
+
+    assert log.validate_row(_reconciled_row()) == [], (
+        "validate_row rejected a row fetch_lb._row_from_kaggle legitimately writes. An "
+        "out-of-band submission has no exp_id and no local file: those are UNKNOWABLE, not "
+        "malformed — and a schema that disagrees with its own writer is worse than none"
+    )
+
+    # The keys that are genuinely ALWAYS knowable are still demanded — this is a relaxation,
+    # not a surrender. Kaggle always tells us which submission, for which competition, when,
+    # and in what state.
+    assert set(log.REQUIRED_NONEMPTY_KEYS) == {
+        "kaggle_ref",
+        "competition_slug",
+        "submitted_at",
+        "status",
+    }
+    for key in log.REQUIRED_NONEMPTY_KEYS:
+        errs = log.validate_row(_reconciled_row() | {key: None})
+        assert errs and any(key in e for e in errs), f"a null {key} must still be reported"
+
+
+def test_the_write_path_actually_validates(tmp_workspace, capsys):
+    """⚠ The contract is CALLED — but it WARNS, it never refuses. Both halves matter.
+
+    A refusal here would be actively dangerous: `append_row` is called by submit.py AFTER
+    the slot is irreversibly spent. Raising at that point would destroy the provenance of a
+    submission that really happened — the exact "a crash mid-poll must never orphan a spent
+    slot" failure the whole write-ordering design exists to prevent. So a malformed row is
+    written AND loudly reported; the row is never silently swallowed, and never silently
+    blessed either.
+    """
+    log = _log()
+    ws = tmp_workspace
+
+    # A well-formed row (and a legitimately reconciled one) says nothing at all.
+    log.write_rows(ws, [_row(), _reconciled_row()])
+    assert capsys.readouterr().err == "", "a valid row must not produce noise"
+
+    # A row with NO kaggle_ref cannot be matched against Kaggle and would be invisible to
+    # upsert_row's PENDING -> SCORED transition. It is REPORTED...
+    log.append_row(ws, _row(exp_id="exp-009", kaggle_ref=None))
+    err = capsys.readouterr().err
+    assert "kaggle_ref" in err, (
+        "validate_row must actually be CALLED on the write path — an unenforced schema "
+        "contract is decoration"
+    )
+
+    # ...and STILL WRITTEN. Never lose the record of a slot that may have been spent.
+    rows = log.read_rows(ws)
+    assert [r["exp_id"] for r in rows] == ["exp-007", None, "exp-009"], (
+        "a malformed row is reported, NOT dropped: submit.py appends AFTER the slot is "
+        "spent, and a dropped row is a spent slot with no provenance at all"
+    )
+
+
+# --------------------------------------------------------------------------- #
 # WR-01 — the `competitions submissions` argv has EXACTLY ONE HOME, and the
 # namespace-binding footgun is GONE.
 #
