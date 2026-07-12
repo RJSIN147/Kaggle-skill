@@ -187,7 +187,7 @@ Plans:
 
 **Wave 1**
 
-- [ ] 05-01-PLAN.md — Nyquist Wave 0: live-captured submissions fixtures + every RED test module (fail-open guards, budget, gate matrix, alarm, source guard forbidding any live test from submitting)
+- [x] 05-01-PLAN.md — Nyquist Wave 0: live-captured submissions fixtures + every RED test module (fail-open guards, budget, gate matrix, alarm, source guard forbidding any live test from submitting)
 
 **Wave 2** *(blocked on Wave 1 — parallel)*
 
@@ -214,7 +214,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | 2. Competition Context & Data | 7/7 | Complete   | 2026-07-10 |
 | 3. Local Experiment Loop, Ledger & Strategy | 5/5 | Complete   | 2026-07-11 |
 | 4. Kaggle Kernel Execution (GPU Path) | 6/6 | Complete   | 2026-07-11 |
-| 5. Submission & Leaderboard Tracking | 0/3 | Not started | - |
+| 5. Submission & Leaderboard Tracking | 1/7 | In Progress|  |
 
 ## Coverage
 
