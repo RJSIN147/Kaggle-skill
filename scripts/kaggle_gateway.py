@@ -38,12 +38,26 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 # --------------------------------------------------------------------------- #
 # Reserved exit codes (D-10, §17) — sysexits.h-aligned. SKILL.md branches on the
 # EXACT values; downstream plan 02-02 imports LIMIT_NEEDS_USER.
+#   65 = EX_DATAERR     ("the input data was incorrect") — D-02 pre-submit
+#        validation failed (the submission file is malformed: wrong header, wrong
+#        row count, NaNs, a label metric emitting continuous values, …).
+#   69 = EX_UNAVAILABLE ("a service is unavailable") — D-01: competition.type is
+#        `code` or `unknown`, so the CSV submit path is UNAVAILABLE for this
+#        competition (a code competition submits a KERNEL, not a file).
+#   75 = EX_TEMPFAIL    ("temporary failure; the user is invited to retry") —
+#        D-05 block-by-default. This is NOT an error: the gate declined to spend a
+#        scarce, irreversible daily slot, and the human may retry immediately with
+#        an explicit confirmation (D-05 guarantees the override).
 #   77 = EX_NOPERM  ("did not have sufficient permission") — the 403 UI gate.
 #   78 = EX_CONFIG  ("configuration error") — submission-limit extraction failed
 #        → the SKILL must ask the user (D-13 step 2).
 # 124 is ALREADY the TimeoutExpired code (GNU-timeout convention) — do NOT reuse;
-# 126/127/128+ are bash-reserved — never used for app signals.
+# 126/127/128+ are bash-reserved — never used for app signals. None of 65/69/75
+# collides with those, nor with each other, nor with 77/78.
 # --------------------------------------------------------------------------- #
+VALIDATION_FAILED = 65
+SUBMIT_UNSUPPORTED = 69
+GATE_BLOCKED = 75
 UI_GATE = 77
 LIMIT_NEEDS_USER = 78
 
