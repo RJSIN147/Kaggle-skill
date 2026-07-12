@@ -1239,7 +1239,16 @@ def run_cv(*, X, y, model_factory, preprocess_factory=None, feature_fn=None,
 
 ## Open Questions
 
-1. **Is `submissions.date` really UTC?** (= A1)
+> **Planner disposition (2026-07-12):** all three are closed for execution. Q2 and Q3 are RESOLVED by
+> decisions taken in plan 05-02. Q1 (assumption A1) is not resolvable without spending a real slot and
+> is DEFERRED TO A RUNTIME CHECKPOINT (05-07-T3, blocking `checkpoint:human-verify`). Nothing below is
+> an open gap at execution time.
+
+1. **Is `submissions.date` really UTC?** (= A1) — **DEFERRED TO RUNTIME CHECKPOINT — see 05-07-T3.**
+   *Planning disposition:* implemented as UTC; the assumption is explicit and gated behind the blocking
+   `checkpoint:human-verify` at the first real submission (05-07 Task 3), which compares the noted UTC
+   wall-clock to the returned `date` and writes the verdict into `references/kaggle-cli-behavior.md`.
+   A REFUTED A1 is a BLOCKER for the budget's day-boundary handling, not a footnote.
    - *Known:* it is a naive ISO string; Kaggle's API convention is UTC; the SDK parses a wire timestamp.
    - *Unclear:* cannot be proven without making a submission and comparing to a known clock.
    - *Recommendation:* implement as UTC, and put a **`checkpoint:human-verify`** in the first plan that
@@ -1247,7 +1256,12 @@ def run_cv(*, X, y, model_factory, preprocess_factory=None, feature_fn=None,
      result in `references/kaggle-cli-behavior.md`. This is the one thing that genuinely requires a live slot,
      and it comes free with the first real end-to-end submission.
 
-2. **How does the AI supply `X_test` / `test_ids` in the scaffold?**
+2. **How does the AI supply `X_test` / `test_ids` in the scaffold?** — **(RESOLVED — 05-02 Task 1.)**
+   *Decision:* pre-load `test.csv` GUARDED in the template's AI-edited block
+   (`test = pd.read_csv(test_path) if test_path.exists() else None`) and pass `X_test`/`test_ids` to
+   `run_cv` only when present — so the common case is zero-effort and a diagnostic experiment (or a
+   competition with no `test.csv`) still records a valid CV result. Satisfies D-09's optional/graceful
+   requirement without making the AI remember anything.
    - *Known:* the AI edits the marked block of `main()` and already loads `train.csv` there.
    - *Unclear:* whether the scaffolded starter should pre-load `test.csv` (making the common path zero-effort)
      or leave it to the AI (keeping the diagnostic path clean).
@@ -1256,7 +1270,13 @@ def run_cv(*, X, y, model_factory, preprocess_factory=None, feature_fn=None,
      submission automatically while a diagnostic experiment (or a competition with no `test.csv`) still runs.
      This satisfies D-09's "optional/graceful" without making the AI remember anything.
 
-3. **What is the id column / target column name?**
+3. **What is the id column / target column name?** — **(RESOLVED — 05-02 Task 2.)**
+   *Decision:* `scaffold_experiment.py` resolves the sample file via Phase 2's
+   `signals.submission_csv_in_manifest` (then a `data/*submission*.csv` glob), reads its header, and
+   renders `ID_COLUMN` / `TARGET_COLUMN` as LITERALS into the template — exactly as it already renders
+   `EXP_ID` / `SLUG` / `METRIC_NAME`. Keeps kernel portability intact (the experiment imports no skill
+   code and never reads `control/`). When no header can be resolved, both render as `None` and the
+   harness skips submission emission (graceful, per D-09). The chosen sample file is printed.
    - *Known:* it is the sample file's header — which `check_submission.py` reads anyway.
    - *Unclear:* the *harness* (which writes the file) runs before validation and, on a kernel, has no access
      to `control/`.
