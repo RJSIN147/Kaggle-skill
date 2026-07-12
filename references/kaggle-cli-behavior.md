@@ -185,3 +185,124 @@ phone-settings URL, deferred by design because it cannot be produced from a veri
 T-02-A1) is now **RESOLVED**. Provenance: human-verified in a browser — no API exists for phone
 verification (that is the whole point of the UI-only gate); no credential value was read or
 recorded during the check.
+
+## Phase 5 — observed submission / leaderboard signatures (CLI 2.2.3, 2026-07-12)
+
+> **How captured (honest provenance):** Captured 2026-07-12 against CLI 2.2.3 in the project
+> `.venv` by (a) `--help`, (b) reading the installed package source
+> (`kaggle/cli.py`, `kaggle/api/kaggle_api_extended.py`,
+> `kagglesdk/competitions/types/submission_status.py`), and (c) READ-ONLY
+> `competitions submissions` / `quota` calls against `titanic`.
+> **`competitions submit` was never executed — no submission slot was spent.**
+> No credential value was read, printed, or recorded.
+
+### `kaggle competitions submit`
+
+**Invocation shape** [VERIFIED: `--help` + source]
+
+```bash
+kaggle competitions submit <slug> -f experiments/exp-007/submission.csv -m "exp-007 | cv=0.84123"
+```
+
+| Fact | Observation | Consequence |
+|------|-------------|-------------|
+| `<slug>` is **POSITIONAL** | Not `-c/--competition` | `submit.py` builds the argv positionally. |
+| `-m/--message` is **REQUIRED** | The text **round-trips into `description`** on read-back | ⭐ It is the **ONLY** exp_id↔Kaggle correlation channel, because the CLI **DISCARDS the submission `ref`** the API returns (`competition_submit_cli` returns only `.message`). Put `exp-NNN` in it. |
+| `-k/--kernel`, `-v/--version` | Code-competition only; the CLI raises `ValueError` if only one of the pair is given | D-01 refuses the code path → **never passed**. |
+| `--sandbox` | ⚠ **TRAP — it is NOT a dry run.** Source + help: *competition hosts/admins only* | **Never** reach for it as a safe test mode. `submit.py --dry-run` (framework-side, prints the argv and calls nothing) is the real dry run. |
+| Does submit block until scored? | **No** [VERIFIED: source] — `competition_submit` returns the response immediately; the row appears **PENDING** and is scored asynchronously | The D-03 poller (`fetch_lb.py`) is genuinely needed. |
+
+#### ⚠ THE LOAD-BEARING FINDING: `submit` is **FAIL-OPEN** on its exit code [VERIFIED: installed source]
+
+`kaggle/cli.py::main` sets `error = True` (→ `exit(1)`) for **only** `HTTPError`, `ApiException`
+and `ValueError`. Everything else exits **0** — and `competition_submit_cli` **swallows its own
+failures before they can propagate**:
+
+| Failure mode | Exit code | Detectable by (verbatim literal, client-hardcoded) |
+|--------------|-----------|---------------------------------------------------|
+| **Bad/closed competition slug (404)** | **0** ⚠ | stdout literal `Could not find competition` |
+| **Upload failed** | **0** ⚠ | stdout literal `Could not submit to competition` |
+| Auth failure (401) | 1 | `HTTPError` → stderr |
+| Gate / 403 (rules not accepted) | 1 | `403 Client Error: Forbidden` → `classify_gate` → `UI_GATE` (77) |
+| Code-comp flags half-given | 1 | `ValueError` |
+| **Success** | 0 | a **SERVER-AUTHORED** message string — **UNVERIFIED by design; DO NOT PARSE** |
+
+**Consequence (the posture `submit.py` implements):** `rc == 0` is **NOT proof** that the
+submission landed.
+
+1. `rc != 0` → hard failure (classify via the gateway; a 403 → `classify_gate`).
+2. `rc == 0` **AND** stdout carries `Could not find competition` or `Could not submit to
+   competition` → **failure** (a fail-open lie). Nothing is recorded as spent.
+3. Otherwise → **do not assume success.** **CONFIRM BY READ-BACK**: require a NEW
+   `competitions submissions` row whose `description` carries our `exp-NNN` and whose `date` is at
+   or after the submit start. That row is simultaneously (a) the proof, (b) the only channel that
+   yields the Kaggle `ref`, and (c) the first tick of the LB poll.
+
+Structurally identical to Phase 4's "a kernel can report COMPLETE and still have lied" — the same
+instinct, reused. The raw buffer is **MATCHED, never echoed** (it can carry a token-shaped string);
+it is quarantined to the gitignored `control/raw/last-error.txt`.
+
+### `kaggle competitions submissions <slug> --format json --page-size 200`
+
+| Field | Type in JSON | Notes — all **VERIFIED-LIVE** (2026-07-12, read-only against `titanic`) |
+|-------|--------------|--------------------------------------------------------------------------|
+| `ref` | **int** | The Kaggle submission id. Recovered here (submit discards it); stored in `control/submissions.jsonl`. |
+| `fileName` | str | Basename only (`submission.csv`) — a weak correlator; every experiment uploads the same basename. |
+| `date` | str, ISO-8601 | ⚠ **NAIVE — no timezone suffix** (`"2025-09-10T11:29:01.560000"`). See the A1 entry below. |
+| `description` | str | ⭐ The `-m/--message` text, round-tripped. **The exp_id correlation channel.** `""` when no message was given. |
+| `status` | str | ⚠ **FULLY QUALIFIED**: `SubmissionStatus.PENDING` / `SubmissionStatus.COMPLETE` / `SubmissionStatus.ERROR` — **never bare**. Same trap `poll_kernel.py` solved for `KernelWorkerStatus`: anchor a regex, do not substring-grep. Maps to D-11's vocabulary `PENDING → PENDING`, `COMPLETE → SCORED`, `ERROR → FAILED`. |
+| `publicScore` | **str** | ⚠ **A STRING**, not a float (`"0.77511"`), and **`""` when unscored / withheld**. Parse with a guarded `float()`; **never fabricate `0.0`**. |
+| `privateScore` | **str** | Same. `""` while the private LB is withheld (the normal case during a live competition). |
+
+**The allow-list is EXACTLY these seven fields** — confirmed by triggering the CLI's own projection error:
+
+```
+$ kaggle competitions submissions titanic --format "json(ref,status,errorDescription)"
+Unknown field in projection: 'errorDescription'. Allowed fields: date, description, fileName,
+privateScore, publicScore, ref, status
+```
+
+| Fact | Observation | Consequence |
+|------|-------------|-------------|
+| **Sort** | Newest-first (`SUBMISSION_SORT_BY_DATE`), and the default group is `SUBMISSION_GROUP_ALL` → **`ERROR` rows ARE returned** | This is what makes D-13's "errors are not charged" rule mechanizable — we can see them and exclude them. |
+| **`--page-size`** | default **20**, max **200** | Use `--page-size 200`. |
+| ⚠ **`--page-token`** | **UNUSABLE**: `competition_submissions()` returns `response.submissions` and **discards `next_page_token`** — the CLI never prints it, so there is no token to chain | Do **not** attempt pagination. Sort is descending and daily limits are ≤ ~10, so **one page of 200 always covers today**. |
+| ⚠ **`errorDescription`** | Exists in the API model but is **NOT exposed** by the CLI (see the projection error above) | A FAILED submission's **reason is not retrievable**. Record `status=FAILED` + `error_description: null` and point the user at the Kaggle submissions page. **Do not fabricate a reason.** |
+| ⚠ **NO submission-quota command** | **VERIFIED-LIVE**: `kaggle quota` exists but is **GPU/TPU HOURS ONLY** (`{"resource": "GPU", "remaining": "30.00h", …}`). Nothing anywhere in the CLI 2.2.3 surface reports remaining daily submissions | **The daily submission budget MUST be derived by COUNTING ROWS** (D-04): rows whose `date` falls on today (UTC) and whose status is not `ERROR`. `PENDING` **counts as charged** — the slot was accepted. Fail closed: an unfetchable or unparseable count **blocks**; it is never guessed. |
+
+**`competitions leaderboard` is NOT used.** `submissions` already returns `publicScore` per submission —
+which is *our* LB score, the only thing SCORE-01/02 need. `competitions leaderboard` answers a different
+question (the public standings of all teams) that no requirement asks. It is deliberately not built.
+
+### `submissions_log.fetch_submissions()` — ⚠ a namespace-binding footgun (2026-07-12, post-merge finding)
+
+`scripts/submissions_log.py::fetch_submissions()` ended up with **zero callers**, and that is not an
+accident: it resolves `run_kaggle` from **its own module globals**, so a caller that monkeypatches
+`run_kaggle` in *their* module namespace is **silently bypassed and the real CLI shells out**. Two
+independent plans (05-04, 05-05) hit this and each routed around it — 05-04 with a local fetch, 05-05
+via the injectable `read_submissions(..., runner=…)` in `fetch_lb.py`. Recorded here because a future
+caller would step on the same rake: **prefer the injectable `fetch_lb.read_submissions(..., runner=…)`**;
+do not reach for `submissions_log.fetch_submissions()` without patching it *in its own module*.
+
+### Assumption A1 — is `submissions.date` UTC? ⏳ **UNRESOLVED — awaiting the first real submission**
+
+<!-- PLACEHOLDER (05-07 Task 3, blocking human-verify checkpoint). Fill from the first real,
+     human-supervised submission. Two things go here and NOWHERE else:
+       1. THE A1 VERDICT. `date` is a NAIVE ISO string with no tz suffix. The budget model
+          (check_submission.py) treats it as UTC and compares against datetime.now(timezone.utc).
+          Method: note `date -u` immediately before `submit.py --confirm`, then compare that UTC
+          wall-clock to the `date` the read-back returns.
+            - MATCH (within submission latency) => `date` IS UTC => **A1 CONFIRMED**.
+            - Differs by the local UTC offset  => `date` is LOCAL => **A1 REFUTED** => the budget's
+              day boundary is WRONG near midnight (the framework could refuse a submission the user
+              is entitled to, or permit one over the limit) => a BLOCKER for correction, not a
+              footnote.
+          Record: the observed submit-time UTC clock, the returned `date` value, and CONFIRMED/REFUTED.
+       2. The `competitions submit` SUCCESS-PATH output (server-authored; deliberately NEVER parsed
+          by the code — recorded for this fixture only). Record its SHAPE, not a raw buffer.
+     Confidence today: MEDIUM [ASSUMED]. Kaggle's API convention is UTC and the SDK parses a wire
+     timestamp, but the tz cannot be proven without spending one real, irreversible slot. -->
+
+**Status:** the framework **assumes UTC** (`datetime.fromisoformat(row["date"]).replace(tzinfo=timezone.utc)`).
+This is the one fact in Phase 5 that **cannot** be established without spending a real submission slot, so it
+is gated behind the 05-07 Task 3 human-verify checkpoint and is **not** claimed as verified here.
