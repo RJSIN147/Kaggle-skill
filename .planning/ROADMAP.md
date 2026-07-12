@@ -191,8 +191,8 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 — parallel)*
 
-- [ ] 05-02-PLAN.md — D-09: extend `run_cv` to emit fold-averaged `submission.csv` (type-aware: `label` metrics vote, never mean) + scaffold the submission header
-- [ ] 05-03-PLAN.md — Foundation: reserved exit codes 65/69/75 + `submissions_log.py` (row schema, status/score parse, UTC-safe Kaggle-authoritative budget count, atomic I/O) + configurable `noise_k`
+- [x] 05-02-PLAN.md — D-09: extend `run_cv` to emit fold-averaged `submission.csv` (type-aware: `label` metrics vote, never mean) + scaffold the submission header
+- [x] 05-03-PLAN.md — Foundation: reserved exit codes 65/69/75 + `submissions_log.py` (row schema, status/score parse, UTC-safe Kaggle-authoritative budget count, atomic I/O) + configurable `noise_k`
 
 **Wave 3** *(blocked on Wave 2 — parallel)*
 
@@ -214,7 +214,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | 2. Competition Context & Data | 7/7 | Complete   | 2026-07-10 |
 | 3. Local Experiment Loop, Ledger & Strategy | 5/5 | Complete   | 2026-07-11 |
 | 4. Kaggle Kernel Execution (GPU Path) | 6/6 | Complete   | 2026-07-11 |
-| 5. Submission & Leaderboard Tracking | 1/7 | In Progress|  |
+| 5. Submission & Leaderboard Tracking | 3/7 | In Progress|  |
 
 ## Coverage
 
