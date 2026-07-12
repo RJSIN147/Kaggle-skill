@@ -61,12 +61,26 @@ and arrives here as ``--confirm`` (D-05). Every Kaggle call routes through
     this script, immediately before the TOCTOU re-hash. check_submission.py runs the same
     checks for free, but "never submit an unvalidated file" cannot be an invariant that
     depends on the caller having remembered to run the free gate first.
+  * D-04 + D-06. The BUDGET gate and the CV gate are likewise enforced INSIDE this script
+    (:func:`_gate`), for exactly the same reason. check_submission.py computes both for
+    free — but it is free precisely because it is SKIPPABLE, and a user who runs
+    ``submit.py --confirm`` directly must not thereby get NEITHER gate. The policy is
+    IMPORTED (``submission_gate.decide``, ``submissions_log.remaining_slots``), never
+    re-derived: the human and the machine must see the SAME decision.
+
+    ⭐ ``--confirm`` overrides EXACTLY what ``decide`` says a human can confirm:
+    ``requires_confirmation`` TRUE (a within-noise CV gain; the last ASSUMED slot) is a
+    judgment call and it gets through — D-05, never a silent hard refusal. But an
+    EXHAUSTED budget, an UNKNOWABLE budget (``remaining is None`` — the fail-closed
+    sentinel) and an experiment with NO READABLE CV are ``requires_confirmation`` FALSE:
+    there is nothing coherent to confirm, and ``--confirm`` does NOT override them.
 
 Exit codes: 0 = SCORED | 2 = submission FAILED (Kaggle ERROR) | 3 = DETACHED (PENDING —
 re-run fetch_lb.py) | 4 = transient / fail-closed | 65 = the submission file is missing, or
 does not validate against the competition's sample (D-02) | 69 = this competition is not a
-CSV-submit competition (D-01) | 75 = the gate declined to spend a slot | 77 = a UI gate.
-124/127 from the gateway are surfaced VERBATIM.
+CSV-submit competition (D-01) | 75 = the gate declined to spend a slot (no --confirm, a
+double-spend, or a D-04/D-06 block --confirm cannot override) | 77 = a UI gate. 124/127
+from the gateway are surfaced VERBATIM.
 """
 
 from __future__ import annotations
@@ -84,7 +98,13 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
-from check_submission import _resolve_reference, validate_submission  # noqa: E402
+from check_submission import (  # noqa: E402
+    _as_number,
+    _read_ledger,
+    _resolve_reference,
+    best_submitted_cv,
+    validate_submission,
+)
 from fetch_lb import (  # noqa: E402
     # The terminal codes (2 = FAILED, 3 = DETACHED) are returned by record_outcome, which
     # is the ONE recorder both entry points share — so they are deliberately not re-imported.
@@ -110,13 +130,17 @@ from kaggle_gateway import (  # noqa: E402
     dump_last_error,
     run_kaggle,
 )
+from submission_gate import NOISE_K_DEFAULT, decide  # noqa: E402
 from submissions_log import (  # noqa: E402
+    COUNT_UNAVAILABLE,
     append_row,
+    charged_today,
     file_sha256,
     find_by_exp_id,
     new_row,
     parse_status,
     read_rows,
+    remaining_slots,
 )
 
 SUBMIT_TIMEOUT = 300  # an upload is slower than a status read
@@ -139,7 +163,10 @@ FAIL_OPEN_MARKERS = (
 def _pre_flight(ws: Path, args):
     """Resolve config + the submission file, or return an exit code.
 
-    Returns ``(slug, csv_path, digest)`` on success, or an ``int`` exit code on refusal.
+    Returns ``(config, slug, csv_path, digest)`` on success, or an ``int`` exit code on
+    refusal. ``config`` rides along because :func:`_gate` needs the metric direction, the
+    daily limit and its provenance — re-reading the file there would be a second read of a
+    document that could have changed underneath us mid-run.
     """
     config = read_config(ws)
     if config is None:
@@ -239,7 +266,151 @@ def _pre_flight(ws: Path, args):
         )
         return VALIDATION_FAILED
 
-    return slug, csv_path, file_sha256(csv_path)
+    return config, slug, csv_path, file_sha256(csv_path)
+
+
+def _gate(ws: Path, args, config: dict, slug: str) -> int | None:
+    """The D-04 BUDGET gate + the D-06 CV gate — enforced HERE, before any slot is spent.
+
+    ``None`` means "proceed"; an ``int`` is the exit code of a refusal.
+
+    ⚠ WHY THIS EXISTS AT ALL (WR-02). Phase 5's goal is "submit under CV-first discipline
+    WITH BUDGET GATING", and until now that was only half true in code: this script imported
+    neither ``submission_gate`` nor ``submissions_log.remaining_slots``, so BOTH gates were
+    enforced only by the FREE, advisory ``check_submission.py`` and by prose in SKILL.md. A
+    user who skipped the free gate and ran ``submit.py --confirm`` got NEITHER — and spent a
+    real, irreversible slot they could not get back. This is the D-02 asymmetry exactly: the
+    ONE script that spends the irreversible resource must not TRUST that the free gate was
+    run first. An invariant enforced only by "the caller remembered to" is not enforced.
+
+    The policy is IMPORTED, never re-derived: ``submission_gate.decide`` makes the decision
+    and ``submissions_log.remaining_slots`` counts the budget, exactly as ``check_submission``
+    calls them. A second, drifting copy of the gate would be worse than no gate at all — the
+    whole point is that the HUMAN (who read check_submission's render) and the MACHINE (which
+    spends the slot) see the SAME decision.
+
+    ⭐ WHAT ``--confirm`` OVERRIDES — and the line is drawn by ``decide``'s OWN
+    ``requires_confirmation`` flag, not by a second policy invented here:
+
+      * ``requires_confirmation`` TRUE — a within-noise CV gain, or the last ASSUMED slot.
+        A genuine JUDGMENT CALL about real numbers the human is entitled to weigh. D-05
+        guarantees the framework never silently hard-refuses, and SKILL.md's exit-75 loop
+        (check → the human decides → ``submit.py --confirm``) IS this path. ``--confirm``
+        is that informed "yes" and it gets through — but the gate's position is PRINTED
+        first, so a user who skipped the free gate still sees the numbers at the point of
+        spend. A silent override is indistinguishable from no gate at all.
+      * ``requires_confirmation`` FALSE — an EXHAUSTED budget, an UNKNOWABLE budget, or an
+        experiment with NO READABLE CV. In the gate module's own words: *"there is nothing
+        coherent to confirm, because we do not know what we would be confirming."*
+        ``--confirm`` does NOT override these. It is an acknowledgement that a slot will be
+        spent; it is not a licence to spend one that does not exist, or one the framework
+        could not account for. A count we could not establish is a REFUSAL to spend, never
+        "plenty left".
+
+    The budget read goes through ``fetch_lb.read_submissions(..., runner=run_kaggle)`` — the
+    INJECTABLE reader. ⚠ NOT ``submissions_log.fetch_submissions()``, which resolves
+    ``run_kaggle`` from its OWN module globals: a caller that substituted the gateway would
+    be silently bypassed and a REAL Kaggle call would escape from inside a supposedly-mocked
+    test. It has zero callers and this must not become its first.
+    """
+    metric = config.get("metric") or {}
+    greater_is_better = metric.get("greater_is_better")
+    if not isinstance(greater_is_better, bool):
+        # The direction is TOOLING-WRITTEN (set_metric.py), never guessed. Without it the
+        # gate cannot even tell which way "better" points — so it cannot judge the CV.
+        print(
+            "REFUSING to submit: control/config.json -> metric is missing "
+            "name/greater_is_better, so the framework cannot tell which way 'better' points "
+            "and cannot judge this experiment's CV at all. The metric direction is never "
+            "guessed — run set_metric.py and re-run. No slot was spent.",
+            file=sys.stderr,
+        )
+        return GATE_BLOCKED
+
+    # ---------------------------------------------------------------- D-04 budget ----
+    # Kaggle's OWN submissions list is the authority — there is no submission-quota command
+    # (`kaggle quota` is GPU/TPU hours only). An unfetchable or unparseable count is the
+    # COUNT_UNAVAILABLE (-1) sentinel, which remaining_slots maps to None => BLOCK.
+    kaggle_rows = read_submissions(slug, timeout=args.poll_timeout, runner=run_kaggle)
+    charged = (
+        charged_today(kaggle_rows, datetime.now(timezone.utc))
+        if kaggle_rows is not None
+        else COUNT_UNAVAILABLE
+    )
+    submission_cfg = config.get("submission") or {}
+    remaining = remaining_slots(submission_cfg.get("daily_limit"), charged)
+
+    # ---------------------------------------------------------------- D-06 CV --------
+    # The ledger is the ONE source of the CV (D-11) — joined on exp_id, never re-derived
+    # from meta.json, and never denormalized into the submission row.
+    ledger = _read_ledger(ws)
+    ours = next(
+        (
+            row
+            for row in ledger
+            if row.get("exp_id") == args.exp_id and row.get("status") == "SUCCESS"
+        ),
+        {},
+    )
+
+    noise_k = submission_cfg.get("noise_k")
+    if _as_number(noise_k) is None:
+        # An already-scaffolded workspace predates the template's noise_k key.
+        noise_k = NOISE_K_DEFAULT
+
+    verdict = decide(
+        cand_cv=_as_number(ours.get("cv_mean")),
+        cand_std=_as_number(ours.get("cv_std")),
+        best_cv=best_submitted_cv(ws, ledger, greater_is_better),
+        greater_is_better=greater_is_better,
+        remaining=remaining,
+        limit_provenance=submission_cfg.get("limit_provenance"),
+        k=noise_k,
+    )
+
+    # ---------------------------------------------------------------- Render ---------
+    # The material is printed BEFORE the slot goes, on EVERY path — cleared, overridden or
+    # refused. The user who skipped the free gate is still shown the numbers.
+    budget = "UNKNOWN (fail closed)" if remaining is None else str(remaining)
+    print(f"gate: {budget} slot(s) left today (UTC day; charged={charged})")
+    for line in verdict["reasons"]:
+        print(f"  - {line}")
+    for line in verdict["warnings"]:
+        print(f"  ! {line}")
+
+    if verdict["recommendation"] == "SUBMIT":
+        # A SUBMIT that still wants confirmation (D-08: the LAST slot under an ASSUMED
+        # limit) is satisfied — this function is only reached WITH --confirm.
+        return None
+
+    if verdict["requires_confirmation"]:
+        # D-05 — the gate takes a POSITION; it does not hold a veto. --confirm is the
+        # human's explicit, informed override of a judgment call.
+        print(
+            "OVERRIDE: the gate's position is BLOCKED, but this is a JUDGMENT CALL (the "
+            "numbers above are real and readable), and --confirm is your explicit "
+            "acknowledgement. D-05: the framework never silently hard-refuses. Spending the "
+            "slot."
+        )
+        return None
+
+    # BLOCKED with requires_confirmation False — there is NOTHING COHERENT TO CONFIRM.
+    print(
+        "REFUSING to submit: the gate BLOCKED this submission, and it is NOT a judgment "
+        "call --confirm can override. --confirm acknowledges that a slot will be SPENT; it "
+        "is not a licence to spend one that does not exist, or one the framework could not "
+        "account for. NO SLOT WAS SPENT.\n"
+        "  - budget EXHAUSTED: wait for the UTC day to roll over. If you believe the "
+        "recorded daily_limit is wrong, fix the NUMBER (capture_competition.py "
+        "--daily-limit N) — never override a count you think is wrong.\n"
+        "  - budget UNKNOWABLE: run check_submission.py (FREE), which classifies the cause "
+        "precisely (a 403 rules gate, a missing CLI, a timeout, an unrecognized Kaggle "
+        "status literal) instead of guessing a count.\n"
+        "  - no readable CV: record the experiment (record_experiment.py) so it carries a "
+        "real cv_mean. CV is the decision metric (SCORE-02).",
+        file=sys.stderr,
+    )
+    return GATE_BLOCKED
 
 
 def _refuse_double_spend(ws: Path, exp_id: str, digest: str) -> tuple[bool, str]:
@@ -309,7 +480,7 @@ def main(argv=None) -> int:
     checked = _pre_flight(ws, args)
     if isinstance(checked, int):
         return checked
-    slug, csv_path, digest = checked
+    config, slug, csv_path, digest = checked
     exp_id = args.exp_id
 
     if not args.resubmit:
@@ -347,6 +518,17 @@ def main(argv=None) -> int:
             file=sys.stderr,
         )
         return GATE_BLOCKED
+
+    # ------------------------------------------------------------------ #
+    # D-04 + D-06 — THE BUDGET GATE AND THE CV GATE (WR-02). Enforced HERE, mechanically,
+    # because check_submission.py is FREE and SKIPPABLE and this script is neither. It sits
+    # AFTER --confirm (an unconfirmed run is already refused, so there is nothing to read a
+    # budget for) and BEFORE the TOCTOU re-hash and the gateway — no slot can be spent past
+    # it. --dry-run returns above: it is a purely LOCAL rehearsal that never touches Kaggle.
+    # ------------------------------------------------------------------ #
+    blocked = _gate(ws, args, config, slug)
+    if blocked is not None:
+        return blocked
 
     # TOCTOU (T-05-05-03): the bytes validated must be the bytes uploaded.
     if file_sha256(csv_path) != digest:
@@ -515,7 +697,10 @@ def build_parser() -> argparse.ArgumentParser:
                     help="The experiment whose submission.csv to submit (exp-NNN).")
     ap.add_argument("--confirm", action="store_true",
                     help="The human's explicit confirmation (D-05). Without it, nothing is "
-                         "submitted.")
+                         "submitted. It overrides a gate BLOCK that is a JUDGMENT CALL (a "
+                         "within-noise CV gain; the last assumed slot) — but NOT an "
+                         "exhausted budget, an unknowable budget, or an experiment with no "
+                         "readable CV: those are not confirmable.")
     ap.add_argument("--resubmit", action="store_true",
                     help="Deliberately spend ANOTHER slot on a file already submitted for "
                          "this experiment (defeats the double-spend guard).")
