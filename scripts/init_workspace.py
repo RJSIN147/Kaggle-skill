@@ -27,6 +27,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shlex
 import shutil
 import subprocess
 import sys
@@ -556,7 +557,8 @@ def main(argv=None) -> int:
             "init refused: a competition --slug is required to scaffold a fresh "
             "workspace (D-01 guided-then-scaffold). Nothing was created. Re-run "
             "through the guided init flow, e.g. "
-            "`python3 scripts/init_workspace.py --workspace . --slug <competition-slug>`.",
+            f"`python3 {shlex.quote(str(SCRIPT_DIR / 'init_workspace.py'))} "
+            "--workspace . --slug <competition-slug>`.",
             file=sys.stderr,
         )
         return 2

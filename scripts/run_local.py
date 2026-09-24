@@ -13,7 +13,7 @@ Two load-bearing postures, copied verbatim from `analyze_data.run_adversarial_va
 
   * `--no-sync` (Pitfall 5): a workspace whose ML env is not synced degrades cleanly to a
     non-zero exit — NEVER a silent network package fetch. On a missing env the runner prints
-    the `run \`uv sync\`` remediation and records nothing. Declare deps, validate, instruct —
+    the `run `uv sync`` remediation and records nothing. Declare deps, validate, instruct —
     never install at runtime (CLAUDE.md).
   * timeout-bounded: a runaway experiment is a clean handled error, not a hang.
 

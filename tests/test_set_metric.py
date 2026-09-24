@@ -14,7 +14,6 @@ import json
 import re
 from pathlib import Path
 
-import pytest
 
 SCRIPTS = Path(__file__).resolve().parent.parent / "scripts"
 MODULE_PATH = SCRIPTS / "set_metric.py"

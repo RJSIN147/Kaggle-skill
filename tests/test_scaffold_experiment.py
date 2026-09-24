@@ -9,8 +9,6 @@ import ast
 import json
 from pathlib import Path
 
-import pytest
-
 from init_workspace import _render_text  # scripts/ is on sys.path (conftest)
 
 # A slug/cv_scheme value crafted to break out of a Python string literal and run code
