@@ -4,14 +4,14 @@ milestone: v1.0
 milestone_name: milestone
 status: milestone_complete
 stopped_at: Milestone complete (Phase 05 was final phase)
-last_updated: 2026-07-12T16:33:41.556Z
-last_activity: 2026-07-12 -- Phase 05 execution started
+last_updated: 2026-09-24T22:53:36.000Z
+last_activity: 2026-09-25 -- Quick 260925-5z0: SKILL.md script paths + doc hygiene
 progress:
   total_phases: 5
-  completed_phases: 4
+  completed_phases: 5
   total_plans: 29
   completed_plans: 29
-  percent: 80
+  percent: 100
 ---
 
 # Project State
@@ -25,10 +25,11 @@ See: .planning/PROJECT.md (updated 2026-07-09)
 
 ## Current Position
 
-Phase: 05
-Plan: Not started
+Phase: 05 (complete)
+Plan: All plans complete
 Status: Milestone complete
-Last activity: 2026-07-12
+Phase 5 verification: `human_needed` — the A1 live UTC check on `submissions.date` is outstanding (see `.planning/phases/05-submission-leaderboard-tracking/05-HUMAN-UAT.md`)
+Last activity: 2026-09-25
 
 Progress: [██████████] 100%
 
@@ -88,7 +89,7 @@ Recent decisions affecting current work:
 
 ### Pending Todos
 
-- **Enforce D-05: AI decides CV scheme, tooling persists it validated** (`.planning/todos/pending/2026-07-10-revise-d-05-framework-surfaces-cv-evidence-ai-decides-scheme.md`) — resolves in Phase 2 gap closure. Framework surfaces evidence + advisory hint; AI decides; tooling persists the AI's validated choice. Reshapes the Gap 1 fix (supersedes "tighten the detector").
+None.
 
 ### Blockers/Concerns
 
@@ -98,6 +99,12 @@ Research flags to resolve during phase planning:
 - Phase 5: code-competition submission path (notebook-only, no CSV-via-CLI) needs validation for the target competition type; may need a competition-type flag captured in Phase 2.
 - Phase 2: `competitions download --unzip` reliability on CLI 2.x needs direct verification.
 - Outstanding human verification (01-03): run discriminating egress probe (example.org/example.net/wikipedia.org/google.com/httpbin.org, declining prompts) to settle whether an undocumented pre-allowed set exists for the local CLI sandbox — the example.com anomaly
+
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
+| 260925-5z0 | Fix SKILL.md script paths (${CLAUDE_SKILL_DIR}), docstring escapes, unused test imports, stale planning docs | 2026-09-25 | 2951a70 | [260925-5z0-fix-skill-md-script-paths-docstring-esca](./quick/260925-5z0-fix-skill-md-script-paths-docstring-esca/) |
 
 ## Deferred Items
 
@@ -110,5 +117,5 @@ Items acknowledged and carried forward from previous milestone close:
 ## Session Continuity
 
 Last session: 2026-07-12T11:18:39.595Z
-Stopped at: Phase 5 context gathered
-Resume file: .planning/phases/05-submission-leaderboard-tracking/05-CONTEXT.md
+Stopped at: Milestone complete; Quick 260925-5z0 (SKILL.md script paths + doc hygiene) executed
+Resume file: None
