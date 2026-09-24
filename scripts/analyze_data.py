@@ -41,6 +41,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shlex
 import shutil
 import subprocess
 import sys
@@ -282,7 +283,8 @@ def _cv_section_pending(evidence: dict) -> str:
         "in `control/raw/cv-evidence.json` (group_candidates, datetime, class balance, id "
         "overlap), decide the scheme, and re-run:\n\n"
         "```bash\n"
-        "python3 scripts/analyze_data.py --workspace <cwd> --cv-scheme <enum>\n"
+        f"python3 {shlex.quote(str(SCRIPT_DIR / 'analyze_data.py'))} "
+        "--workspace <cwd> --cv-scheme <enum>\n"
         "```"
     )
 

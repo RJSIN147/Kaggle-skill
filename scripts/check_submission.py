@@ -54,6 +54,7 @@ import csv
 import json
 import math
 import re
+import shlex
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -831,7 +832,8 @@ def main(argv=None) -> int:
             "override and submit anyway:"
         )
     print(
-        f'  python3 scripts/submit.py --workspace {ws} --exp-id {exp_id} --confirm '
+        f'  python3 {shlex.quote(str(SCRIPT_DIR / "submit.py"))} '
+        f'--workspace {ws} --exp-id {exp_id} --confirm '
         f'[--reason "..."]'
     )
     print("  (--reason is OPTIONAL — D-07: the framework never demands a justification.)")

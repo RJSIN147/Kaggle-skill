@@ -14,7 +14,7 @@ other `uv run --no-sync` caller):
 
   * `--no-sync` (Pitfall 5): a workspace whose ML env is not synced degrades cleanly
     to a non-zero exit — NEVER a silent network package fetch of jupytext. On a
-    missing `uv` the converter prints the `run \`uv sync\`` remediation and converts
+    missing `uv` the converter prints the `run `uv sync`` remediation and converts
     nothing. Declare deps, validate, instruct — never install at runtime (CLAUDE.md).
   * timeout-bounded: a runaway convert is a clean handled error, not a hang.
 
