@@ -298,3 +298,51 @@ def test_non_string_status_does_not_crash(run_script, tmp_path):
     assert meta["status"] == "SUCCESS"
     assert meta["failure_reason"] is None
     assert meta["kernel"]["status"] == []  # copied verbatim into provenance
+
+
+# --------------------------------------------------------------------------- #
+# quick 260925-66x — A3 benign-noise regression GUARD (live-observed 2026-09-25). A
+# SUCCESSFUL Kaggle kernel log (JSON-array shape) carries pydevd frozen-modules warnings,
+# an sklearn feature-names UserWarning, a mistune SyntaxWarning and [NbConvertApp] lines.
+# None of these may fail the run — but a real traceback in the same shape still must.
+# --------------------------------------------------------------------------- #
+
+BENIGN_LOG = FIXTURES / "kernel_logs" / "benign_warnings.json"
+
+
+def test_benign_kernel_noise_scans_clean():
+    import record_experiment
+
+    text = BENIGN_LOG.read_text()
+    assert record_experiment.scan_kernel_log(text) is False
+
+
+def test_benign_kernel_noise_records_success(run_script, tmp_path):
+    ws = tmp_path
+    exp = _seed(ws)
+    _write_result(exp)
+    _git_init(ws)
+    r = _record(run_script, ws, "--kernel-log", str(BENIGN_LOG))
+    assert r.returncode == 0, r.stderr
+
+    meta = _read_meta(exp)
+    assert meta["status"] == "SUCCESS"
+    assert meta["failure_reason"] is None
+
+
+def test_benign_noise_plus_papermill_traceback_is_failure():
+    import record_experiment
+
+    records = json.loads(BENIGN_LOG.read_text())
+    records.append(
+        {
+            "stream_name": "stderr",
+            "time": 16.2,
+            "data": (
+                "Traceback (most recent call last):\n"
+                "papermill.exceptions.PapermillExecutionError: \n"
+                "ValueError: No kernel name found in notebook and no override provided.\n"
+            ),
+        }
+    )
+    assert record_experiment.scan_kernel_log(json.dumps(records)) is True
