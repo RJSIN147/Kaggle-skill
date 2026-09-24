@@ -14,7 +14,7 @@ when_to_use: >-
   Kaggle credentials, scaffold the experiment workspace, choose local vs kernel execution,
   run a cross-validated experiment, or submit. Trigger on "Kaggle", "competition",
   "experiment", "init workspace", "CV", "submit".
-allowed-tools: Bash(kaggle *) Bash(uv run *) Bash(git *) Bash(python3 scripts/*) Read Write Edit
+allowed-tools: Bash(kaggle *) Bash(uv run *) Bash(git *) Bash(python3 ${CLAUDE_SKILL_DIR}/scripts/*) Read Write Edit
 ---
 
 # kaggle-exp — Kaggle Competition Experiment Workspace
@@ -24,9 +24,12 @@ drive one clean CV-first experiment cycle: propose → run → log result + verd
 strategy. The skill is installed globally and operates on the **current working directory**
 — that cwd *is* the user's competition workspace (distinct from this skill package).
 
-All heavy lifting lives in self-locating, stdlib-only helper scripts under `scripts/`
-(each takes `--workspace <dir>`, never relies on `${CLAUDE_SKILL_DIR}`/`${CLAUDE_PROJECT_DIR}`).
-Load `references/*` on demand for the Kaggle CLI surface and egress details.
+All heavy lifting lives in stdlib-only helper scripts under `scripts/`. The scripts themselves
+self-locate via `Path(__file__)`, take `--workspace <dir>`, and never depend on
+`${CLAUDE_SKILL_DIR}`/`${CLAUDE_PROJECT_DIR}` (portability). This SKILL.md uses
+`${CLAUDE_SKILL_DIR}` only to locate them from the workspace cwd; another agent host
+substitutes its own skill install path.
+Load `${CLAUDE_SKILL_DIR}/references/*` on demand for the Kaggle CLI surface and egress details.
 
 ---
 
@@ -44,7 +47,7 @@ Load `references/*` on demand for the Kaggle CLI surface and egress details.
    answered:
 
    ```bash
-   python3 scripts/init_workspace.py --workspace <cwd> --slug <slug> --execution-target <target>
+   python3 ${CLAUDE_SKILL_DIR}/scripts/init_workspace.py --workspace <cwd> --slug <slug> --execution-target <target>
    ```
 
    `--slug` is **required for a fresh workspace**: the script itself refuses to create anything
@@ -52,7 +55,7 @@ Load `references/*` on demand for the Kaggle CLI surface and egress details.
    prompt-first contract. To change the target later (SETUP-02) without re-prompting:
 
    ```bash
-   python3 scripts/init_workspace.py --workspace <cwd> --set-execution-target <local|kernel>
+   python3 ${CLAUDE_SKILL_DIR}/scripts/init_workspace.py --workspace <cwd> --set-execution-target <local|kernel>
    ```
 
 The scaffolder is **safe-merge / idempotent** (D-02): it only creates files that don't exist
@@ -83,7 +86,7 @@ git commit) always runs **before** `check_credentials.py` (which flips the crede
 in `control/state.json`), so the two never race on git/state.
 
 ```bash
-python3 scripts/check_credentials.py --workspace <cwd>
+python3 ${CLAUDE_SKILL_DIR}/scripts/check_credentials.py --workspace <cwd>
 ```
 
 - **Env vars are canonical** (D-04): `KAGGLE_USERNAME` / `KAGGLE_KEY` (or `KAGGLE_API_TOKEN`).
@@ -94,7 +97,7 @@ python3 scripts/check_credentials.py --workspace <cwd>
   after the user confirms — **never silent**. Pass `--yes` to carry that consent:
 
   ```bash
-  python3 scripts/check_credentials.py --workspace <cwd> --yes
+  python3 ${CLAUDE_SKILL_DIR}/scripts/check_credentials.py --workspace <cwd> --yes
   ```
 
   Consent-gated fixes include: `chmod 600` a group/world-readable `kaggle.json`; populate the
@@ -118,7 +121,7 @@ needs *no data*, analysis does), re-running any one safely as needed:
 1. **Capture** — no data required; run this FIRST (it works even while download is 403-gated):
 
    ```bash
-   python3 scripts/capture_competition.py --workspace <cwd>
+   python3 ${CLAUDE_SKILL_DIR}/scripts/capture_competition.py --workspace <cwd>
    ```
 
    Fetches metric / rules / daily-limit / type via `competitions pages` + `files`, curates
@@ -127,7 +130,7 @@ needs *no data*, analysis does), re-running any one safely as needed:
 2. **Download** — needs **VALIDATED** creds; run AFTER capture:
 
    ```bash
-   python3 scripts/download_data.py --workspace <cwd>
+   python3 ${CLAUDE_SKILL_DIR}/scripts/download_data.py --workspace <cwd>
    ```
 
    Runs a cheap rules-gate preflight, then downloads the single `<slug>.zip` (CLI 2.2.3 has
@@ -139,7 +142,7 @@ needs *no data*, analysis does), re-running any one safely as needed:
    **Step 1 — surface the evidence (no `--cv-scheme`):**
 
    ```bash
-   python3 scripts/analyze_data.py --workspace <cwd>
+   python3 ${CLAUDE_SKILL_DIR}/scripts/analyze_data.py --workspace <cwd>
    ```
 
    Emits schema + structural CV evidence to `control/raw/cv-evidence.json`, runs adversarial
@@ -156,7 +159,7 @@ needs *no data*, analysis does), re-running any one safely as needed:
    persists **your** validated choice:
 
    ```bash
-   python3 scripts/analyze_data.py --workspace <cwd> --cv-scheme <enum>
+   python3 ${CLAUDE_SKILL_DIR}/scripts/analyze_data.py --workspace <cwd> --cv-scheme <enum>
    ```
 
    The AI decides; tooling writes (enum-validated by argparse `choices`). Adversarial
@@ -197,7 +200,7 @@ verification, so nothing busy-loops (criterion 3):
   explicit go-ahead, re-invoke:
 
   ```bash
-  python3 scripts/submit.py --workspace <cwd> --exp-id exp-NNN --confirm [--reason "..."]
+  python3 ${CLAUDE_SKILL_DIR}/scripts/submit.py --workspace <cwd> --exp-id exp-NNN --confirm [--reason "..."]
   ```
 
   ⚠ **`submit.py` RE-RUNS BOTH GATES ITSELF and can exit 75 too** — it never trusts that the free
@@ -246,7 +249,7 @@ the competition section, these are **separate, idempotent entry points the SKILL
    (the captured value, NOT the `_TODO` stub), decide the enum, and commit it:
 
    ```bash
-   python3 scripts/set_metric.py --workspace <cwd> --metric <enum>
+   python3 ${CLAUDE_SKILL_DIR}/scripts/set_metric.py --workspace <cwd> --metric <enum>
    ```
 
    Direction is looked up from the registry for known metrics; `custom` REQUIRES an explicit
@@ -262,7 +265,7 @@ the competition section, these are **separate, idempotent entry points the SKILL
    confirmed novel, mint the experiment:
 
    ```bash
-   python3 scripts/scaffold_experiment.py --workspace <cwd> --idea "..." --hypothesis "..."
+   python3 ${CLAUDE_SKILL_DIR}/scripts/scaffold_experiment.py --workspace <cwd> --idea "..." --hypothesis "..."
    ```
 
    It mints `experiments/exp-NNN/` with a rendered `experiment.py` (metric + CV snapshot baked
@@ -273,7 +276,7 @@ the competition section, these are **separate, idempotent entry points the SKILL
 2. **Run locally.**
 
    ```bash
-   python3 scripts/run_local.py --workspace <cwd> --exp-dir experiments/exp-NNN
+   python3 ${CLAUDE_SKILL_DIR}/scripts/run_local.py --workspace <cwd> --exp-dir experiments/exp-NNN
    ```
 
    Runs `experiment.py` under `uv run --no-sync` (never installs at runtime — a missing ML env
@@ -283,7 +286,7 @@ the competition section, these are **separate, idempotent entry points the SKILL
 3. **Record (the anti-lie step).** Pass the run's exit code through:
 
    ```bash
-   python3 scripts/record_experiment.py --workspace <cwd> --exp-dir experiments/exp-NNN --run-exit-code <rc>
+   python3 ${CLAUDE_SKILL_DIR}/scripts/record_experiment.py --workspace <cwd> --exp-dir experiments/exp-NNN --run-exit-code <rc>
    ```
 
    The recorder writes **ALL** numbers: it recomputes `mean(fold_scores)` to catch a lying
@@ -296,7 +299,7 @@ the competition section, these are **separate, idempotent entry points the SKILL
    (hypothesis queue + next action) to a markdown file, then:
 
    ```bash
-   python3 scripts/regen_strategy.py --workspace <cwd> --reasoning-file <path>
+   python3 ${CLAUDE_SKILL_DIR}/scripts/regen_strategy.py --workspace <cwd> --reasoning-file <path>
    ```
 
    Tooling renders the FACTS (current-best by the metric's direction + the tried-list digest)
@@ -315,12 +318,12 @@ loop, these are **separate idempotent entry points the SKILL sequences** (D-02) 
 non-interactive (argparse in, exit code out); the SKILL holds the human/AI loop between steps.
 **Numbers are TOOLING-WRITTEN end-to-end.** Prerequisite: a scaffolded experiment
 (`experiments/exp-NNN/experiment.py`) with the metric + `cv.scheme` already committed, exactly as
-for the local run. Sequence (each `python3 scripts/<x>.py --workspace <cwd> --exp-dir experiments/exp-NNN`):
+for the local run. Sequence (each `python3 ${CLAUDE_SKILL_DIR}/scripts/<x>.py --workspace <cwd> --exp-dir experiments/exp-NNN`):
 
 1. **Convert** — build the inspectable notebook (regenerable from `experiment.py`, never mutating it — D-02):
 
    ```bash
-   python3 scripts/convert_notebook.py --workspace <cwd> --exp-dir experiments/exp-NNN
+   python3 ${CLAUDE_SKILL_DIR}/scripts/convert_notebook.py --workspace <cwd> --exp-dir experiments/exp-NNN
    ```
 
    Shells `uv run --no-sync jupytext` (never a runtime install; a missing env degrades to a clear
@@ -329,22 +332,29 @@ for the local run. Sequence (each `python3 scripts/<x>.py --workspace <cwd> --ex
 2. **Push** — generate metadata, push, hand off:
 
    ```bash
-   python3 scripts/push_kernel.py --workspace <cwd> --exp-dir experiments/exp-NNN [--accelerator NvidiaTeslaT4]
+   python3 ${CLAUDE_SKILL_DIR}/scripts/push_kernel.py --workspace <cwd> --exp-dir experiments/exp-NNN [--accelerator NvidiaTeslaT4]
    ```
 
    Surfaces a **non-blocking GPU-quota heads-up** (D-13) — informational only, it NEVER blocks the
    push. **Internet is OFF by default** and the *effective* value is recorded in
    `kernel_run.json` provenance as an auditable exception (D-06); to opt into an internet-ON run
-   deliberately, set it first via
-   `python3 scripts/init_workspace.py --workspace <cwd>` config setter path
-   (`set_config_field(("kernel","enable_internet"), true)`) — never hand-edit. The deterministic
+   deliberately, set it first through the real fail-closed setter — never hand-edit
+   `config.json`:
+
+   ```bash
+   python3 -c "import sys; from pathlib import Path; sys.path.insert(0, '${CLAUDE_SKILL_DIR}/scripts'); from init_workspace import set_config_field; sys.exit(set_config_field(Path('<cwd>/control/config.json'), ('kernel', 'enable_internet'), True))"
+   ```
+
+   Exit 0 = written; non-zero = `control/config.json` is missing or malformed and NOTHING was
+   written. This command is deliberately NOT pre-approved by `allowed-tools`, so the user sees a
+   permission prompt — the opt-in stays a conscious human decision. The deterministic
    `<username>/<slug>-exp-NNN` slug means a re-push targets the **SAME** kernel, and push writes
    `kernel_run.json` (`status="PENDING"`) — the push→poll→pull handoff state.
 
 3. **Poll** — bounded, 429-safe backoff that **DETACHES, never cancels**, on our-side timeout:
 
    ```bash
-   python3 scripts/poll_kernel.py --workspace <cwd> --exp-dir experiments/exp-NNN [--budget <sec>]
+   python3 ${CLAUDE_SKILL_DIR}/scripts/poll_kernel.py --workspace <cwd> --exp-dir experiments/exp-NNN [--budget <sec>]
    ```
 
    The reserved exit codes drive the SKILL's detach/resume loop (same reserved-code discipline as the
@@ -365,7 +375,7 @@ for the local run. Sequence (each `python3 scripts/<x>.py --workspace <cwd> --ex
    execution log and image provenance:
 
    ```bash
-   python3 scripts/pull_kernel.py --workspace <cwd> --exp-dir experiments/exp-NNN
+   python3 ${CLAUDE_SKILL_DIR}/scripts/pull_kernel.py --workspace <cwd> --exp-dir experiments/exp-NNN
    ```
 
    Writes `result.json` + `oof.npy` (flat), `kernel_log.txt` (untrusted — written to file, never
@@ -374,7 +384,7 @@ for the local run. Sequence (each `python3 scripts/<x>.py --workspace <cwd> --ex
 5. **Record (the anti-lie step, kernel path)** — pass the pulled log so the recorder scans it FIRST:
 
    ```bash
-   python3 scripts/record_experiment.py --workspace <cwd> --exp-dir experiments/exp-NNN --kernel-log experiments/exp-NNN/kernel_log.txt
+   python3 ${CLAUDE_SKILL_DIR}/scripts/record_experiment.py --workspace <cwd> --exp-dir experiments/exp-NNN --kernel-log experiments/exp-NNN/kernel_log.txt
    ```
 
    The `--kernel-log` scan is the NEW FIRST RUNG of the fail-closed ladder: a traceback / OOM marker
@@ -396,7 +406,7 @@ scripts are non-interactive and **the SKILL holds the human loop** via the reser
 1. **Check — FREE, never spends a slot.** Always run this first.
 
    ```bash
-   python3 scripts/check_submission.py --workspace <cwd> --exp-id exp-NNN
+   python3 ${CLAUDE_SKILL_DIR}/scripts/check_submission.py --workspace <cwd> --exp-id exp-NNN
    ```
 
    Refuses a non-CSV competition (**69**), validates `submission.csv` against the sample (**65**),
@@ -409,7 +419,7 @@ scripts are non-interactive and **the SKILL holds the human loop** via the reser
 3. **Submit — spends the slot.**
 
    ```bash
-   python3 scripts/submit.py --workspace <cwd> --exp-id exp-NNN --confirm [--reason "..."] [--resubmit] [--dry-run]
+   python3 ${CLAUDE_SKILL_DIR}/scripts/submit.py --workspace <cwd> --exp-id exp-NNN --confirm [--reason "..."] [--resubmit] [--dry-run]
    ```
 
    `--dry-run` prints the exact argv without calling Kaggle. Exit **0** = SCORED · **2** = the
@@ -423,7 +433,7 @@ scripts are non-interactive and **the SKILL holds the human loop** via the reser
 4. **Fetch — the detach fallback, read-only, never submits.**
 
    ```bash
-   python3 scripts/fetch_lb.py --workspace <cwd> [--exp-id exp-NNN] [--reconcile]
+   python3 ${CLAUDE_SKILL_DIR}/scripts/fetch_lb.py --workspace <cwd> [--exp-id exp-NNN] [--reconcile]
    ```
 
    Re-runnable: transitions the PENDING row in `control/submissions.jsonl` to SCORED/FAILED in place.
@@ -442,7 +452,7 @@ scripts are non-interactive and **the SKILL holds the human loop** via the reser
   token-shaped secret.
 - **Deny-by-default network egress.** `init` writes/merges a `sandbox.network.allowedDomains`
   allowlist into the workspace `.claude/settings.json` (the layer that actually scopes the
-  `kaggle` CLI subprocess) and documents it in `references/egress-allowlist.md` for portability.
+  `kaggle` CLI subprocess) and documents it in `${CLAUDE_SKILL_DIR}/references/egress-allowlist.md` for portability.
   See that reference for the exact host set and the GCS-backend gotcha.
 
 ---
@@ -474,5 +484,5 @@ scripts are non-interactive and **the SKILL holds the human loop** via the reser
 | `scripts/fetch_lb.py` | SCORE-01/02 D-03/11 the detach fallback — **never submits**: re-runnable, transitions a PENDING `submissions.jsonl` row to SCORED/FAILED in place; `--reconcile` back-fills out-of-band submissions from Kaggle |
 | `scripts/lb_gap.py` | SCORE-02 pure CV→LB join + the rank-inversion divergence alarm rendered by `regen_strategy.py`. CV stays the DECISION metric — the gap is observed, never used to select |
 
-Read `references/egress-allowlist.md` (egress hosts + portability) and
-`references/kaggle-cli-behavior.md` (observed CLI exit-codes / precedence) only when needed.
+Read `${CLAUDE_SKILL_DIR}/references/egress-allowlist.md` (egress hosts + portability) and
+`${CLAUDE_SKILL_DIR}/references/kaggle-cli-behavior.md` (observed CLI exit-codes / precedence) only when needed.
