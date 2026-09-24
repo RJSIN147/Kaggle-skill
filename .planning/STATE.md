@@ -5,7 +5,7 @@ milestone_name: milestone
 status: milestone_complete
 stopped_at: Milestone complete (Phase 05 was final phase)
 last_updated: 2026-09-24T22:53:36.000Z
-last_activity: 2026-09-25 -- Quick 260925-5z0: SKILL.md script paths + doc hygiene
+last_activity: 2026-09-25 -- Quick 260925-66x: kernel-path live bugs fixed (kernelspec, ipykernel argv/exit, flat /kaggle/working)
 progress:
   total_phases: 5
   completed_phases: 5
@@ -29,7 +29,7 @@ Phase: 05 (complete)
 Plan: All plans complete
 Status: Milestone complete
 Phase 5 verification: `human_needed` — the A1 live UTC check on `submissions.date` is outstanding (see `.planning/phases/05-submission-leaderboard-tracking/05-HUMAN-UAT.md`)
-Last activity: 2026-09-25
+Last activity: 2026-09-25 -- Quick 260925-66x: kernel-path live bugs fixed; EXP-05 live-verified
 
 Progress: [██████████] 100%
 
@@ -95,7 +95,7 @@ None.
 
 Research flags to resolve during phase planning:
 
-- Phase 4: exact `kaggle kernels status` output shape unconfirmed; verify against a live run before finalizing the poller. Known API bugs #473/#509.
+- ~~Phase 4: exact `kaggle kernels status` output shape unconfirmed; verify against a live run before finalizing the poller. Known API bugs #473/#509.~~ RESOLVED (live-verified 2026-09-25: `KernelWorkerStatus.<NAME>` render, see references/kaggle-cli-behavior.md).
 - Phase 5: code-competition submission path (notebook-only, no CSV-via-CLI) needs validation for the target competition type; may need a competition-type flag captured in Phase 2.
 - Phase 2: `competitions download --unzip` reliability on CLI 2.x needs direct verification.
 - Outstanding human verification (01-03): run discriminating egress probe (example.org/example.net/wikipedia.org/google.com/httpbin.org, declining prompts) to settle whether an undocumented pre-allowed set exists for the local CLI sandbox — the example.com anomaly
@@ -105,6 +105,7 @@ Research flags to resolve during phase planning:
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
 | 260925-5z0 | Fix SKILL.md script paths (${CLAUDE_SKILL_DIR}), docstring escapes, unused test imports, stale planning docs | 2026-09-25 | 2951a70 | [260925-5z0-fix-skill-md-script-paths-docstring-esca](./quick/260925-5z0-fix-skill-md-script-paths-docstring-esca/) |
+| 260925-66x | Fix kernel path live bugs: notebook kernelspec, ipykernel argv/exit, flat /kaggle/working output, resolve_data_dir hardening; record A2/A3/A4 + T4 default live-verified | 2026-09-25 | fbfaa33 | [260925-66x-fix-kernel-path-notebook-kernelspec-ipyk](./quick/260925-66x-fix-kernel-path-notebook-kernelspec-ipyk/) |
 
 ## Deferred Items
 
@@ -112,10 +113,10 @@ Items acknowledged and carried forward from previous milestone close:
 
 | Category | Item | Status | Deferred At |
 |----------|------|--------|-------------|
-| Live verification (EXP-05) | One opt-in live Kaggle GPU push (convert→push→poll→pull→record) to confirm A1 T4×2 string / A2 status render / A3 log+marker coverage / A4 push version regex, findings into references/kaggle-cli-behavior.md. Needs Phase 1 creds + Phase 2 data + Phase 3 scaffolded experiment. | Operator-owned, deferred | 04-05 (2026-07-12) |
+| Live verification (EXP-05) | One opt-in live Kaggle GPU push (convert→push→poll→pull→record) to confirm A1 T4×2 string / A2 status render / A3 log+marker coverage / A4 push version regex, findings into references/kaggle-cli-behavior.md. Needs Phase 1 creds + Phase 2 data + Phase 3 scaffolded experiment. | Live-verified 2026-09-25 (A2/A3/A4 + T4 default; T4x2 string still unverified) — 4 bugs fixed in quick 260925-66x | 04-05 (2026-07-12) |
 
 ## Session Continuity
 
 Last session: 2026-07-12T11:18:39.595Z
-Stopped at: Milestone complete; Quick 260925-5z0 (SKILL.md script paths + doc hygiene) executed
+Stopped at: Milestone complete; Quick 260925-66x (kernel-path live bug fixes) executed; orchestrator final live push pending
 Resume file: None
