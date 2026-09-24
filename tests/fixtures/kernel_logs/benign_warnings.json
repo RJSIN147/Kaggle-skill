@@ -1,0 +1,62 @@
+[
+ {
+  "stream_name": "stderr",
+  "time": 3.214,
+  "data": "[NbConvertApp] Converting notebook __notebook__.ipynb to notebook\n"
+ },
+ {
+  "stream_name": "stderr",
+  "time": 3.702,
+  "data": "[NbConvertApp] Executing notebook with kernel: python3\n"
+ },
+ {
+  "stream_name": "stderr",
+  "time": 5.118,
+  "data": "0.00s - Debugger warning: It seems that frozen modules are being used, which may\n"
+ },
+ {
+  "stream_name": "stderr",
+  "time": 5.119,
+  "data": "0.00s - make the debugger miss breakpoints. Please pass -Xfrozen_modules=off\n"
+ },
+ {
+  "stream_name": "stderr",
+  "time": 5.119,
+  "data": "0.00s - to python to disable frozen modules.\n"
+ },
+ {
+  "stream_name": "stderr",
+  "time": 5.12,
+  "data": "0.00s - Note: Debugging will proceed. Set PYDEVD_DISABLE_FILE_VALIDATION=1 to disable this validation.\n"
+ },
+ {
+  "stream_name": "stdout",
+  "time": 7.841,
+  "data": "data_dir: /kaggle/input/titanic\n"
+ },
+ {
+  "stream_name": "stderr",
+  "time": 9.402,
+  "data": "/usr/local/lib/python3.12/dist-packages/sklearn/utils/validation.py:2739: UserWarning: X does not have valid feature names, but LGBMClassifier was fitted with feature names\n"
+ },
+ {
+  "stream_name": "stderr",
+  "time": 9.402,
+  "data": "  warnings.warn(\n"
+ },
+ {
+  "stream_name": "stdout",
+  "time": 12.577,
+  "data": "{\"cv_mean\": 0.8305002824681439, \"n_folds\": 5}\n"
+ },
+ {
+  "stream_name": "stderr",
+  "time": 14.03,
+  "data": "/usr/local/lib/python3.12/dist-packages/mistune.py:435: SyntaxWarning: invalid escape sequence\n"
+ },
+ {
+  "stream_name": "stderr",
+  "time": 14.991,
+  "data": "[NbConvertApp] Writing 21873 bytes to __notebook__.ipynb\n"
+ }
+]

@@ -18,6 +18,13 @@ other `uv run --no-sync` caller):
     nothing. Declare deps, validate, instruct — never install at runtime (CLAUDE.md).
   * timeout-bounded: a runaway convert is a clean handled error, not a hang.
 
+Kernelspec (live-observed 2026-09-25, quick 260925-66x): `jupytext --to notebook`
+writes NO `kernelspec` into the notebook metadata, and Kaggle executes notebooks with
+papermill, which then fails with "No kernel name found in notebook and no override
+provided." The converter therefore passes a python3 kernelspec via jupytext's
+`--update-metadata` (one argv element, never a shell string) and FAILS CLOSED (exit 1)
+if the regenerated notebook still lacks one, so an unexecutable notebook is never pushed.
+
 Portability (CLAUDE.md §Stack Patterns): stdlib-only, self-locating via
 `Path(__file__)`, `--workspace`-driven, non-interactive (argparse in / exit-code out).
 """
@@ -25,10 +32,34 @@ Portability (CLAUDE.md §Stack Patterns): stdlib-only, self-locating via
 from __future__ import annotations
 
 import argparse
+import json
 import shutil
 import subprocess
 import sys
 from pathlib import Path
+
+# jupytext's `--to notebook` writes no kernelspec; Kaggle's papermill then fails with
+# "No kernel name found in notebook and no override provided." (live-observed 2026-09-25,
+# BUG 1). This exact payload is the live-verified fix. It is a module CONSTANT, passed to
+# jupytext as ONE argv element via json.dumps — never user/Kaggle input, never shell-quoted.
+_NOTEBOOK_METADATA = {
+    "kernelspec": {"name": "python3", "display_name": "Python 3", "language": "python"},
+    "language_info": {"name": "python"},
+}
+
+
+def _notebook_kernel_name(path: Path) -> str | None:
+    """Return metadata.kernelspec.name of the notebook at `path`, or None if absent/unreadable."""
+    try:
+        nb = json.loads(path.read_text())
+    except (OSError, ValueError):
+        return None
+    if not isinstance(nb, dict):
+        return None
+    meta = nb.get("metadata")
+    spec = meta.get("kernelspec") if isinstance(meta, dict) else None
+    name = spec.get("name") if isinstance(spec, dict) else None
+    return name if isinstance(name, str) and name else None
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -84,6 +115,7 @@ def main(argv=None) -> int:
     # and NEVER modify experiment.py.
     cmd = [
         "uv", "run", "--no-sync", "jupytext", "--to", "notebook",
+        "--update-metadata", json.dumps(_NOTEBOOK_METADATA),
         str(exp_py), "-o", str(exp_ipynb),
     ]
 
@@ -116,6 +148,16 @@ def main(argv=None) -> int:
             file=sys.stderr,
         )
         return exit_code
+
+    # Fail closed (BUG 1): a notebook without a kernelspec cannot be executed by papermill
+    # on Kaggle — refuse to report success so nothing unexecutable is handed to push.
+    if _notebook_kernel_name(exp_ipynb) is None:
+        print(
+            f"convert produced {exp_rel}/experiment.ipynb without a kernelspec — papermill on "
+            f"Kaggle cannot execute a notebook without one. Do not push it.",
+            file=sys.stderr,
+        )
+        return 1
 
     print(
         f"convert ok (exit 0) — regenerated {exp_rel}/experiment.ipynb from "
