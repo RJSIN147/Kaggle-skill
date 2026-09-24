@@ -34,7 +34,7 @@ key-decisions:
 patterns-established:
   - "Kernel path documented as the SAME experiment.py running unchanged (resolve_data_dir auto-selects /kaggle/input on the kernel)."
   - "DETACH is a resumable state, not a failure: SKILL re-invokes poll_kernel.py to reattach; GPU time already spent is never re-burned."
-requirements-completed: []  # EXP-05 buildable scope delivered; live-verification of EXP-05 deferred to operator (see Deferred Verification)
+requirements-completed: []  # EXP-05 buildable scope delivered; live verification of EXP-05 done 2026-09-25 (quick 260925-66x, see Deferred Verification > Resolution)
 
 duration: ~10min
 completed: 2026-07-12
@@ -101,6 +101,15 @@ Or the live integration test: `uv run pytest -m live --run-live tests/test_kerne
 Expected outcome once run: a completed kernel run recorded to the ledger with kernel provenance, and a deliberately-throwing kernel recorded FAILED(kernel_error) despite a COMPLETE status.
 
 **Phase impact of the deferral: none for buildable correctness.** The mocked suite (199 passed) already exercises the untrusted-text, egress, and silent-failure paths via fixtures. The deferred live push is a confirmation of live surface shapes, not a gate on the phase's correctness.
+
+### Resolution (2026-09-25, quick 260925-66x)
+
+- **Live run performed** 2026-09-25 by the orchestrator (throwaway `titanic` workspace, private kernel `ravijotsinha/titanic-exp-001`, GPU on, internet off, no submission made).
+- **A2 / A3 / A4 VERIFIED-LIVE:** status renders as `KernelWorkerStatus.<NAME>` and `_STATUS_RE` classified RUNNING/COMPLETE/ERROR; the kernel log is a JSON array of `{stream_name, time, data}` records and the marker set caught a papermill traceback while benign noise stays clean; push prints `Kernel version N successfully pushed.` and the version regex parsed it.
+- **A1:** the `enable_gpu: true` default ran on `NvidiaTeslaT4` (verified); the T4x2 string is **still UNVERIFIED**.
+- **The live run exposed four bugs** — BUG 1 missing notebook kernelspec (papermill "No kernel name found in notebook"), BUG 2 argparse exit on ipykernel's `-f` argv, BUG 3 `SystemExit` in a cell treated as an error, BUG 4 outputs nested under `/kaggle/working/experiments/...` instead of flat — fixed in commits `a43c9bf` (BUG 1) and `fbfaa33` (BUGS 2-4, plus `resolve_data_dir` hardening), with RED tests `4e6acd3` / `76b9690`.
+- **Local/kernel parity achieved:** kernel version 3 (fixes applied by hand) ran COMPLETE, `cv_mean 0.8305002824681439`, fold scores identical to the local run.
+- Details: `references/kaggle-cli-behavior.md` § "Phase 4 — observed kernel-path signatures (CLI 2.2.3, live 2026-09-25)". The orchestrator performs one final live push against the committed code.
 
 ## Deviations from Plan
 
