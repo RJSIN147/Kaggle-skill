@@ -186,6 +186,91 @@ T-02-A1) is now **RESOLVED**. Provenance: human-verified in a browser — no API
 verification (that is the whole point of the UI-only gate); no credential value was read or
 recorded during the check.
 
+## Phase 4 — observed kernel-path signatures (CLI 2.2.3, live 2026-09-25)
+
+> **How captured (honest provenance):** One live run of the kernel path
+> (`convert -> push -> poll -> pull -> record`) performed by the orchestrator on 2026-09-25 in a
+> throwaway `titanic` workspace, against the private kernel `ravijotsinha/titanic-exp-001`
+> (`enable_gpu: true`, `enable_internet: false`). **No competition submission was made.** No
+> credential value was read, printed, or recorded. The run exposed four bugs (table below),
+> fixed in quick task 260925-66x; after the fixes were applied by hand, kernel version 3 ran
+> COMPLETE. The orchestrator performs one final live push against the committed code after
+> this quick task.
+
+### A2 — `kaggle kernels status` render — VERIFIED-LIVE
+
+`kaggle kernels status <slug>` prints a prose line of the form:
+
+```
+<slug> has status "KernelWorkerStatus.RUNNING"
+<slug> has status "KernelWorkerStatus.COMPLETE"
+<slug> has status "KernelWorkerStatus.ERROR"
+```
+
+`poll_kernel.py`'s `_STATUS_RE` classified all three (exit 0 for COMPLETE, exit 2 for ERROR).
+**No regex change needed**; the bare-`NAME` tolerance is kept as defence.
+
+### A4 — `kaggle kernels push` output — VERIFIED-LIVE
+
+```
+Kernel version N successfully pushed.  Please check progress at https://www.kaggle.com/code/<user>/<slug>
+```
+
+`push_kernel.py`'s `[Vv]ersion\s+(\d+)` parsed `kernel_version = 1` on the first push.
+
+### A3 — kernel log shape — VERIFIED-LIVE
+
+`kaggle kernels output` also drops `<kernel-slug>.log` next to the artifacts. It is a **JSON
+array** of `{"stream_name": "stdout"|"stderr", "time": <float>, "data": <str>}` records (the
+shape `scan_kernel_log` already flattens). A papermill failure appears as a
+`Traceback (most recent call last):` plus `PapermillExecutionError` / `ValueError: ...` in
+stderr records; `record_experiment.py --kernel-log` classified the failed run
+`FAILED(kernel_error)` with a null `cv_mean`.
+
+**Benign noise on a SUCCESSFUL run that must NOT count as failure** (none of it hits a marker):
+
+- pydevd: `0.00s - Debugger warning: It seems that frozen modules are being used, ...` (+ 3 continuation lines)
+- sklearn: `.../sklearn/utils/validation.py:2739: UserWarning: X does not have valid feature names, but LGBMClassifier was fitted with feature names`
+- mistune / nbconvert: `.../mistune.py:435: SyntaxWarning: invalid escape sequence ...`
+- `[NbConvertApp] Converting notebook ...`, `[NbConvertApp] Executing notebook with kernel: python3`, `[NbConvertApp] Writing ... bytes to __notebook__.ipynb`
+
+Regression guard: `tests/fixtures/kernel_logs/benign_warnings.json` (scans clean, records
+SUCCESS) paired with a benign-plus-papermill-traceback test that must still scan as failure
+(`tests/test_record_kernel.py`). No marker was removed or narrowed.
+
+### A1 — accelerator — PARTIALLY VERIFIED
+
+The default template (`enable_gpu: true`, no `--accelerator`) ran on machine_shape
+`NvidiaTeslaT4`; the image was recorded as `gcr.io/kaggle-private-byod/python@sha256:...`
+(`kernels pull -m` provenance works). **The T4x2 accelerator string was NOT exercised — it stays
+UNVERIFIED** and is still not a default.
+
+### Kaggle image facts
+
+- Python **3.12** (`/usr/local/lib/python3.12/dist-packages/...` paths in the log).
+- Notebooks are executed by **papermill via nbconvert** (`[NbConvertApp] Executing notebook with
+  kernel: python3`) — hence the kernelspec and ipykernel requirements below.
+
+### Bugs the live run exposed (fixed in quick 260925-66x)
+
+| Bug | Live symptom | Root cause | Fix | Commit |
+|-----|--------------|------------|-----|--------|
+| BUG 1 | `ValueError: No kernel name found in notebook and no override provided.` (status ERROR after ~16s) | `jupytext --to notebook` writes no `kernelspec` (only a `jupytext` metadata key); papermill needs one | `convert_notebook.py` passes `--update-metadata` with a python3 kernelspec (one argv element via `json.dumps`) and fails closed (exit 1) if the notebook still lacks one | a43c9bf |
+| BUG 2 | papermill reports `SystemExit: 2` | `ap.parse_args(None)` read ipykernel's `sys.argv` (`-f <connection-file.json>`) and argparse exited | template `parse_args()` uses `parse_known_args` | fbfaa33 |
+| BUG 3 | cell error on `SystemExit` (even 0) | tail `raise SystemExit(main())`; IPython surfaces any SystemExit in a cell as an error | `_finish(rc)` raises SystemExit only when `ipykernel` is not in `sys.modules` | fbfaa33 |
+| BUG 4 | silent: outputs under `/kaggle/working/experiments/exp-NNN/...`, pull expects them flat | `--exp-dir` default is workspace-relative; `pull_kernel.py` runs `kernels output -p <exp_dir>` | `resolve_exp_dir()` forces `/kaggle/working` when it exists (on a kernel) | fbfaa33 |
+
+Also hardened in fbfaa33: `resolve_data_dir` tries `/kaggle/input/<slug>` then
+`/kaggle/input/competitions/<slug>`; with no mount and no `__file__` (a notebook cell) it raises
+`FileNotFoundError` naming the tried paths instead of a `NameError`; `main()` prints one
+`data_dir: <resolved path>` provenance line into the kernel log.
+
+### Parity result
+
+With the four fixes applied by hand, kernel version 3 ran COMPLETE; pull + record gave
+`cv_mean 0.8305002824681439` with fold scores **identical** to the local run:
+`[0.8547486, 0.8258427, 0.80898876, 0.8258427, 0.83707865]` — local/kernel parity achieved.
+
 ## Phase 5 — observed submission / leaderboard signatures (CLI 2.2.3, 2026-07-12)
 
 > **How captured (honest provenance):** Captured 2026-07-12 against CLI 2.2.3 in the project

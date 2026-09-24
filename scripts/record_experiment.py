@@ -100,10 +100,10 @@ def scan_kernel_log(log_text: str) -> bool:
     """True if the kernel log carries a D-11 silent-failure marker (traceback / OOM / kill).
 
     Pure pattern-match — ``marker in text`` only. NEVER echoes the log and NEVER derives an
-    executed path/command from its content (V5/V7). Handles Assumption A3: a Kaggle log may
-    arrive as plain text OR as a JSON array of ``{"stream_name": ..., "data": ...}`` records;
-    when it parses as such a list, the ``data`` fields are concatenated and that is scanned,
-    otherwise the raw text is scanned as-is.
+    executed path/command from its content (V5/V7). Assumption A3 confirmed live 2026-09-25:
+    the pulled Kaggle log is a JSON array of ``{"stream_name": ..., "time": ..., "data": ...}``
+    records; when it parses as such a list, the ``data`` fields are concatenated and that is
+    scanned, otherwise (plain text, kept for tolerance) the raw text is scanned as-is.
     """
     scan_target = log_text
     try:

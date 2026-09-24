@@ -49,11 +49,14 @@ _USERNAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
 _USERNAME_LINE_RE = re.compile(r"^\s*-\s*username:\s*(\S+)\s*$", re.MULTILINE)
 # Provenance-only version scrape from the push output. NEVER used to build a path or
 # command (V5 no-derive) — just recorded in kernel_run.json for D-05 traceability.
+# Assumption A4 VERIFIED-LIVE 2026-09-25: the CLI prints "Kernel version N successfully
+# pushed.  Please check progress at ..." and this regex parsed kernel_version=1.
 _VERSION_RE = re.compile(r"[Vv]ersion\s+(\d+)")
 
-# Verified accelerator IDs (RESEARCH). The T4×2 string is UNVERIFIED (Assumption A1)
-# and is deliberately NOT a hard default — the template's enable_gpu:true is always
-# valid; --accelerator is an explicit opt-in override.
+# Verified accelerator IDs (RESEARCH). Assumption A1 PARTIALLY VERIFIED 2026-09-25: the
+# template's enable_gpu:true default (no --accelerator) ran live on NvidiaTeslaT4. The
+# T4×2 string is still UNVERIFIED and is deliberately NOT a hard default;
+# --accelerator is an explicit opt-in override.
 _ACCELERATORS = ("NvidiaTeslaT4", "NvidiaTeslaP100")
 
 if str(SCRIPT_DIR) not in sys.path:
@@ -269,8 +272,8 @@ def main(argv=None) -> int:
         return rc
 
     # Provenance-only version scrape (D-05): null when unparseable. NEVER used to
-    # build a path/command (V5). The exact push-output version string is unverified
-    # (Assumption A4), so a miss is expected and harmless.
+    # build a path/command (V5). The push-output version string is VERIFIED-LIVE
+    # (Assumption A4, 2026-09-25); a miss on a future CLI render stays harmless.
     vm = _VERSION_RE.search(out or "")
     kernel_version = int(vm.group(1)) if vm else None
 

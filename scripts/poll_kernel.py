@@ -59,8 +59,9 @@ from kaggle_gateway import dump_last_error, run_kaggle  # noqa: E402
 TERMINAL = {"COMPLETE", "ERROR", "CANCEL_ACKNOWLEDGED"}
 IN_FLIGHT = {"QUEUED", "RUNNING", "NEW_SCRIPT", "CANCEL_REQUESTED"}
 
-# Anchored on the literal `status "..."` token — tolerates both the
-# `KernelWorkerStatus.NAME` and a bare `NAME` render (Assumption A2). Because the
+# Anchored on the literal `status "..."` token. Assumption A2 VERIFIED-LIVE 2026-09-25:
+# the CLI renders `<slug> has status "KernelWorkerStatus.<NAME>"` (RUNNING / COMPLETE /
+# ERROR all observed); the bare `NAME` tolerance is kept as defence. Because the
 # STATUS line is matched by its `status "` prefix, a `Failure message:` body that
 # embeds COMPLETE/RUNNING can NEVER produce a false token (Pitfall 2).
 _STATUS_RE = re.compile(r'status\s+"(?:KernelWorkerStatus\.)?([A-Z_]+)"')
