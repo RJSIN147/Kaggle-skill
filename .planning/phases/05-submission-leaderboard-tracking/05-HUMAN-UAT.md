@@ -3,7 +3,7 @@ status: partial
 phase: 05-submission-leaderboard-tracking
 source: [05-07-PLAN.md, 05-07-SUMMARY.md]
 started: 2026-07-12
-updated: 2026-07-12
+updated: 2026-09-25
 ---
 
 ## Current Test
@@ -53,9 +53,7 @@ result: [pending]
 **On completion:** fill the `<!-- PLACEHOLDER -->` in `references/kaggle-cli-behavior.md`
 with the observed values and the verdict.
 
-**Scripting note:** do not use `submissions_log.fetch_submissions()` — it has zero callers
-and resolves `run_kaggle` from its own module globals (see the open item below). Use
-`fetch_lb.read_submissions(..., runner=…)` instead.
+**Scripting note:** for a scripted read-back, use `fetch_lb.read_submissions(..., runner=…)`.
 
 ## Summary
 
@@ -68,9 +66,9 @@ blocked: 0
 
 ## Gaps
 
-### Open item — `submissions_log.fetch_submissions()` is dead code and a footgun
+### Resolved — `submissions_log.fetch_submissions()` is dead code and a footgun
 
-status: open
+status: resolved
 severity: low (no live caller; blocks nothing; suite is 259/259 green)
 
 Surfaced only at post-merge integration — no individual plan agent could see it, since each
@@ -86,3 +84,8 @@ Kaggle CLI shells out from inside what the author believes is a mocked test.
 The trap is documented in `references/kaggle-cli-behavior.md`. Deleting the function was
 out of scope for 05-07 and is left as a deliberate decision: either remove it, or give it a
 `runner=` parameter so it is safe to call.
+
+**Resolution:** resolved by WR-01 (commit 48bf8ae, "give the submissions argv one home,
+delete the binding footgun"). The function was deleted from `scripts/submissions_log.py`, and
+`tests/test_submissions_log.py::test_the_mis_binding_fetch_submissions_is_gone` guards
+against its return. The explanation above is kept as history.
