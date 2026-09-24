@@ -11,8 +11,12 @@ skips cleanly when sklearn is absent).
 """
 
 import importlib.util
+import sys
+import types
 from pathlib import Path
 from string import Template
+
+import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 TEMPLATE = REPO_ROOT / "scripts" / "templates" / "experiment.py.tmpl"
@@ -102,3 +106,113 @@ def test_template_renders_resolved_registry_entry_literal(tmp_path):
     assert mod.registry_entry == REGISTRY["roc_auc"]
     assert mod.registry_entry["sklearn_callable"] == "roc_auc_score"
     assert mod.METRIC_NAME == "roc_auc"
+
+
+# --------------------------------------------------------------------------- #
+# quick 260925-66x — kernel-safe harness (live-observed 2026-09-25 on Kaggle/papermill):
+#   BUG 2: ipykernel injects `-f <connection-file.json>` into sys.argv -> argparse exits 2.
+#   BUG 3: IPython reports ANY SystemExit raised in a cell (even 0) as an error.
+#   BUG 4: outputs must land FLAT in /kaggle/working (pull_kernel.py contract).
+#   + resolve_data_dir hardening: /kaggle/input/competitions/<slug>; no __file__ in a cell.
+# None of these tests touch the real /kaggle.
+# --------------------------------------------------------------------------- #
+
+
+def _fake_kaggle_dirs(monkeypatch, present):
+    """Make Path.is_dir True only for `present` among /kaggle paths; real elsewhere."""
+    real_is_dir = Path.is_dir
+
+    def fake_is_dir(self):
+        s = str(self)
+        if s.startswith("/kaggle"):
+            return s in present
+        return real_is_dir(self)
+
+    monkeypatch.setattr(Path, "is_dir", fake_is_dir)
+
+
+def test_parse_args_tolerates_ipykernel_argv(tmp_path, monkeypatch):
+    mod = render_experiment(tmp_path)
+    monkeypatch.setattr(mod, "KAGGLE_WORKING", str(tmp_path / "no_such_working"))
+    args = mod.parse_args(["-f", "/root/.local/share/jupyter/runtime/kernel-abc.json"])
+    assert args.exp_dir == "experiments/exp-001"
+    assert args.slug == "titanic"
+    assert args.seed == 42
+
+
+def test_parse_args_reads_ipykernel_sys_argv_when_argv_none(tmp_path, monkeypatch):
+    mod = render_experiment(tmp_path)
+    monkeypatch.setattr(mod, "KAGGLE_WORKING", str(tmp_path / "no_such_working"))
+    monkeypatch.setattr(sys, "argv", ["ipykernel_launcher.py", "-f", "x.json"])
+    args = mod.parse_args()  # must NOT raise SystemExit
+    assert args.slug == "titanic"
+
+
+def test_exp_dir_switches_to_kaggle_working_on_kernel(tmp_path, monkeypatch):
+    mod = render_experiment(tmp_path)
+    working = tmp_path / "kaggle_working"
+    working.mkdir()
+    monkeypatch.setattr(mod, "KAGGLE_WORKING", str(working))
+    assert mod.on_kaggle_kernel() is True
+    assert mod.resolve_exp_dir("experiments/exp-001") == str(working)
+    assert mod.parse_args([]).exp_dir == str(working)
+
+
+def test_exp_dir_unchanged_off_kernel(tmp_path, monkeypatch):
+    mod = render_experiment(tmp_path)
+    monkeypatch.setattr(mod, "KAGGLE_WORKING", str(tmp_path / "no_such_working"))
+    assert mod.on_kaggle_kernel() is False
+    assert mod.parse_args([]).exp_dir == "experiments/exp-001"
+    assert mod.parse_args(["--exp-dir", "custom"]).exp_dir == "custom"
+
+
+def test_finish_is_silent_under_ipykernel(tmp_path, monkeypatch):
+    mod = render_experiment(tmp_path)
+    monkeypatch.setitem(sys.modules, "ipykernel", types.ModuleType("ipykernel"))
+    mod._finish(0)
+    mod._finish(3)
+
+
+def test_finish_exits_with_code_as_script(tmp_path, monkeypatch):
+    mod = render_experiment(tmp_path)
+    monkeypatch.delitem(sys.modules, "ipykernel", raising=False)
+    with pytest.raises(SystemExit) as exc3:
+        mod._finish(3)
+    assert exc3.value.code == 3
+    with pytest.raises(SystemExit) as exc0:
+        mod._finish(0)
+    assert exc0.value.code == 0
+
+
+def test_main_guard_routes_through_finish(tmp_path):
+    render_experiment(tmp_path)
+    src = (tmp_path / "experiments" / "exp-001" / "experiment.py").read_text()
+    assert "_finish(main())" in src
+    assert "raise SystemExit(main())" not in src
+    assert "parse_known_args" in src
+    assert "data_dir: " in src
+
+
+def test_kaggle_competitions_mount_used_when_flat_absent(tmp_path, monkeypatch):
+    mod = render_experiment(tmp_path)
+    _fake_kaggle_dirs(monkeypatch, {"/kaggle/input/competitions/titanic"})
+    assert mod.resolve_data_dir("titanic") == Path("/kaggle/input/competitions/titanic")
+
+
+def test_flat_mount_preferred_over_competitions_mount(tmp_path, monkeypatch):
+    mod = render_experiment(tmp_path)
+    _fake_kaggle_dirs(
+        monkeypatch, {"/kaggle/input/titanic", "/kaggle/input/competitions/titanic"}
+    )
+    assert mod.resolve_data_dir("titanic") == Path("/kaggle/input/titanic")
+
+
+def test_no_mount_no_file_raises_filenotfound_naming_paths(tmp_path, monkeypatch):
+    mod = render_experiment(tmp_path)
+    _fake_kaggle_dirs(monkeypatch, set())
+    monkeypatch.delitem(mod.__dict__, "__file__")
+    with pytest.raises(FileNotFoundError) as exc:
+        mod.resolve_data_dir("titanic")
+    msg = str(exc.value)
+    assert "/kaggle/input/titanic" in msg
+    assert "/kaggle/input/competitions/titanic" in msg
