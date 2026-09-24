@@ -40,6 +40,10 @@ EXP_ID = $exp_id_literal
 CV_SCHEME = $cv_scheme_literal
 METRIC_NAME = $metric_name_literal
 DEFAULT_SEED = 42  # D-09: fixed default seed, per-experiment override via --seed.
+# Kaggle kernel mount points. Module globals read at CALL time so tests can monkeypatch
+# them; backend detection stays CODE, never config (D-03).
+KAGGLE_INPUT = "/kaggle/input"
+KAGGLE_WORKING = "/kaggle/working"
 registry_entry = $registry_entry
 
 # --------------------------------------------------------------------------- #
@@ -59,15 +63,42 @@ TARGET_COLUMN = None
 def resolve_data_dir(slug, override=None):
     """Backend-agnostic data path (D-03). Detection is CODE, not config.
 
-    Prefers an explicit override, else the Kaggle mount `/kaggle/input/<slug>` when it
-    exists (a kernel run — same script, untouched), else the workspace `data/` dir.
+    Order: an explicit override; else the Kaggle mount `/kaggle/input/<slug>`; else the
+    alternate mount `/kaggle/input/competitions/<slug>` (a kernel run — same script,
+    untouched); else the workspace `data/` dir via this file's location. A notebook cell
+    has NO `__file__` (a bare Path(__file__) would be a NameError there), so when no mount
+    is found and `__file__` is absent this raises FileNotFoundError naming every tried
+    path — a clear error beats guessing a wrong directory from the cwd.
     """
     if override:
         return Path(override)
-    kaggle = Path(f"/kaggle/input/{slug}")
-    if kaggle.is_dir():
-        return kaggle
-    return Path(__file__).resolve().parents[2] / "data"
+    tried = [Path(KAGGLE_INPUT) / slug, Path(KAGGLE_INPUT) / "competitions" / slug]
+    for candidate in tried:
+        if candidate.is_dir():
+            return candidate
+    here = globals().get("__file__")
+    if here:
+        return Path(here).resolve().parents[2] / "data"
+    raise FileNotFoundError(
+        "competition data not found; tried "
+        + ", ".join(str(t) for t in tried)
+        + " — pass --data-dir to point at the data explicitly."
+    )
+
+
+def on_kaggle_kernel():
+    """True when running on a Kaggle kernel (its /kaggle/working output dir exists)."""
+    return Path(KAGGLE_WORKING).is_dir()
+
+
+def resolve_exp_dir(default):
+    """Where outputs land: FLAT /kaggle/working on a kernel, else `default`.
+
+    pull_kernel.py runs `kernels output -p <exp_dir>` and expects result.json,
+    artifacts/oof.npy and submission.csv FLAT; the workspace-relative default would bury
+    them under /kaggle/working/experiments/exp-NNN (BUG 4, live-observed 2026-09-25).
+    """
+    return KAGGLE_WORKING if on_kaggle_kernel() else default
 
 
 def _make_splitter(scheme, n_splits, seed):
@@ -285,7 +316,13 @@ def build_experiment(seed):
     return model_factory, preprocess_factory, None
 
 
-def main(argv=None):
+def parse_args(argv=None):
+    """Parse this experiment's options, tolerating unknown argv.
+
+    ipykernel injects `-f <connection-file.json>` into sys.argv; a strict parse_args
+    exits with SystemExit: 2 under papermill (BUG 2, live-observed 2026-09-25), so unknown
+    arguments are ignored. On a Kaggle kernel exp_dir is forced to /kaggle/working (BUG 4).
+    """
     ap = argparse.ArgumentParser(description="Run this experiment's CV and emit result.json.")
     ap.add_argument("--exp-dir", default=$exp_dir_literal,
                     help="Experiment folder (holds result.json + artifacts/).")
@@ -294,11 +331,19 @@ def main(argv=None):
                     help="Override the resolved data dir (D-03). Default: auto-detect.")
     ap.add_argument("--seed", type=int, default=DEFAULT_SEED,
                     help=f"Seed for splitter + model (D-09 default {DEFAULT_SEED}).")
-    args = ap.parse_args(argv)
+    args, _unknown = ap.parse_known_args(argv)
+    args.exp_dir = resolve_exp_dir(args.exp_dir)
+    return args
+
+
+def main(argv=None):
+    args = parse_args(argv)
 
     import pandas as pd
 
     data_dir = resolve_data_dir(args.slug, args.data_dir)
+    # Provenance: one line naming the resolved data dir (lands in the kernel log).
+    print(f"data_dir: {data_dir}")
 
     # ----------------------------------------------------------------------- #
     # AI EDITS BELOW: load the data, build X / y (and `groups` for GroupKFold),
@@ -341,5 +386,16 @@ def main(argv=None):
     return 0
 
 
+def _finish(rc):
+    """Exit with `rc` as a script; stay silent under ipykernel.
+
+    IPython reports ANY SystemExit raised in a cell (even 0) as an error and papermill
+    then fails the run (BUG 3, live-observed 2026-09-25). A plain `python experiment.py`
+    run still exits with main()'s return code.
+    """
+    if "ipykernel" not in sys.modules:
+        raise SystemExit(rc)
+
+
 if __name__ == "__main__":
-    raise SystemExit(main())
+    _finish(main())
