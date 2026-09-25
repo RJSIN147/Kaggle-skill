@@ -63,6 +63,18 @@ def build_metadata(owner: str, slug: str, spec: dict, profile: dict) -> dict:
 def push_checked(adapter, meta: dict, code_text: str, limit_s: int) -> dict:
     """Push, then fail closed on any error or server-flag mismatch. Returns read-back facts."""
     resp = adapter.push(meta, code_text, limit_s) or {}
+    err = str(resp.get("error") or "")
+    if "accept this competition's rules" in err:
+        # Classified by pattern only; the server text itself is quarantined.
+        comps = meta.get("competition_sources") or ["<competition>"]
+        raise KxError("needs_user", "the user must accept the competition's rules before a kernel "
+                                    "can mount its data", errors=["rules_not_accepted"],
+                      quarantine=err,
+                      next_action={"kind": "ask_user",
+                                   "instruction": "Ask the user to open https://www.kaggle.com/"
+                                                  f"competitions/{comps[0]}/rules and accept the "
+                                                  "rules (a browser step), then say when done.",
+                                   "then": "re-run the same kx run command"})
     if resp.get("error"):
         raise KxError("error", "Kaggle rejected the kernel push (server message quarantined "
                       "in control/raw/last-error.txt)", errors=["push_error"],

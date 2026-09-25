@@ -95,7 +95,7 @@ def _write_outputs(out, *, train, test, y, folds, oof, test_pred, fold_scores, c
     n_cols = oof.shape[1]
     pred_cols = ["pred"] if n_cols == 1 else [f"pred_{i}" for i in range(n_cols)]
     row_ids = train[ID_COL] if ID_COL in train.columns else pd.Series(range(len(train)))
-    test_ids = test[ID_COL] if ID_COL in test.columns else pd.Series(range(len(test)))
+    test_ids = _test_ids(test)
     oof_df = pd.DataFrame(oof, columns=pred_cols)
     oof_df.insert(0, "target", np.asarray(y))
     oof_df.insert(0, "fold", folds)
@@ -108,9 +108,9 @@ def _write_outputs(out, *, train, test, y, folds, oof, test_pred, fold_scores, c
     sub = pd.DataFrame({ID_COL: test_ids.values})
     flat = test_pred[:, 0] if n_cols == 1 else test_pred
     if METRIC_INFO["prediction_type"] == "label":
-        sub[TARGET] = _labels(flat, classes)
+        sub[SUB_TARGET] = _labels(flat, classes)
     elif n_cols == 1:
-        sub[TARGET] = flat
+        sub[SUB_TARGET] = flat
     else:
         for i, c in enumerate(classes):
             sub[str(c)] = test_pred[:, i]
@@ -135,8 +135,12 @@ def _write_outputs(out, *, train, test, y, folds, oof, test_pred, fold_scores, c
     }
     result.update(extra or {})
     (out / "result.json").write_text(json.dumps(result, indent=2))
+    import time as _time
+
     manifest = {
-        "exp_id": EXP_ID, "python": sys.version.split()[0], "platform": platform.platform(),
+        "exp_id": EXP_ID, "created": _time.strftime("%Y-%m-%dT%H:%M:%SZ", _time.gmtime()),
+        "run_nonce": os.urandom(8).hex(),
+        "python": sys.version.split()[0], "platform": platform.platform(),
         "libraries": _versions(), "data_dir": str(DATA_DIR),
         "kaggle_env_keys": sorted(k for k in os.environ if k.startswith("KAGGLE")),
         "run_type": os.environ.get("KAGGLE_KERNEL_RUN_TYPE"),
@@ -145,15 +149,34 @@ def _write_outputs(out, *, train, test, y, folds, oof, test_pred, fold_scores, c
     print(f"KX_RESULT {METRIC}={result['cv_mean']:.6f}±{result['cv_std']:.6f}", flush=True)
 
 
+def _setup_columns(sample: pd.DataFrame, train: pd.DataFrame) -> None:
+    """ID_COL / SUB_TARGET come from the sample submission; TARGET is the matching
+    train column (case-insensitive: digit-recognizer trains on `label`, submits `Label`)."""
+    global TARGET, ID_COL, SUB_TARGET, SAMPLE
+    SAMPLE = sample
+    ID_COL = ID_COL or sample.columns[0]
+    SUB_TARGET = sample.columns[1]
+    if TARGET is None:
+        TARGET = next((c for c in train.columns if str(c) == SUB_TARGET), None) or next(
+            (c for c in train.columns if str(c).lower() == str(SUB_TARGET).lower()), SUB_TARGET)
+
+
+def _test_ids(test: pd.DataFrame) -> pd.Series:
+    if ID_COL in test.columns:
+        return test[ID_COL]
+    if SAMPLE is not None and len(SAMPLE) == len(test):
+        return SAMPLE[ID_COL].reset_index(drop=True)  # rows align with test.csv
+    return pd.Series(range(len(test)))
+
+
 def _load():
     """Resolve the data, read sample/train/test, apply a local subsample."""
-    global TARGET, ID_COL, DATA_DIR
+    global DATA_DIR
     DATA_DIR = _resolve_data_dir()
     sample = _read(DATA_DIR / SAMPLE_SUBMISSION)
-    ID_COL = ID_COL or sample.columns[0]
-    TARGET = TARGET or sample.columns[1]
     train = _read(DATA_DIR / TRAIN_FILE)
     test = _read(DATA_DIR / TEST_FILE)
+    _setup_columns(sample, train)
     subsample = os.environ.get("KX_SUBSAMPLE")
     if subsample:
         train = train.sample(frac=float(subsample), random_state=SEED)
@@ -162,3 +185,5 @@ def _load():
 
 
 DATA_DIR = None
+SUB_TARGET = None
+SAMPLE = None

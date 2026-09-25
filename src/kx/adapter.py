@@ -99,6 +99,13 @@ def safe_join(root: Path, name: str) -> Path:
     return p
 
 
+def _is_network_error(exc) -> bool:
+    names = {type(e).__name__ for e in (exc, exc.__cause__, exc.__context__) if e is not None}
+    return bool(names & {"ConnectionError", "Timeout", "ReadTimeout", "ConnectTimeout",
+                         "NameResolutionError", "MaxRetryError", "ChunkedEncodingError",
+                         "gaierror", "OSError"})
+
+
 def _http_status(exc) -> int | None:
     resp = getattr(exc, "response", None)
     code = getattr(resp, "status_code", None)
@@ -129,7 +136,15 @@ class KaggleAdapter:
             raise KxError("error", "timed out loading the Kaggle SDK",
                           errors=["kaggle_timeout:authenticate"]) from exc
         except Exception as exc:  # noqa: BLE001 - token introspection failure etc.
-            raise CredentialUnavailable(type(exc).__name__) from exc
+            code = _http_status(exc)
+            if code in (401, 403) or (code is None and not _is_network_error(exc)):
+                raise CredentialUnavailable(type(exc).__name__) from exc
+            # A network outage or a 5xx is not a bad credential: retryable error.
+            label = f"http_{code}" if code else type(exc).__name__
+            raise KxError("error", f"could not reach Kaggle to check the credential ({label})",
+                          errors=[f"{label}:authenticate"],
+                          next_action={"kind": "run", "command": "kx status",
+                                       "instruction": "Check the network, then retry."}) from exc
         self._api = api
         self.username = api.get_config_value("username")
         return api
@@ -245,6 +260,21 @@ class KaggleAdapter:
             return found[0]
 
         return self._call("download_data_files", fn, timeout=timeout)
+
+    def download_file(self, slug: str, name: str, dest_dir: Path, timeout: float) -> Path:
+        """One named competition file (Kaggle may serve it zipped). Only for a
+        handful of files: per-file loops over many files hit HTTP 429."""
+
+        def fn(api):
+            dest_dir.mkdir(parents=True, exist_ok=True)
+            base = Path(name).name
+            api.competition_download_file(slug, name, path=str(dest_dir), force=True, quiet=True)
+            for cand in (dest_dir / base, dest_dir / f"{base}.zip"):
+                if cand.exists():
+                    return cand
+            raise FileNotFoundError("file not written")
+
+        return self._call("download_data_file", fn, timeout=timeout)
 
     # -- research (all readable without joining) --------------------------- #
     def pages(self, slug: str) -> list[dict]:
