@@ -1,0 +1,21 @@
+[{"stream_name":"stderr","time":8.724254447,"data":"/usr/local/lib/python3.12/dist-packages/nbformat/__init__.py:96: MissingIDFieldWarning: Cell is missing an id field, this will become a hard error in future nbformat versions. You may want to use `normalize()` on your notebooks before validations (available since nbformat 5.1.4). Previous versions of nbformat are fixing this issue transparently, and will stop doing so in the future.\n"}
+,{"stream_name":"stderr","time":8.724327955,"data":"  validate(nb)\n"}
+,{"stream_name":"stderr","time":10.027262725,"data":"0.00s - Debugger warning: It seems that frozen modules are being used, which may\n"}
+,{"stream_name":"stderr","time":10.027324252,"data":"0.00s - make the debugger miss breakpoints. Please pass -Xfrozen_modules=off\n"}
+,{"stream_name":"stderr","time":10.027333544,"data":"0.00s - to python to disable frozen modules.\n"}
+,{"stream_name":"stderr","time":10.027339818,"data":"0.00s - Note: Debugging will proceed. Set PYDEVD_DISABLE_FILE_VALIDATION=1 to disable this validation.\n"}
+,{"stream_name":"stderr","time":10.875397291,"data":"0.00s - Debugger warning: It seems that frozen modules are being used, which may\n"}
+,{"stream_name":"stderr","time":10.875432801,"data":"0.00s - make the debugger miss breakpoints. Please pass -Xfrozen_modules=off\n"}
+,{"stream_name":"stderr","time":10.875440011,"data":"0.00s - to python to disable frozen modules.\n"}
+,{"stream_name":"stderr","time":10.875446255,"data":"0.00s - Note: Debugging will proceed. Set PYDEVD_DISABLE_FILE_VALIDATION=1 to disable this validation.\n"}
+,{"stream_name":"stdout","time":20.147134894,"data":"SPIKE003_INPUT={\"base\": \"/kaggle/input/competitions/equity-post-HCT-survival-predictions\", \"csvs\": [\"/kaggle/input/competitions/equity-post-HCT-survival-predictions/data_dictionary.csv\", \"/kaggle/input/competitions/equity-post-HCT-survival-predictions/sample_submission.csv\", \"/kaggle/input/competitions/equity-post-HCT-survival-predictions/test.csv\", \"/kaggle/input/competitions/equity-post-HCT-survival-predictions/train.csv\"]}\n"}
+,{"stream_name":"stdout","time":21.893381201,"data":"SPIKE003_DONE {\"rows\": 3, \"cols\": [\"ID\", \"prediction\"], \"sample_cols\": [\"ID\", \"prediction\"], \"rerun\": null}\n"}
+,{"stream_name":"stderr","time":25.57043,"data":"/usr/local/lib/python3.12/dist-packages/mistune.py:435: SyntaxWarning: invalid escape sequence '\\|'\n"}
+,{"stream_name":"stderr","time":25.5704724,"data":"  cells[i][c] = re.sub('\\\\\\\\\\|', '|', cell)\n"}
+,{"stream_name":"stderr","time":25.787142713,"data":"/usr/local/lib/python3.12/dist-packages/nbconvert/filters/filter_links.py:36: SyntaxWarning: invalid escape sequence '\\_'\n"}
+,{"stream_name":"stderr","time":25.787171091,"data":"  text = re.sub(r'_', '\\_', text) # Escape underscores in display text\n"}
+,{"stream_name":"stderr","time":26.632709767,"data":"[NbConvertApp] Converting notebook __notebook__.ipynb to notebook\n"}
+,{"stream_name":"stderr","time":27.030053331,"data":"[NbConvertApp] Writing 4849 bytes to __notebook__.ipynb\n"}
+,{"stream_name":"stderr","time":30.158365618,"data":"[NbConvertApp] Converting notebook __notebook__.ipynb to html\n"}
+,{"stream_name":"stderr","time":31.257646617,"data":"[NbConvertApp] Writing 286460 bytes to __results__.html\n"}
+]

@@ -1,0 +1,16 @@
+{
+  "id": "ravijotsinha/kx-spike-003-notebook",
+  "title": "kx-spike-003-notebook",
+  "code_file": "predict.ipynb",
+  "language": "python",
+  "kernel_type": "notebook",
+  "is_private": true,
+  "enable_gpu": false,
+  "enable_internet": false,
+  "competition_sources": [
+    "equity-post-hct-survival-predictions"
+  ],
+  "dataset_sources": [],
+  "kernel_sources": [],
+  "model_sources": []
+}

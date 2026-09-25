@@ -1,0 +1,9 @@
+[{"stream_name":"stdout","time":1.75626203,"data":"SPIKE003C_ENV={\"comp\": \"/kaggle/input/competitions/um-game-playing-strength-of-mcts-variants\", \"rerun\": null, \"cwd\": \"/kaggle/working\"}\n"}
+,{"stream_name":"stdout","time":4.624918407,"data":"SPIKE003C_LOCAL_GATEWAY_DONE {\"exists\": true, \"rows\": 3}\n"}
+,{"stream_name":"stderr","time":7.503190178,"data":"/usr/local/lib/python3.12/dist-packages/mistune.py:435: SyntaxWarning: invalid escape sequence '\\|'\n"}
+,{"stream_name":"stderr","time":7.503242453,"data":"  cells[i][c] = re.sub('\\\\\\\\\\|', '|', cell)\n"}
+,{"stream_name":"stderr","time":7.820678573,"data":"/usr/local/lib/python3.12/dist-packages/nbconvert/filters/filter_links.py:36: SyntaxWarning: invalid escape sequence '\\_'\n"}
+,{"stream_name":"stderr","time":7.820740015,"data":"  text = re.sub(r'_', '\\_', text) # Escape underscores in display text\n"}
+,{"stream_name":"stderr","time":8.742057713,"data":"[NbConvertApp] Converting notebook __script__.ipynb to html\n"}
+,{"stream_name":"stderr","time":10.274107693,"data":"[NbConvertApp] Writing 280355 bytes to __results__.html\n"}
+]

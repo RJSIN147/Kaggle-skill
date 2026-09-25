@@ -1,0 +1,9 @@
+[{"stream_name":"stdout","time":10.383709912,"data":"SPIKE003_INPUT={\"base\": \"/kaggle/input/competitions/equity-post-HCT-survival-predictions\", \"csvs\": [\"/kaggle/input/competitions/equity-post-HCT-survival-predictions/data_dictionary.csv\", \"/kaggle/input/competitions/equity-post-HCT-survival-predictions/sample_submission.csv\", \"/kaggle/input/competitions/equity-post-HCT-survival-predictions/test.csv\", \"/kaggle/input/competitions/equity-post-HCT-survival-predictions/train.csv\"]}\n"}
+,{"stream_name":"stdout","time":12.242250584,"data":"SPIKE003_DONE {\"rows\": 3, \"cols\": [\"ID\", \"prediction\"], \"sample_cols\": [\"ID\", \"prediction\"], \"rerun\": null}\n"}
+,{"stream_name":"stderr","time":15.392137962,"data":"/usr/local/lib/python3.12/dist-packages/mistune.py:435: SyntaxWarning: invalid escape sequence '\\|'\n"}
+,{"stream_name":"stderr","time":15.39218773,"data":"  cells[i][c] = re.sub('\\\\\\\\\\|', '|', cell)\n"}
+,{"stream_name":"stderr","time":15.726099656,"data":"/usr/local/lib/python3.12/dist-packages/nbconvert/filters/filter_links.py:36: SyntaxWarning: invalid escape sequence '\\_'\n"}
+,{"stream_name":"stderr","time":15.726149922,"data":"  text = re.sub(r'_', '\\_', text) # Escape underscores in display text\n"}
+,{"stream_name":"stderr","time":16.629567860999998,"data":"[NbConvertApp] Converting notebook __script__.ipynb to html\n"}
+,{"stream_name":"stderr","time":18.257774265,"data":"[NbConvertApp] Writing 285600 bytes to __results__.html\n"}
+]
