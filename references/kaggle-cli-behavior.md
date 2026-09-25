@@ -378,25 +378,19 @@ independent plans (05-04, 05-05) each hit the rake and routed around it. It has 
 When a Kaggle call needs a seam, **pass the gateway in** — never resolve it from a module global
 that the caller cannot reach.
 
-### Assumption A1 — is `submissions.date` UTC? ⏳ **UNRESOLVED — awaiting the first real submission**
+### Assumption A1 — is `submissions.date` UTC? ✅ **CONFIRMED (live, 2026-09-25)**
 
-<!-- PLACEHOLDER (05-07 Task 3, blocking human-verify checkpoint). Fill from the first real,
-     human-supervised submission. Two things go here and NOWHERE else:
-       1. THE A1 VERDICT. `date` is a NAIVE ISO string with no tz suffix. The budget model
-          (check_submission.py) treats it as UTC and compares against datetime.now(timezone.utc).
-          Method: note `date -u` immediately before `submit.py --confirm`, then compare that UTC
-          wall-clock to the `date` the read-back returns.
-            - MATCH (within submission latency) => `date` IS UTC => **A1 CONFIRMED**.
-            - Differs by the local UTC offset  => `date` is LOCAL => **A1 REFUTED** => the budget's
-              day boundary is WRONG near midnight (the framework could refuse a submission the user
-              is entitled to, or permit one over the limit) => a BLOCKER for correction, not a
-              footnote.
-          Record: the observed submit-time UTC clock, the returned `date` value, and CONFIRMED/REFUTED.
-       2. The `competitions submit` SUCCESS-PATH output (server-authored; deliberately NEVER parsed
-          by the code — recorded for this fixture only). Record its SHAPE, not a raw buffer.
-     Confidence today: MEDIUM [ASSUMED]. Kaggle's API convention is UTC and the SDK parses a wire
-     timestamp, but the tz cannot be proven without spending one real, irreversible slot. -->
+**Evidence (spike 003, `.planning/spikes/003-code-comp-submit/`):** the user ran a real, human-approved
+late submission to `equity-post-HCT-survival-predictions` (ref `56536024`) on a machine at UTC+05:30.
+Read-back returned `date = "2026-09-25T00:56:32.697000"` (naive, no tz suffix); `date -u` read
+`2026-09-25T00:56:52` twenty seconds later, while local time was `06:26:52+0530`. The value matches
+the **UTC** wall clock, not local time → **A1 CONFIRMED**: `datetime.fromisoformat(row["date"])
+.replace(tzinfo=timezone.utc)` in the budget model is correct. Three further submissions the same
+minute (refs `56536040`, `56536065`, `56536074`) were consistent.
 
-**Status:** the framework **assumes UTC** (`datetime.fromisoformat(row["date"]).replace(tzinfo=timezone.utc)`).
-This is the one fact in Phase 5 that **cannot** be established without spending a real submission slot, so it
-is gated behind the 05-07 Task 3 human-verify checkpoint and is **not** claimed as verified here.
+**Success-path output SHAPE (never parsed by the code):**
+
+| Submit form | stdout on success |
+|---|---|
+| File upload (`-f main.py`, e.g. ConnectX) | a tqdm upload progress bar, then `Successfully submitted to <Competition Title>` |
+| Code competition (`-k <owner/slug> -v <N> -f <output-file>`) | **nothing at all** (exit 0) — success is observable ONLY by read-back (`competitions submissions`) |
