@@ -12,6 +12,7 @@ from string import Template
 
 from kx import experiment
 from kx.metrics import REGISTRY
+from kx.util import KxError
 from kx.workspace import template_text
 
 TEMPLATES = {
@@ -22,6 +23,15 @@ TEMPLATES = {
         "needs_cv": True,
         "needs_metric": True,
         "summary": "GBDT-ready tabular CV with an AI-written fold scheme",
+    },
+    "timeseries": {
+        "file": "timeseries/train.py.tmpl",
+        "modalities": {"tabular"},
+        "modes": {"csv_upload", "code_kernel"},
+        "needs_cv": True,
+        "needs_metric": True,
+        "auto": False,  # chosen by the AI (with a recorded reason) for time-ordered data
+        "summary": "walk-forward (expanding window) CV for time-ordered data",
     },
 }
 
@@ -42,7 +52,7 @@ def select(effective: dict) -> tuple[str | None, str]:
         if pick and pick(effective):
             return name, f"profile matches {name} ({info['summary']})"
     for name, info in TEMPLATES.items():
-        if info.get("select"):
+        if info.get("select") or info.get("auto") is False:
             continue
         if mode in info["modes"] and modality in info["modalities"]:
             return name, f"profile is {modality} + {mode}"
@@ -83,9 +93,38 @@ def render(name: str, spec: dict, profile: dict, metric_cfg: dict | None) -> str
         "N_FOLDS_LIT": repr(int((spec.get("cv") or {}).get("n_folds") or 5)),
         "EXPECTED_OUTPUT_LIT": repr(eff.get("expected_output") or "submission.csv"),
         "API_SERVED_LIT": repr(bool(eff.get("api_served"))),
+        "HARNESS": template_text("common/harness.py.tmpl").rstrip(),
+        "HOST_METRIC": host_metric_block(profile.get("_ws"), metric_cfg),
     }
     values.update(info.get("extra_values", lambda s, p: {})(spec, profile))
     return Template(template_text(info["file"])).safe_substitute(**values)
+
+
+def host_metric_block(ws, metric_cfg: dict | None) -> str:
+    """Inline the user-confirmed host metric kernel as a `host_metric` namespace.
+
+    Kernels are single files, so the code travels inside the script (as a string
+    literal, executed into its own namespace so its names never clash). The sha256
+    recorded at adoption is re-checked here.
+    """
+    import hashlib
+
+    hm = (metric_cfg or {}).get("host_metric")
+    if not hm or ws is None:
+        return "host_metric = None  # no host metric kernel adopted"
+    code = (Path(ws) / hm["file"]).read_text()
+    if hashlib.sha256(code.encode()).hexdigest() != hm["sha256"]:
+        raise KxError("error", "the adopted host metric file changed since the user confirmed it",
+                      errors=["host_metric_changed"],
+                      next_action={"kind": "run", "command": f"kx research metric --use-metric {hm['ref']}"})
+    return (f"# === HOST METRIC ({hm['ref']}, confirmed by the user; sha256 {hm['sha256'][:12]}) ===\n"
+            f"HOST_METRIC_SOURCE = {code!r}\n\n\n"
+            "def _load_host_metric():\n"
+            "    import types\n\n"
+            "    ns = {'__name__': 'host_metric'}\n"
+            "    exec(compile(HOST_METRIC_SOURCE, 'host_metric.py', 'exec'), ns)\n"
+            "    return types.SimpleNamespace(**ns)\n\n\n"
+            "host_metric = _load_host_metric()")
 
 
 def harness_hash(code: str) -> str | None:

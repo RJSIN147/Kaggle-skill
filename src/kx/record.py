@@ -18,6 +18,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import re
 import statistics
 import uuid
 from pathlib import Path
@@ -74,8 +75,12 @@ def scan_log(log_text: str) -> bool:
     return any(m in text for m in KERNEL_ERROR_MARKERS)
 
 
+_ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+
+
 def traceback_tail(log_text: str) -> str | None:
     _, err = log_streams(log_text)
+    err = _ANSI.sub("", err)
     i = err.rfind("Traceback (most recent call last)")
     if i < 0:
         return None
@@ -139,6 +144,8 @@ def classify(run: dict, output_dir: Path, log_text: str | None, metric_cfg: dict
         if log_text is None or scan_log(log_text):
             return "FAILED", "kernel_error", None
     else:
+        if run.get("timed_out"):
+            return "FAILED", "runtime_limit", None
         if run.get("exit_code") not in (0, None):
             return "FAILED", "kernel_error", None
         if log_text is not None and scan_log(log_text):

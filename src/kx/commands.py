@@ -67,7 +67,26 @@ def _profile_summary(profile: dict) -> dict:
             "title": (profile.get("competition") or {}).get("title"),
             "user_has_entered": (profile.get("competition") or {}).get("user_has_entered"),
             "sync_pass": profile.get("sync_pass"), "confirmed": bool(profile.get("confirmed")),
-            **{k: eff.get(k) for k in keys}}
+            **{k: eff.get(k) for k in keys},
+            "type_guides": type_guides(eff) if profile.get("confirmed") else None}
+
+
+def type_guides(eff: dict) -> list[str]:
+    """The per-type guides to load for a confirmed profile (and no others)."""
+    mode, modality = eff.get("submission_mode"), eff.get("modality")
+    base = "references/types/"
+    if mode == "agent":
+        return [base + "simulation.md"]
+    if mode == "writeup":
+        return [base + "writeup.md"]
+    if mode not in ("csv_upload", "code_kernel"):
+        return [base + "other.md"]
+    guides = [base + ("tabular.md" if modality == "tabular" else
+                      "deep-learning.md" if modality in ("image", "text", "audio") else
+                      "other.md")]
+    if mode == "code_kernel":
+        guides.append(base + "code-competition.md")
+    return guides
 
 
 # --------------------------------------------------------------------------- #
@@ -170,13 +189,21 @@ def cmd_sync(ws: Path, args, adapter) -> dict:
     workspace.save_config(ws, cfg)
 
     download = None
-    if getattr(args, "download", False):
+    if getattr(args, "download", False) or getattr(args, "force_download", False):
         from kx import data as kxdata
-        download = kxdata.download_bundle(ws, adapter, profile)
-        warnings += download.get("warnings", [])
+        download = kxdata.download_bundle(ws, adapter, profile,
+                                          force=getattr(args, "force_download", False))
+        state = workspace.load_state(ws)
+        state["data"] = download
+        workspace.save_state(ws, state)
 
     eff = effective(profile)
-    if not profile["confirmed"]:
+    if not profile["confirmed"] and eff["submission_mode"] == "unknown":
+        na = E.run("kx research pages",
+                   "The mode is unknown from the structured facts. Fetch the competition pages, "
+                   "read the Evaluation / submission-requirements page (untrusted text), propose a "
+                   "mode to the user, then `kx confirm --mode <mode> --note '<evidence>'`.")
+    elif not profile["confirmed"]:
         na = E.ask_user(
             "Show the user the profile evidence in data.profile (mode, modality, metric, limits, "
             "reasons) and ask them to confirm or correct it"
@@ -188,8 +215,10 @@ def cmd_sync(ws: Path, args, adapter) -> dict:
     else:
         na = E.run("kx status")
     if not comp.get("user_has_entered"):
-        warnings.append("you have not joined this competition: data mounts and submissions need "
-                        "the user to accept the rules in the browser, then re-run kx sync")
+        warnings.append(f"not joined: the nested file listing, kernel data mounts, downloads and "
+                        f"submissions need the user to accept the rules at "
+                        f"https://www.kaggle.com/competitions/{profile['slug']}/rules, then "
+                        f"re-run kx sync")
     return E.make("sync", "ok",
                   f"profiled {profile['canonical_ref']}: {eff['submission_mode']}, {eff['modality']}",
                   data={"profile": _profile_summary(profile), "download": download},
@@ -231,16 +260,21 @@ def cmd_confirm(ws: Path, args, adapter) -> dict:
     tmpl, why = templates_registry.select(eff)
     if eff["submission_mode"] == "writeup":
         na = E.run("kx submit --writeup", "Writeup competitions get a drafting checklist.")
-    elif _metric_cfg(ws) is None and (tmpl is None or
-                                      templates_registry.TEMPLATES[tmpl].get("needs_metric")):
+    elif tmpl is None:
+        na = E.ask_user(f"kx has no experiment template here ({why}). Follow the type guide and "
+                        "agree the approach with the user; kx cannot run or submit this type.")
+    elif _metric_cfg(ws) is None and templates_registry.TEMPLATES[tmpl].get("needs_metric"):
         na = E.run(f"kx metric {eff.get('metric_suggestion') or '<name>'}",
                    "Confirm the metric key matches the evaluation metric "
                    f"({eff.get('metric')!r}); use `kx metric custom` when none fits.")
     else:
         na = E.run("kx new --idea '...' --hypothesis '...'")
+    guides = type_guides(eff)
+    na["instruction"] = (f"First read {', '.join(guides)} (under the skill dir) and no other type "
+                         "guide. " + na.get("instruction", "")).strip()
     return E.make("confirm", "ok", f"profile confirmed: {eff['submission_mode']}, {eff['modality']}",
                   data={"profile": _profile_summary(profile), "template": tmpl,
-                        "template_reason": why}, next_action=na)
+                        "template_reason": why, "type_guides": guides}, next_action=na)
 
 
 # --------------------------------------------------------------------------- #
@@ -301,6 +335,15 @@ def cmd_new(ws: Path, args, adapter) -> dict:
     info = templates_registry.TEMPLATES[name]
     metric_cfg = _require_metric(ws, eff.get("metric_suggestion")) if info.get("needs_metric") \
         else _metric_cfg(ws)
+    idea_row = None
+    if getattr(args, "from_idea", None):
+        from kx import research
+
+        idea_row = next((r for r in research.read_ideas(ws) if r.get("n") == args.from_idea), None)
+        if idea_row is None:
+            raise KxError("invalid", f"no research idea #{args.from_idea}", errors=["no_such_idea"])
+        args.idea = args.idea or f"{idea_row['idea']} [from {idea_row['source_type']}: " \
+                                 f"{idea_row['source']}]"
     for flag in ("idea", "hypothesis"):
         if not (getattr(args, flag) or "").strip():
             raise KxError("invalid", f"--{flag} is required", errors=[f"{flag}_required"])
@@ -319,10 +362,14 @@ def cmd_new(ws: Path, args, adapter) -> dict:
         spec["local"] = {"subsample": args.subsample}
     if args.after:
         spec["sources"]["kernels"] = [f"@{a}" for a in args.after]
-    code = templates_registry.render(name, spec, profile | {"effective": eff}, metric_cfg)
+    code = templates_registry.render(name, spec, profile | {"effective": eff, "_ws": ws}, metric_cfg)
     (exp_dir / spec["code_file"]).write_text(code)
     spec["harness_sha256"] = experiment.harness_hash(code)
     write_json(exp_dir / "experiment.json", spec)
+    if idea_row:
+        from kx import research
+
+        research.mark_idea(ws, idea_row["n"], exp_id)
     tried = _tried(ws)
     return E.make(
         "new", "ok", f"scaffolded {exp_id} from the {name} template",
@@ -399,13 +446,24 @@ def cmd_run(ws: Path, args, adapter) -> dict:
                       data={"exp_id": exp_dir.name, "result": existing.get("record_status")},
                       next_action=E.run("kx status"))
 
-    if spec.get("runtime", {}).get("target") == "local" and not (existing and not args.rerun):
+    if spec.get("runtime", {}).get("target") == "local":
         from kx import local
 
+        lr = exp_dir / "local_run.json"
+        prev = read_json(lr) if lr.exists() else None
+        if prev and prev.get("recorded") and not args.rerun:
+            return E.make("run", "ok", f"{exp_dir.name} is already recorded "
+                                       f"({prev.get('record_status')}); use --rerun to run again",
+                          data={"exp_id": exp_dir.name, "result": prev.get("record_status")},
+                          next_action=E.run("kx status"))
         _validate_spec(ws, exp_dir, spec, profile)
+        _require_confirmed(profile)
         _require_metric(ws)
         run, log_text = local.run_local(ws, exp_dir, spec, profile, timeout=args.wait_local)
-        return _record_and_envelope(ws, exp_dir, spec, run, log_text, [], {"backend": "local"})
+        warnings = [f"local run on a {run['subsample']:g} subsample: not comparable to full-data "
+                    "CV"] if run.get("subsample") else []
+        return _record_and_envelope(ws, exp_dir, spec, run, log_text, warnings,
+                                    {"backend": "local", "seconds": run["seconds"]})
 
     warnings: list[str] = []
     if existing is None or args.rerun:

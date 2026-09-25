@@ -1,0 +1,124 @@
+"""kx time-series experiment $EXP_ID — walk-forward validation (a Kaggle script kernel).
+
+Validation windows move forward in time; each fold trains only on rows before its
+window (an expanding window), so the CV never sees the future. Test predictions
+come from one model refit on all training history.
+
+Edit ONLY the AI BLOCK. The KX HARNESS is hashed at `kx new`; `kx run` refuses a
+modified harness. Exceptions are never caught.
+"""
+import json
+import os
+import platform
+import sys
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+
+EXP_ID = $EXP_ID_LIT
+IDEA = $IDEA_LIT
+COMPETITION_REF = $COMPETITION_REF_LIT
+SLUG = $SLUG_LIT
+SAMPLE_SUBMISSION = $SAMPLE_LIT
+TRAIN_FILE = $TRAIN_LIT
+TEST_FILE = $TEST_LIT
+EXPECTED_OUTPUT = $OUTPUT_LIT
+METRIC = $METRIC_LIT
+METRIC_INFO = $METRIC_INFO_LIT
+N_FOLDS = $N_FOLDS_LIT
+SEED = 42
+TARGET = None   # None: the sample submission's second column
+ID_COL = None   # None: the sample submission's first column
+TIME_COL = "date"
+
+
+$HOST_METRIC
+
+# === AI BLOCK: write the walk-forward scheme, features and model ================
+def assign_folds(train: pd.DataFrame, y: pd.Series, test: pd.DataFrame) -> np.ndarray:
+    """Walk-forward folds: N_FOLDS consecutive windows at the end of train, each as
+    long as the test period. Fold k validates window k; rows before window 0 are
+    -1 (train-only). Folds must be in time order: fold k trains on folds < k."""
+    t = pd.to_datetime(train[TIME_COL])
+    t_test = pd.to_datetime(test[TIME_COL])
+    horizon = (t_test.max() - t_test.min()) + pd.Timedelta(days=1)
+    end = t.max() + pd.Timedelta(days=1)
+    folds = np.full(len(train), -1, dtype=int)
+    for k in range(N_FOLDS):
+        lo = end - (N_FOLDS - k) * horizon
+        hi = lo + horizon
+        folds[((t >= lo) & (t < hi)).to_numpy()] = k
+    return folds
+
+
+def build_features(train: pd.DataFrame, test: pd.DataFrame):
+    """Return (X_train, X_test). Lag/rolling features must only use the past:
+    build them on train+test sorted by time, shifted by at least the horizon."""
+    both = pd.concat([train.drop(columns=[TARGET]), test], ignore_index=True)
+    d = pd.to_datetime(both[TIME_COL])
+    both["dow"], both["dom"], both["month"] = d.dt.dayofweek, d.dt.day, d.dt.month
+    both = both.drop(columns=[c for c in (TIME_COL, ID_COL) if c in both.columns])
+    for col in both.columns:
+        if both[col].dtype == object or str(both[col].dtype) in ("string", "str"):
+            both[col] = both[col].astype("category")
+    return both.iloc[: len(train)].reset_index(drop=True), both.iloc[len(train):].reset_index(drop=True)
+
+
+def make_model(seed: int):
+    import lightgbm as lgb
+    from sklearn.compose import TransformedTargetRegressor
+
+    base = lgb.LGBMRegressor(n_estimators=300, learning_rate=0.05, random_state=seed, verbose=-1)
+    if METRIC in ("rmsle",):  # fit log1p(y) so the loss matches the metric
+        return TransformedTargetRegressor(regressor=base, func=np.log1p, inverse_func=np.expm1)
+    return base
+
+
+def postprocess_submission(sub, test_pred, classes):
+    if METRIC == "rmsle":
+        sub[TARGET] = np.clip(sub[TARGET], 0, None)
+    return sub
+# === END AI BLOCK ===============================================================
+
+
+# === KX HARNESS (do not edit) ===================================================
+$HARNESS
+
+
+def main():
+    train, test = _load()
+    train = train.sort_values(TIME_COL, kind="stable").reset_index(drop=True)
+    out = _output_dir()
+    y = train[TARGET]
+    folds = np.asarray(assign_folds(train, y, test), dtype=int)
+    assert folds.shape == (len(train),), "assign_folds must return one fold id per train row"
+    used = sorted(int(f) for f in np.unique(folds) if f >= 0)
+    assert used == list(range(N_FOLDS)), f"folds used {used} != range({N_FOLDS})"
+    t = pd.to_datetime(train[TIME_COL])
+    for k in used[1:]:
+        assert t[folds == k].min() > t[folds == k - 1].max(), "walk-forward folds must be in time order"
+    X, X_test = build_features(train, test)
+
+    oof = np.full((len(train), 1), np.nan)
+    fold_scores = []
+    for k in used:
+        tr = (folds < k) & (folds >= -1)
+        va = folds == k
+        assert t[tr].max() < t[va].min(), "a training row is not before its validation window"
+        model = make_model(SEED + k)
+        model.fit(X[tr], y[tr])
+        p_va = np.asarray(model.predict(X[va]), dtype=float)
+        oof[va, 0] = p_va
+        fold_scores.append(_score(y[va], p_va, None, train[va]))
+        print(f"fold {k}: train<{t[va].min().date()} {METRIC}={fold_scores[-1]:.6f}", flush=True)
+    model = make_model(SEED)
+    model.fit(X, y)
+    test_pred = np.asarray(model.predict(X_test), dtype=float).reshape(-1, 1)
+
+    _write_outputs(out, train=train, test=test, y=y, folds=folds, oof=oof, test_pred=test_pred,
+                   fold_scores=fold_scores, classes=None, classification=False,
+                   extra={"cv_scheme": "walk-forward (expanding window)"})
+
+
+main()

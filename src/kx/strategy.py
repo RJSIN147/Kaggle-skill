@@ -27,7 +27,8 @@ def fmt_score(mean, std) -> str:
 
 
 def best_row(rows: list[dict], greater_is_better: bool) -> dict | None:
-    winners = [r for r in rows if r.get("status") == "SUCCESS" and _is_number(r.get("cv_mean"))]
+    winners = [r for r in rows if r.get("status") == "SUCCESS" and _is_number(r.get("cv_mean"))
+               and not r.get("subsample")]  # a subsample CV is not comparable
     if not winners:
         return None
     return (max if greater_is_better else min)(winners, key=lambda r: r["cv_mean"])
@@ -48,8 +49,10 @@ def tried_lines(rows: list[dict]) -> list[str]:
     out = []
     for r in rows:
         v = r.get("verdict_path") or ""
+        sub = f" (subsample {r['subsample']:g})" if isinstance(r.get("subsample"), (int, float)) \
+            else ""
         out.append(f"- {r.get('exp_id')} | {r.get('idea') or '(no idea recorded)'} | "
-                   f"{r.get('status')} | {fmt_score(r.get('cv_mean'), r.get('cv_std'))} | "
+                   f"{r.get('status')} | {fmt_score(r.get('cv_mean'), r.get('cv_std'))}{sub} | "
                    + (f"[verdict]({v})" if v else "(no verdict)"))
     return out
 
