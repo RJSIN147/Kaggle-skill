@@ -1,5 +1,5 @@
 ---
-status: partial
+status: complete
 phase: 05-submission-leaderboard-tracking
 source: [05-07-PLAN.md, 05-07-SUMMARY.md]
 started: 2026-07-12
@@ -8,7 +8,7 @@ updated: 2026-09-25
 
 ## Current Test
 
-[awaiting first real Kaggle submission — requires live credentials and spends an irreversible daily slot]
+[none — A1 confirmed 2026-09-25 (see Test 1 result)]
 
 ## Tests
 
@@ -48,7 +48,14 @@ expected: returned `date` matches the UTC wall clock from step 2 → **A1 CONFIR
 If it differs by your local UTC offset → **A1 REFUTED**, and the day-boundary handling in
 `check_submission.py`'s budget accounting must be corrected.
 
-result: [pending]
+result: pass — **A1 CONFIRMED** (2026-09-25). Real human-approved late submission to
+`equity-post-HCT-survival-predictions` (ref `56536024`) from a UTC+05:30 machine: read-back
+`date = 2026-09-25T00:56:32.697000`; `date -u` = `00:56:52` (local `06:26:52+0530`) → UTC.
+Caveat, stated plainly: the submission was made with the raw `kaggle competitions submit -k -v`
+CLI during v2 spike 003, NOT through `check_submission.py` / `submit.py`, so procedure steps
+1 and 3–5 (the framework's gate, read-back recovery and `submissions.jsonl` row) were not
+exercised by this check. Only the A1 fact (step 6) is established. Evidence:
+`.planning/spikes/003-code-comp-submit/README.md`.
 
 **On completion:** fill the `<!-- PLACEHOLDER -->` in `references/kaggle-cli-behavior.md`
 with the observed values and the verdict.
@@ -58,9 +65,9 @@ with the observed values and the verdict.
 ## Summary
 
 total: 1
-passed: 0
+passed: 1
 issues: 0
-pending: 1
+pending: 0
 skipped: 0
 blocked: 0
 
