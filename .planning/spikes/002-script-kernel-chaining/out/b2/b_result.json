@@ -1,0 +1,27 @@
+{
+  "input_files": [
+    "/kaggle/input/notebooks/ravijotsinha/kx-spike-002-a/__output__.json",
+    "/kaggle/input/notebooks/ravijotsinha/kx-spike-002-a/__results__.html",
+    "/kaggle/input/notebooks/ravijotsinha/kx-spike-002-a/__script__.ipynb",
+    "/kaggle/input/notebooks/ravijotsinha/kx-spike-002-a/__script__.py",
+    "/kaggle/input/notebooks/ravijotsinha/kx-spike-002-a/custom.css",
+    "/kaggle/input/notebooks/ravijotsinha/kx-spike-002-a/info.json",
+    "/kaggle/input/notebooks/ravijotsinha/kx-spike-002-a/meta.json",
+    "/kaggle/input/notebooks/ravijotsinha/kx-spike-002-a/model.pkl",
+    "/kaggle/input/notebooks/ravijotsinha/kx-spike-002-a/sub/nested.txt"
+  ],
+  "model_paths": [
+    "/kaggle/input/notebooks/ravijotsinha/kx-spike-002-a/model.pkl"
+  ],
+  "loaded": {
+    "version": "A-v2",
+    "weights": [
+      1,
+      2,
+      3
+    ]
+  },
+  "nested_paths": [
+    "/kaggle/input/notebooks/ravijotsinha/kx-spike-002-a/sub/nested.txt"
+  ]
+}

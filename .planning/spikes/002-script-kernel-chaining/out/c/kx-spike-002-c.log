@@ -1,0 +1,9 @@
+[{"stream_name":"stdout","time":0.888630547,"data":"SPIKE002_C_START\n"}
+,{"stream_name":"stdout","time":10.888819511,"data":"SPIKE002_C_TICK 0\n"}
+,{"stream_name":"stdout","time":20.88948049,"data":"SPIKE002_C_TICK 1\n"}
+,{"stream_name":"stdout","time":30.889949746,"data":"SPIKE002_C_TICK 2\n"}
+,{"stream_name":"stdout","time":40.890560249,"data":"SPIKE002_C_TICK 3\n"}
+,{"stream_name":"stdout","time":50.891084398,"data":"SPIKE002_C_TICK 4\n"}
+,{"stream_name":"stdout","time":60.891724513,"data":"SPIKE002_C_TICK 5\n"}
+,{"stream_name":"stdout","time":70.892175137,"data":"SPIKE002_C_TICK 6\n"}
+]

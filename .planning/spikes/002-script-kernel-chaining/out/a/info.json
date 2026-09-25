@@ -1,0 +1,31 @@
+{
+  "version": "A-v1",
+  "argv": [
+    "/kaggle/src/script.py"
+  ],
+  "__file__": "/kaggle/src/script.py",
+  "cwd": "/kaggle/working",
+  "python": "3.12.13",
+  "ipykernel_loaded": false,
+  "kaggle_env_keys": [
+    "KAGGLE_API_V1_TOKEN",
+    "KAGGLE_CONTAINER_NAME",
+    "KAGGLE_DATA_PROXY_PROJECT",
+    "KAGGLE_DATA_PROXY_TOKEN",
+    "KAGGLE_DATA_PROXY_URL",
+    "KAGGLE_DOCKER_IMAGE",
+    "KAGGLE_GCP_ZONE",
+    "KAGGLE_GRPC_DATA_PROXY_URL",
+    "KAGGLE_KERNEL_INTEGRATIONS",
+    "KAGGLE_KERNEL_RUN_TYPE",
+    "KAGGLE_URL_BASE",
+    "KAGGLE_USER_SECRETS_TOKEN"
+  ],
+  "run_type": "Batch",
+  "input_tree": [
+    "/kaggle/input/ (1 dirs, 0 files) e.g. []",
+    "/kaggle/input/competitions/ (1 dirs, 0 files) e.g. []",
+    "/kaggle/input/competitions/titanic/ (0 dirs, 3 files) e.g. ['gender_submission.csv', 'test.csv', 'train.csv']"
+  ],
+  "working_exists": true
+}
