@@ -88,6 +88,8 @@ $HARNESS
 
 def main():
     train, test = _load()
+    if "prepare" in globals():  # optional AI hook: derive targets, join extra files
+        train, test = globals()["prepare"](train, test)
     train = train.sort_values(TIME_COL, kind="stable").reset_index(drop=True)
     out = _output_dir()
     y = train[TARGET]

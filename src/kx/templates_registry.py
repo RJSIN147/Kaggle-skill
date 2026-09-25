@@ -218,7 +218,15 @@ def host_metric_block(ws, metric_cfg: dict | None) -> str:
             "    ns = {'__name__': 'host_metric'}\n"
             "    exec(compile(HOST_METRIC_SOURCE, 'host_metric.py', 'exec'), ns)\n"
             "    return types.SimpleNamespace(**ns)\n\n\n"
-            "host_metric = _load_host_metric()")
+            "class _LazyHostMetric:\n"
+            "    \"\"\"Loaded on first use, so the AI block can install its dependencies first\n"
+            "    (e.g. offline wheels from an attached kernel).\"\"\"\n"
+            "    _ns = None\n\n"
+            "    def __getattr__(self, name):\n"
+            "        if _LazyHostMetric._ns is None:\n"
+            "            _LazyHostMetric._ns = _load_host_metric()\n"
+            "        return getattr(_LazyHostMetric._ns, name)\n\n\n"
+            "host_metric = _LazyHostMetric()")
 
 
 AI_START, AI_END = "# === AI BLOCK", "# === END AI BLOCK"
