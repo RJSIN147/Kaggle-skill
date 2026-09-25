@@ -1,0 +1,14 @@
+{
+  "id": "ravijotsinha/kx-spike-003-api-served",
+  "title": "kx-spike-003-api-served",
+  "code_file": "predict.py",
+  "language": "python",
+  "kernel_type": "script",
+  "is_private": true,
+  "enable_gpu": false,
+  "enable_internet": false,
+  "competition_sources": ["um-game-playing-strength-of-mcts-variants"],
+  "dataset_sources": [],
+  "kernel_sources": [],
+  "model_sources": []
+}

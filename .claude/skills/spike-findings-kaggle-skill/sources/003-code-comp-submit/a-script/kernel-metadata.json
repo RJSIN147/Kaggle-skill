@@ -1,0 +1,14 @@
+{
+  "id": "ravijotsinha/kx-spike-003-script",
+  "title": "kx-spike-003-script",
+  "code_file": "predict.py",
+  "language": "python",
+  "kernel_type": "script",
+  "is_private": true,
+  "enable_gpu": false,
+  "enable_internet": false,
+  "competition_sources": ["equity-post-hct-survival-predictions"],
+  "dataset_sources": [],
+  "kernel_sources": [],
+  "model_sources": []
+}

@@ -1,0 +1,18 @@
+{
+  "self_play_statuses": [
+    "DONE",
+    "DONE"
+  ],
+  "vs": {
+    "random": {
+      "episodes": 20,
+      "wins": 20,
+      "losses": 0
+    },
+    "negamax": {
+      "episodes": 20,
+      "wins": 16,
+      "losses": 3
+    }
+  }
+}
