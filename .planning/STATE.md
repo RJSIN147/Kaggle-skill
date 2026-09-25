@@ -3,10 +3,10 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Kaggle-general
 status: planning
-last_updated: "2026-09-25T01:49:38.647Z"
+last_updated: "2026-09-25T02:09:13.000Z"
 last_activity: 2026-09-25
 progress:
-  total_phases: 0
+  total_phases: 5
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -20,14 +20,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-09-25)
 
 **Core value:** One clean end-to-end experiment cycle — empty folder to an idea run, its result and reasoning logged to the ledger, and the strategy doc updated.
-**Current focus:** Planning next milestone (v2.0 Kaggle-general)
+**Current focus:** Phase 6 — kx Core & Live Kernel Loop (milestone v2.0 Kaggle-general, Phases 6-10)
 
 ## Current Position
 
-Phase: Not started (defining requirements)
-Plan: —
-Status: Defining requirements
-Last activity: 2026-09-25 — Milestone v2.0 started
+Phase: 6 of 10 (kx Core & Live Kernel Loop), the first of the 5 v2.0 phases
+Plan: Not planned yet
+Status: Ready to plan (the v2.0 roadmap is created and awaiting user approval)
+Last activity: 2026-09-25 — v2.0 roadmap created: Phases 6-10, 38/38 requirements mapped
+
+Progress: [░░░░░░░░░░] 0% (v2.0)
 
 ## Performance Metrics
 
@@ -82,6 +84,10 @@ Recent decisions affecting current work:
 - [Phase 04]: 04-05: the one opt-in live GPU push DEFERRED to operator (deliberate, not skipped/failed) — the plan scopes it as NOT a phase blocker; phase is green from fixtures (199 passed) independent of the live run. Operator to confirm A1 (T4×2 accelerator string), A2 (kernels-status render vs _STATUS_RE), A3 (kernel-log shape + _KERNEL_ERROR_MARKERS coverage), A4 (kernels-push version string vs push_kernel.py regex) into references/kaggle-cli-behavior.md.
 - [Phase 04]: 04-06: kernel_run.json.status is authoritative — status in {ERROR, CANCEL_ACKNOWLEDGED} classifies FAILED(kernel_error) BEFORE result.json validation (CR-01); exact membership only, never echoed.
 - [Phase 04]: 04-06: WR-03 — an unreadable/missing --kernel-log fails CLOSED to FAILED(kernel_error) instead of deferring to a stale result.json; kernel_error reused, local path unchanged.
+- Roadmap v2.0: Phases 6-10 continue v1's numbering. Every phase is `**Mode:** mvp` with a user-story goal, and its vertical slice is a real `kx` invocation driving real Kaggle calls end to end. All phases are non-frontend (UI-SPEC gate N/A).
+- Roadmap v2.0: Every phase carries at least one LIVE success criterion on a real competition, run inside the phase, never deferred to an operator step (the v1 retrospective lesson). Live submits are human-run with `!`, go only to closed competitions still open to late submissions or to perpetual sandboxes, and never to rsna-knee-abnormality-detection or cooked-or-not.
+- Roadmap v2.0: The basic script-kernel run (RUN-01), the pass-1 profile facts (PROF-01), the tabular template (TMPL-01) and the standard OOF/test format (ENS-01) all land in Phase 6, because the first live cycle needs them. Fixing ENS-01 with the first template avoids retrofitting later templates.
+- Roadmap v2.0: CORE-05 (lean SKILL.md with per-type references) moves to Phase 7, because type guidance loads only for the confirmed type (PROF-04). TMPL-03 moves to Phase 7 to give TMPL-06's override path a real second template. RUN-03 (the unified resolver) goes to Phase 8 with local runs (RUN-06).
 
 ### Pending Todos
 
@@ -95,6 +101,13 @@ Research flags to resolve during phase planning:
 - ~~Phase 5: the code-competition submission path needs validation for the target competition type.~~ RESOLVED by spike 003 (2026-09-25): `submit <ref> -k -v -f` with a script kernel version scores, including API-served competitions. The competition type now comes from the SDK profile (spike 001).
 - Phase 2: `competitions download --unzip` reliability on CLI 2.x needs direct verification.
 - Outstanding human verification (01-03): run discriminating egress probe (example.org/example.net/wikipedia.org/google.com/httpbin.org, declining prompts) to settle whether an undocumented pre-allowed set exists for the local CLI sandbox — the example.com anomaly
+
+v2.0 research flags (spike frontier). Each is noted as a risk on the phase that touches it, not as a requirement:
+
+- Phase 7: download the bundle once and extract it safely. Per-file downloads hit 429, and `--unzip` is unreliable; this is the v2 home of the Phase 2 concern above. `artifact_upload` and writeup have no submit path in v2 (SUB-F1 is future).
+- Phase 8: the mount paths for `dataset_sources`/`model_sources` are unverified, and internet-off pretrained weights depend on them. `kernel_sources` pins are silently dropped. It is unverified how a run resumes from a cancelled version's checkpoint. `docker_image` pinning (RUN-F2) and the T4×2 accelerator string (RUN-F3) are future. Live-probe early in the phase.
+- Phase 9: csv_upload through a v2 profile has never run live end to end, and writeup guidance has never been exercised live.
+- Phase 10: RES-04 runs host metric code, a trust boundary, so run it on Kaggle via `kernel_sources` and only after the AI confirms the match.
 
 ### Quick Tasks Completed
 
@@ -121,9 +134,10 @@ Items acknowledged at the v1.0 milestone close on 2026-09-25:
 ## Session Continuity
 
 Last session: 2026-09-25
-Stopped at: v1.0 archived (milestones/); v2.0 milestone being defined
+Stopped at: v2.0 roadmap created (Phases 6-10, 38/38 requirements mapped); awaiting user approval
 Resume file: None
 
 ## Operator Next Steps
 
-- Start the next milestone with /gsd-new-milestone
+- Review and approve the v2.0 roadmap in `.planning/ROADMAP.md` (the orchestrator commits after approval).
+- Then start Phase 6 with `/gsd-discuss-phase 6`, or go straight to `/gsd-plan-phase 6`.

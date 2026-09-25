@@ -124,11 +124,56 @@ Which phases cover which requirements. Filled in during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
+| CORE-01 | Phase 6 | Pending |
+| CORE-02 | Phase 6 | Pending |
+| CORE-03 | Phase 6 | Pending |
+| CORE-04 | Phase 6 | Pending |
+| CORE-05 | Phase 7 | Pending |
+| CORE-06 | Phase 6 | Pending |
+| CORE-07 | Phase 6 | Pending |
+| PROF-01 | Phase 6 | Pending |
+| PROF-02 | Phase 7 | Pending |
+| PROF-03 | Phase 7 | Pending |
+| PROF-04 | Phase 7 | Pending |
+| PROF-05 | Phase 7 | Pending |
+| TMPL-01 | Phase 6 | Pending |
+| TMPL-02 | Phase 8 | Pending |
+| TMPL-03 | Phase 7 | Pending |
+| TMPL-04 | Phase 9 | Pending |
+| TMPL-05 | Phase 9 | Pending |
+| TMPL-06 | Phase 7 | Pending |
+| RUN-01 | Phase 6 | Pending |
+| RUN-02 | Phase 8 | Pending |
+| RUN-03 | Phase 8 | Pending |
+| RUN-04 | Phase 8 | Pending |
+| RUN-05 | Phase 8 | Pending |
+| RUN-06 | Phase 8 | Pending |
+| RUN-07 | Phase 8 | Pending |
+| SUB-01 | Phase 9 | Pending |
+| SUB-02 | Phase 9 | Pending |
+| SUB-03 | Phase 9 | Pending |
+| SUB-04 | Phase 9 | Pending |
+| SUB-05 | Phase 9 | Pending |
+| SUB-06 | Phase 9 | Pending |
+| SUB-07 | Phase 9 | Pending |
+| RES-01 | Phase 10 | Pending |
+| RES-02 | Phase 10 | Pending |
+| RES-03 | Phase 10 | Pending |
+| RES-04 | Phase 10 | Pending |
+| ENS-01 | Phase 6 | Pending |
+| ENS-02 | Phase 10 | Pending |
 
 **Coverage:**
 - v2.0 requirements: 38 total
-- Mapped to phases: 0 (pending roadmap)
+- Mapped to phases: 38 (100%)
+- Unmapped: 0
+- By phase:
+  - Phase 6: 10 (CORE-01..04, CORE-06, CORE-07, PROF-01, RUN-01, TMPL-01, ENS-01)
+  - Phase 7: 7 (PROF-02..05, CORE-05, TMPL-03, TMPL-06)
+  - Phase 8: 7 (RUN-02..07, TMPL-02)
+  - Phase 9: 9 (SUB-01..07, TMPL-04, TMPL-05)
+  - Phase 10: 5 (RES-01..04, ENS-02)
 
 ---
 *Requirements defined: 2026-09-25*
-*Last updated: 2026-09-25 after milestone v2.0 scoping*
+*Last updated: 2026-09-25 after v2.0 roadmap creation (traceability filled)*
