@@ -102,6 +102,16 @@ def predict(test, sample):
     is_polars = not isinstance(sample, pd.DataFrame)
     t = test.to_pandas() if is_polars else test
     s = sample.to_pandas() if is_polars else sample.copy()
+    # Gateway batches arrive as polars; their strings become pyarrow-backed dtypes that
+    # training never saw. Normalize to what pd.read_csv produced at training time.
+    t = t.astype({c: object for c in t.columns
+                  if not pd.api.types.is_numeric_dtype(t[c]) and not pd.api.types.is_bool_dtype(t[c])})
+    _ensure_loaded()
+    tr = _STATE["train"]
+    for c in t.columns:  # all-null batch columns arrive as object: align to training dtypes
+        if c in tr.columns and pd.api.types.is_numeric_dtype(tr[c]) \
+                and not pd.api.types.is_numeric_dtype(t[c]):
+            t[c] = pd.to_numeric(t[c], errors="coerce")
     p = _predict_array(t)
     target = s.columns[1] if len(s.columns) > 1 else s.columns[0]
     classes = sorted(pd.unique(_STATE["train"][TARGET]).tolist()) \

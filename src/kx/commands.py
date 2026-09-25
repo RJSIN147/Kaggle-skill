@@ -300,7 +300,9 @@ def cmd_metric(ws: Path, args, adapter) -> dict:
         lo, hi = args.range
     ptype = args.prediction_type or reg["prediction_type"] or "raw"
     cfg = workspace.load_config(ws)
+    host = (cfg.get("metric") or {}).get("host_metric")
     cfg["metric"] = {"name": name, "greater_is_better": gib, "prediction_type": ptype,
+                     **({"host_metric": host} if host else {}),
                      "range": [None if lo == float("-inf") else lo,
                                None if hi == float("inf") else hi],
                      "set_at": utc_now()}

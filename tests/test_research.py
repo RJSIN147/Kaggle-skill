@@ -64,7 +64,7 @@ def test_metric_candidates_and_adoption(ready_ws, fake):
     assert cfg["metric"]["host_metric"]["ref"] == "metric/acc-metric"
     new = kx(ready_ws, fake, "new", "--idea", "x", "--hypothesis", "y")
     code = (ready_ws / "experiments" / new["data"]["exp_id"] / "train.py").read_text()
-    assert "HOST METRIC (metric/acc-metric" in code and "host_metric = _load_host_metric()" in code
+    assert "HOST METRIC (metric/acc-metric" in code and "host_metric = _LazyHostMetric()" in code
     ns = {}
     exec(compile(code.split("# === AI BLOCK")[0].split('"""', 2)[2].replace(
         "import numpy as np\nimport pandas as pd\n", "import numpy as np\nimport pandas as pd\n"),

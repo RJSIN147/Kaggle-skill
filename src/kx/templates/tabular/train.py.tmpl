@@ -55,7 +55,7 @@ def build_features(train: pd.DataFrame, test: pd.DataFrame):
     X_test = test[[c for c in X.columns if c in test.columns]].copy()
     X = X[X_test.columns]
     for col in X.columns:
-        if X[col].dtype == object or str(X[col].dtype) in ("string", "str", "category"):
+        if not pd.api.types.is_numeric_dtype(X[col]) and not pd.api.types.is_bool_dtype(X[col]):
             cats = pd.Categorical(pd.concat([X[col], X_test[col]], ignore_index=True).astype(str))
             X[col] = pd.Categorical(X[col].astype(str), categories=cats.categories)
             X_test[col] = pd.Categorical(X_test[col].astype(str), categories=cats.categories)
@@ -86,10 +86,16 @@ $HARNESS
 
 def main():
     train, test = _load()
+    if "prepare" in globals():  # optional AI hook: derive targets, join extra files
+        train, test = globals()["prepare"](train, test)
     out = _output_dir()
     y = train[TARGET]
     classification = METRIC_INFO["prediction_type"] in ("proba", "label")
     classes = sorted(pd.unique(y).tolist()) if classification else None
+    # Fit on integer class codes (0..K-1, the sorted class order) so any sklearn-API model
+    # works with string labels; scoring keeps the original labels.
+    y_fit = pd.Series(pd.Categorical(y, categories=classes).codes, index=y.index) \
+        if classification else y
     folds = np.asarray(assign_folds(train, y), dtype=int)
     assert folds.shape == (len(train),), "assign_folds must return one fold id per train row"
     used = sorted(int(f) for f in np.unique(folds) if f >= 0)
@@ -103,7 +109,7 @@ def main():
     for k in used:
         tr, va = folds != k, folds == k
         model = make_model(SEED + k)
-        model.fit(X[tr], y[tr])
+        model.fit(X[tr], y_fit[tr])
         _save_model(model, f"fold{k}")
         if classification:
             p_va, p_te = model.predict_proba(X[va]), model.predict_proba(X_test)
