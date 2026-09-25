@@ -1,0 +1,197 @@
+"""kx inference experiment $EXP_ID — a code-competition submission kernel.
+
+Loads the fold models an upstream training experiment ($UPSTREAM_EXP) saved (mounted
+through kernel_sources) and writes the competition's expected output ($OUTPUT_NAME).
+API-served competitions: the host's kaggle_evaluation server is started FIRST (the host
+enforces a startup limit; models load lazily on the first batch). On the scoring rerun
+(KAGGLE_IS_COMPETITION_RERUN) it serve()s; on our own run it drives the local gateway
+with explicit data paths (the host defaults point at the retired /kaggle/input/<slug>).
+
+The AI BLOCK is the upstream's (copied by `kx new --after`): build_features must
+match training exactly. Exceptions are never caught.
+"""
+import json
+import os
+import platform
+import shutil
+import sys
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+
+EXP_ID = $EXP_ID_LIT
+IDEA = $IDEA_LIT
+COMPETITION_REF = $COMPETITION_REF_LIT
+SLUG = $SLUG_LIT
+SAMPLE_SUBMISSION = $SAMPLE_LIT
+TRAIN_FILE = $TRAIN_LIT
+TEST_FILE = $TEST_LIT
+EXPECTED_OUTPUT = $OUTPUT_LIT
+METRIC = $METRIC_LIT
+METRIC_INFO = $METRIC_INFO_LIT
+N_FOLDS = $N_FOLDS_LIT
+SEED = 42
+TARGET = None
+ID_COL = None
+UPSTREAM = $UPSTREAM_LIT
+API_SERVED = $API_SERVED_LIT
+# Local-gateway data paths, relative to the competition data dir (API-served only).
+GATEWAY_DATA_PATHS = $GATEWAY_PATHS_LIT
+
+$HOST_METRIC
+
+
+# === AI BLOCK: copied from the upstream experiment ==============================
+def build_features(train: pd.DataFrame, test: pd.DataFrame):
+    X = train.drop(columns=[c for c in (TARGET, ID_COL) if c in train.columns])
+    X_test = test[[c for c in X.columns if c in test.columns]].copy()
+    return X[X_test.columns], X_test
+# === END AI BLOCK ===============================================================
+
+
+# === KX HARNESS (do not edit) ===================================================
+$HARNESS
+
+
+_STATE = {"models": None, "train": None, "ids": [], "preds": []}
+
+
+def _upstream_dir() -> Path:
+    owner, slug = UPSTREAM["ref"].split("/", 1)
+    for c in (Path("/kaggle/input/notebooks") / owner / slug, Path("/kaggle/input") / slug,
+              Path(os.environ.get("KX_UPSTREAM_DIR", "/nonexistent"))):
+        if c.is_dir():
+            return c
+    raise FileNotFoundError(f"upstream output {UPSTREAM['ref']} is not mounted")
+
+
+def _ensure_loaded():
+    if _STATE["models"] is not None:
+        return
+    import joblib
+
+    up = _upstream_dir()
+    files = sorted((up / "models").glob("fold*.joblib")) or sorted((up / "models").glob("*.joblib"))
+    if not files:
+        raise FileNotFoundError("the upstream output has no models/*.joblib")
+    # joblib (pickle) is safe here only because these files are our own private upstream
+    # kernel's output (same owner, pinned by kx's pipeline check), never third-party files.
+    _STATE["models"] = [joblib.load(f) for f in files]
+    _STATE["train"] = _read(DATA_DIR / TRAIN_FILE)
+    _setup_columns(_read(DATA_DIR / SAMPLE_SUBMISSION), _STATE["train"])
+
+
+def _predict_array(test: pd.DataFrame) -> np.ndarray:
+    _ensure_loaded()
+    _, X_te = build_features(_STATE["train"], test)
+    classification = METRIC_INFO["prediction_type"] in ("proba", "label")
+    out = []
+    for m in _STATE["models"]:
+        if classification:
+            p = m.predict_proba(X_te)
+            p = p[:, 1:2] if p.shape[1] == 2 else p
+        else:
+            p = np.asarray(m.predict(X_te), dtype=float).reshape(-1, 1)
+        out.append(p)
+    return np.mean(out, axis=0)
+
+
+def predict(test, sample):
+    """Called once (file output) or per batch by the kaggle_evaluation gateway."""
+    is_polars = not isinstance(sample, pd.DataFrame)
+    t = test.to_pandas() if is_polars else test
+    s = sample.to_pandas() if is_polars else sample.copy()
+    p = _predict_array(t)
+    target = s.columns[1] if len(s.columns) > 1 else s.columns[0]
+    classes = sorted(pd.unique(_STATE["train"][TARGET]).tolist()) \
+        if METRIC_INFO["prediction_type"] in ("proba", "label") else None
+    if METRIC_INFO["prediction_type"] == "label":
+        s[target] = _labels(p[:, 0] if p.shape[1] == 1 else p, classes)
+    elif p.shape[1] == 1:
+        s[target] = p[:, 0]
+    else:
+        for i, c in enumerate(classes):
+            s[str(c)] = p[:, i]
+    ids = t[ID_COL] if ID_COL in t.columns else s[s.columns[0]]
+    _STATE["ids"] += list(ids)
+    _STATE["preds"].append(p)
+    if is_polars:
+        import polars as pl
+
+        return pl.from_pandas(s)
+    return s
+
+
+def _find_server_class(comp: Path):
+    import importlib
+    import inspect
+
+    sys.path.append(str(comp))
+    for f in sorted((comp / "kaggle_evaluation").glob("*_inference_server.py")):
+        mod = importlib.import_module(f"kaggle_evaluation.{f.stem}")
+        for name, obj in inspect.getmembers(mod, inspect.isclass):
+            if name.endswith("InferenceServer") and obj.__module__ == mod.__name__:
+                return obj
+    raise RuntimeError("no kaggle_evaluation *InferenceServer found in the competition data")
+
+
+def main():
+    global DATA_DIR
+    DATA_DIR = _resolve_data_dir()
+    out = _output_dir()
+    rerun = bool(os.getenv("KAGGLE_IS_COMPETITION_RERUN"))
+    if API_SERVED:
+        server = _find_server_class(DATA_DIR)(predict)  # start the server before slow work
+        if rerun:
+            server.serve()
+            return
+        server.run_local_gateway(tuple(str(DATA_DIR / p) for p in GATEWAY_DATA_PATHS))
+        produced = Path(EXPECTED_OUTPUT)
+        if produced.exists() and produced.resolve().parent != out.resolve():
+            shutil.copy(produced, out / EXPECTED_OUTPUT)
+    else:
+        test = _read(DATA_DIR / TEST_FILE)
+        sample = _read(DATA_DIR / SAMPLE_SUBMISSION)
+        sub = predict(test, sample)
+        if EXPECTED_OUTPUT.endswith(".parquet"):
+            sub.to_parquet(out / EXPECTED_OUTPUT, index=False)
+        else:
+            sub.to_csv(out / EXPECTED_OUTPUT, index=False)
+        if rerun:
+            return
+
+    # Our own run: carry the upstream CV forward and record what we predicted.
+    up = _upstream_dir()
+    shutil.copy(up / "kx_manifest.json", out / "upstream_manifest.json")
+    shutil.copy(up / "oof.csv", out / "oof.csv")
+    upres = json.loads((up / "result.json").read_text())
+    oof = pd.read_csv(out / "oof.csv")
+    pred_cols = upres["predictions"]["pred_columns"]
+    p_te = np.concatenate(_STATE["preds"]) if _STATE["preds"] else np.zeros((0, len(pred_cols)))
+    te = pd.DataFrame(p_te, columns=pred_cols)
+    te.insert(0, "row_id", _STATE["ids"])
+    te.to_csv(out / "test_preds.csv", index=False)
+    sample = _read(DATA_DIR / SAMPLE_SUBMISSION)
+    result = {k: upres[k] for k in ("metric", "n_folds", "fold_scores", "cv_mean", "cv_std",
+                                    "seed", "greater_is_better") if k in upres}
+    result.update({
+        "exp_id": EXP_ID, "stage": "infer", "cv_source": UPSTREAM, "api_served": API_SERVED,
+        "predictions": dict(upres["predictions"], n_oof=int(len(oof)), n_test=int(len(te))),
+        "submission_file": EXPECTED_OUTPUT,
+        "sample_columns": [str(c) for c in sample.columns], "sample_rows": int(len(sample)),
+    })
+    (out / "result.json").write_text(json.dumps(result, indent=2))
+    import time as _time
+
+    (out / "kx_manifest.json").write_text(json.dumps({
+        "exp_id": EXP_ID, "created": _time.strftime("%Y-%m-%dT%H:%M:%SZ", _time.gmtime()),
+        "run_nonce": os.urandom(8).hex(), "python": sys.version.split()[0],
+        "platform": platform.platform(), "libraries": _versions(), "data_dir": str(DATA_DIR),
+        "kaggle_env_keys": sorted(k for k in os.environ if k.startswith("KAGGLE")),
+        "run_type": os.environ.get("KAGGLE_KERNEL_RUN_TYPE")}, indent=2))
+    print(f"KX_INFER wrote {EXPECTED_OUTPUT} ({len(te)} rows)", flush=True)
+
+
+DATA_DIR = None
+main()

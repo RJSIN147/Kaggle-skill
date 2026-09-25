@@ -20,6 +20,7 @@ Tests pass a fake with the same method names; nothing here is a module global.
 from __future__ import annotations
 
 import contextlib
+import json
 import enum
 import io
 import signal
@@ -275,6 +276,23 @@ class KaggleAdapter:
             raise FileNotFoundError("file not written")
 
         return self._call("download_data_file", fn, timeout=timeout)
+
+    # -- submissions (read-back only: kx never submits) --------------------- #
+    def submissions(self, slug: str, page_size: int = 50) -> list[dict]:
+        return self._call("list_submissions", lambda api: plain(
+            api.competition_submissions(slug, page_size=page_size)) or [])
+
+    def episodes(self, submission_id: int) -> list[dict]:
+        return self._call("list_submission_episodes", lambda api: plain(
+            api.competition_list_episodes(int(submission_id))) or [])
+
+    def replay(self, episode_id: int, dest_dir: Path) -> dict:
+        def fn(api):
+            dest_dir.mkdir(parents=True, exist_ok=True)
+            api.competition_episode_replay(int(episode_id), path=str(dest_dir), quiet=True)
+            return json.loads((dest_dir / f"episode-{int(episode_id)}-replay.json").read_text())
+
+        return self._call("get_episode_replay", fn, timeout=120)
 
     # -- research (all readable without joining) --------------------------- #
     def pages(self, slug: str) -> list[dict]:

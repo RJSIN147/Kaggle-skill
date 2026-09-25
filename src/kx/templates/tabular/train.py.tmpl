@@ -104,6 +104,7 @@ def main():
         tr, va = folds != k, folds == k
         model = make_model(SEED + k)
         model.fit(X[tr], y[tr])
+        _save_model(model, f"fold{k}")
         if classification:
             p_va, p_te = model.predict_proba(X[va]), model.predict_proba(X_test)
             if n_cols == 1:

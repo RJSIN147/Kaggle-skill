@@ -27,6 +27,51 @@ def missing_ml_modules() -> list[str]:
     return [m for m in ML_MODULES if importlib.util.find_spec(m) is None]
 
 
+def run_agent_eval(ws: Path, exp_dir: Path, spec: dict, profile: dict, timeout: float = 3000):
+    """Self-play validation + win rate vs a pool, in a throwaway kaggle-environments env."""
+    import shutil
+
+    uv = shutil.which("uv")
+    if uv is None:
+        raise KxError("invalid", "agent evaluation needs `uv` on PATH", errors=["uv_missing"])
+    rel = f"experiments/{exp_dir.name}"
+    commit = git_commit_paths(ws, f"kx: {exp_dir.name} agent before evaluation",
+                              [f"{rel}/experiment.json", f"{rel}/{spec['code_file']}"]) or git_head(ws)
+    pool = []
+    for other in sorted((ws / "experiments").glob("exp-*/experiment.json")):
+        o = json.loads(other.read_text())
+        if o.get("template") == "agent" and o.get("exp_id") != spec["exp_id"] and \
+                (other.parent / o.get("code_file", "main.py")).exists() and \
+                (other.parent / "meta.json").exists():
+            pool.append(str(other.parent / o.get("code_file", "main.py")))
+    env_name = (spec.get("local") or {}).get("env") or profile["slug"]
+    out = exp_dir / "output"
+    out.mkdir(exist_ok=True)
+    cmd = [uv, "run", "--no-project", "--with", "kaggle-environments", "python",
+           str(Path(__file__).with_name("agent_eval.py")), "--env", env_name,
+           "--agent", str(exp_dir / spec["code_file"]), "--episodes", "10",
+           "--exp-id", spec["exp_id"], "--out", str(out / "result.json"), "--pool", *pool]
+    started = time.monotonic()
+    env = dict(os.environ, PYTHON_COLORS="0", NO_COLOR="1")
+    try:
+        proc = subprocess.run(cmd, cwd=str(exp_dir), capture_output=True, text=True,
+                              timeout=timeout, env=env)
+        rc, so, se, timed_out = proc.returncode, proc.stdout, proc.stderr, False
+    except subprocess.TimeoutExpired as exc:
+        rc, timed_out = None, True
+        so = exc.stdout.decode() if isinstance(exc.stdout, bytes) else (exc.stdout or "")
+        se = exc.stderr.decode() if isinstance(exc.stderr, bytes) else (exc.stderr or "")
+    log_text = json.dumps([{"stream_name": "stdout", "time": 0.0, "data": so},
+                           {"stream_name": "stderr", "time": 0.0, "data": se}])
+    (out / "local.log").write_text(log_text)
+    return {"backend": "local", "kind": "agent_eval",
+            "status": "CANCEL_ACKNOWLEDGED" if timed_out else ("COMPLETE" if rc == 0 else "ERROR"),
+            "exit_code": -1 if timed_out else rc, "timed_out": timed_out, "subsample": None,
+            "git_commit": commit or "uncommitted", "started_at": utc_now(),
+            "seconds": round(time.monotonic() - started, 1), "pool": [Path(p).parent.name for p in pool],
+            "log_file": f"{rel}/output/local.log", "recorded": False}, log_text
+
+
 def run_local(ws: Path, exp_dir: Path, spec: dict, profile: dict, timeout: float = 3000):
     """Run the experiment script locally. Returns (run record, log text)."""
     missing = missing_ml_modules()

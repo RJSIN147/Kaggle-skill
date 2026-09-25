@@ -29,7 +29,7 @@ TOP_KEYS = {"schema_version", "exp_id", "created", "idea", "hypothesis", "templa
 RUNTIME_KEYS = {"target", "accelerator", "limit_s", "internet"}
 SOURCE_KEYS = {"competition", "datasets", "kernels", "models"}
 CV_KEYS = {"n_folds", "reasoning", "scheme"}
-LOCAL_KEYS = {"subsample"}
+LOCAL_KEYS = {"subsample", "env"}
 
 _DATASET_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*/[A-Za-z0-9][A-Za-z0-9_.-]*$")
 # A kernel source is owner/slug, or @exp-NNN: this workspace's upstream experiment,

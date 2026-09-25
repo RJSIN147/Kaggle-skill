@@ -7,6 +7,7 @@ kx says so instead of guessing.
 
 from __future__ import annotations
 
+import ast
 from pathlib import Path
 from string import Template
 
@@ -86,6 +87,47 @@ TEMPLATES["deep-infer"] = {
     "summary": "inference stage: loads an upstream deep experiment's fold models",
 }
 
+def _inference_values(spec: dict, profile: dict) -> dict:
+    vals = _deep_values(spec, profile)
+    up = ast.literal_eval(vals["UPSTREAM_LIT"])
+    eff = profile.get("effective") or profile.get("derived") or {}
+    files = [f.get("name") or "" for f in (profile.get("root_listing") or {}).get("files") or []]
+    test = _pick_file(files, "test") or "test.csv"
+    sample = eff.get("sample_submission") or "sample_submission.csv"
+    return {"UPSTREAM_LIT": vals["UPSTREAM_LIT"],
+            "UPSTREAM_EXP": (up or {}).get("exp_id", "?"),
+            "OUTPUT_NAME": eff.get("expected_output") or "submission.csv",
+            "GATEWAY_PATHS_LIT": repr((test, sample))}
+
+
+TEMPLATES["inference"] = {
+    "file": "inference/predict.py.tmpl",
+    "modalities": {"tabular"},
+    "modes": {"code_kernel", "csv_upload"},
+    "needs_cv": True,
+    "needs_metric": True,
+    "auto": False,  # chosen by `kx new --after <tabular experiment>` in code competitions
+    "default_accelerator": "cpu",
+    "default_limit_s": 3600,
+    "extra_values": _inference_values,
+    "code_file": "predict.py",
+    "summary": "code-competition inference: upstream fold models -> expected output "
+               "(API-served: kaggle_evaluation server)",
+}
+
+TEMPLATES["agent"] = {
+    "file": "agent/main.py.tmpl",
+    "modalities": {"none", "tabular", "structured", "image", "text", "audio"},
+    "modes": {"agent"},
+    "select": lambda eff: eff.get("submission_mode") == "agent",
+    "needs_cv": False,
+    "needs_metric": False,
+    "predictions": False,
+    "target": "local",
+    "code_file": "main.py",
+    "summary": "single-file simulation agent; local self-play validation + win rate vs a pool",
+}
+
 TABULAR_EXTS = (".csv", ".parquet")
 
 
@@ -131,6 +173,7 @@ def render(name: str, spec: dict, profile: dict, metric_cfg: dict | None) -> str
                    "sklearn_callable": reg["sklearn_callable"]}
     values = {
         "EXP_ID": spec["exp_id"],
+        "COMPETITION_REF": profile["canonical_ref"],
         "EXP_ID_LIT": repr(spec["exp_id"]),
         "IDEA_LIT": repr(spec["idea"]),
         "COMPETITION_REF_LIT": repr(profile["canonical_ref"]),

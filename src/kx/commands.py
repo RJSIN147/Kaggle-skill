@@ -327,6 +327,8 @@ def cmd_new(ws: Path, args, adapter) -> dict:
                           errors=["no_such_upstream"])
         if up_t == "deep":
             picked, why = "deep-infer", f"inference stage for {args.after[0]} (deep)"
+        elif up_t in ("tabular", "timeseries"):
+            picked, why = "inference", f"inference stage for {args.after[0]} ({up_t})"
     name = args.template or picked
     reason = why
     if args.template and args.template != picked:
@@ -366,22 +368,25 @@ def cmd_new(ws: Path, args, adapter) -> dict:
                             reason, profile["slug"], n_folds=args.folds,
                             accelerator=args.accelerator or info.get("default_accelerator", "cpu"),
                             limit_s=args.limit or info.get("default_limit_s", 1800),
-                            target="local" if args.local else "kernel")
+                            target="local" if (args.local or info.get("target") == "local")
+                            else "kernel")
+    spec["code_file"] = info.get("code_file", "train.py")
     if not info.get("needs_cv", True):
         spec["cv"] = {"n_folds": args.folds, "reasoning": "n/a: this template has no CV loop"}
     if args.local:
         spec["local"] = {"subsample": args.subsample}
     if args.after:
         spec["sources"]["kernels"] = [f"@{a}" for a in args.after]
-        if name == "deep-infer":
+        if name in ("deep-infer", "inference"):
             up = read_json(ws / "experiments" / args.after[0] / "experiment.json")
             spec["cv"] = {"n_folds": up["cv"]["n_folds"],
                           "reasoning": f"inherits {args.after[0]}'s CV (its OOF predictions)"}
             spec["sources"]["models"] = list(up["sources"].get("models") or [])
     code = templates_registry.render(name, spec, profile | {"effective": eff, "_ws": ws}, metric_cfg)
-    if name == "deep-infer":
+    if name in ("deep-infer", "inference"):
         # The inference stage must rebuild the upstream's exact model: carry its AI block over.
-        up_code = (ws / "experiments" / args.after[0] / "train.py").read_text()
+        up_spec = read_json(ws / "experiments" / args.after[0] / "experiment.json")
+        up_code = (ws / "experiments" / args.after[0] / up_spec["code_file"]).read_text()
         code = templates_registry.copy_ai_block(up_code, code)
     (exp_dir / spec["code_file"]).write_text(code)
     spec["harness_sha256"] = experiment.harness_hash(code)
@@ -423,10 +428,14 @@ def _validate_spec(ws: Path, exp_dir: Path, spec: dict, profile: dict) -> None:
 
 def _record_and_envelope(ws: Path, exp_dir: Path, spec: dict, run: dict, log_text,
                          warnings: list[str], data: dict) -> dict:
-    metric_cfg = _require_metric(ws)
+    tinfo = templates_registry.TEMPLATES.get(spec.get("template"), {})
+    if spec.get("template") == "agent":
+        metric_cfg = {"name": "win_rate", "greater_is_better": True, "range": [0.0, 1.0]}
+    else:
+        metric_cfg = _require_metric(ws)
     verdict_stub = workspace.render("VERDICT.md.tmpl", exp_id=spec["exp_id"])
     meta, ledger_warnings = record.record(ws, exp_dir, spec, run, metric_cfg, log_text,
-                                          verdict_stub)
+                                          verdict_stub, tinfo.get("predictions", True))
     run["recorded"] = True
     run["record_status"] = meta["status"]
     run["resumable"] = bool(meta.get("resumable"))
@@ -494,6 +503,11 @@ def cmd_run(ws: Path, args, adapter) -> dict:
                           next_action=E.run("kx status"))
         _validate_spec(ws, exp_dir, spec, profile)
         _require_confirmed(profile)
+        if spec.get("template") == "agent":
+            run, log_text = local.run_agent_eval(ws, exp_dir, spec, profile,
+                                                 timeout=args.wait_local)
+            return _record_and_envelope(ws, exp_dir, spec, run, log_text, [],
+                                        {"backend": "local", "seconds": run["seconds"]})
         _require_metric(ws)
         run, log_text = local.run_local(ws, exp_dir, spec, profile, timeout=args.wait_local)
         warnings = [f"local run on a {run['subsample']:g} subsample: not comparable to full-data "

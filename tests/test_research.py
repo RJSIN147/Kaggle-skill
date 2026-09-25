@@ -116,7 +116,6 @@ def test_type_guides_route_to_exactly_the_matching_guides(eff, guides):
     assert [g.rsplit("/", 1)[1] for g in type_guides(eff)] == guides
 
 
-@pytest.mark.skip(reason="deep-learning, code-competition, simulation, writeup guides land in phases 8-9")
 def test_every_routed_guide_exists_and_skill_is_lean():
     from conftest import REPO_ROOT
 

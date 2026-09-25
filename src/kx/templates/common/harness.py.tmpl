@@ -132,6 +132,8 @@ def _write_outputs(out, *, train, test, y, folds, oof, test_pred, fold_scores, c
                         "id_column": str(ID_COL), "target_column": str(TARGET),
                         "prediction_type": "proba" if classification else "raw"},
         "submission_file": EXPECTED_OUTPUT,
+        "sample_columns": [str(c) for c in SAMPLE.columns] if SAMPLE is not None else None,
+        "sample_rows": int(len(SAMPLE)) if SAMPLE is not None else None,
     }
     result.update(extra or {})
     (out / "result.json").write_text(json.dumps(result, indent=2))
@@ -167,6 +169,16 @@ def _test_ids(test: pd.DataFrame) -> pd.Series:
     if SAMPLE is not None and len(SAMPLE) == len(test):
         return SAMPLE[ID_COL].reset_index(drop=True)  # rows align with test.csv
     return pd.Series(range(len(test)))
+
+
+def _save_model(model, name: str) -> None:
+    """Keep a fitted model in /kaggle/working/models/ for a downstream inference stage
+    (our own trusted output; joblib ships with scikit-learn)."""
+    import joblib
+
+    d = _output_dir() / "models"
+    d.mkdir(exist_ok=True)
+    joblib.dump(model, d / f"{name}.joblib")
 
 
 def _load():
