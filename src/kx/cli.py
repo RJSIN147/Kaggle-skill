@@ -59,6 +59,8 @@ def build_parser() -> KxParser:
                    help="also download the data bundle (joined + locally feasible only)")
     s.add_argument("--force-download", action="store_true",
                    help="download even when the profile marks local runs as infeasible")
+    s.add_argument("--files", nargs="+",
+                   help="download only these files (e.g. train.csv test.csv) instead of the bundle")
 
     s = sub.add_parser("confirm", help="record the user's confirmation of the profile")
     s.add_argument("--mode")
@@ -93,6 +95,8 @@ def build_parser() -> KxParser:
     s.add_argument("--wait-local", type=float, default=3000.0,
                    help="local runs: timeout in seconds")
     s.add_argument("--rerun", action="store_true", help="push a new version even if recorded")
+    s.add_argument("--resume", action="store_true",
+                   help="continue a run that stopped at its time budget from its checkpoints")
 
     s = sub.add_parser("strategy", help="regenerate strategy.md from the ledger + reasoning")
     s.add_argument("--reasoning-file", required=True)
@@ -116,6 +120,8 @@ def build_parser() -> KxParser:
     s.add_argument("--source")
     s.add_argument("--use-metric", help="owner/slug of a metric kernel to adopt for CV")
 
+    sub.add_parser("env", help="kernel image + library versions of each run vs this machine")
+
     s = sub.add_parser("ensemble", help="blend saved OOF predictions into a new experiment")
     s.add_argument("exp_ids", nargs="+")
     s.add_argument("--method", choices=("hill", "weights"), default="hill")
@@ -133,7 +139,7 @@ def dispatch(argv, ws: Path, adapter) -> dict:
     if not args.command:
         return E.make("help", "ok", "kx usage", data={"usage": parser.format_help()},
                       next_action=E.run("kx status"))
-    from kx import commands, ensemble, research, submit
+    from kx import commands, ensemble, envinfo, research, submit
 
     handlers = {
         "init": commands.cmd_init, "status": commands.cmd_status, "sync": commands.cmd_sync,
@@ -141,6 +147,7 @@ def dispatch(argv, ws: Path, adapter) -> dict:
         "run": commands.cmd_run, "strategy": commands.cmd_strategy,
         "submit": submit.cmd_submit, "lb": submit.cmd_lb,
         "research": research.cmd_research, "ensemble": ensemble.cmd_ensemble,
+        "env": envinfo.cmd_env,
     }
     try:
         return handlers[args.command](ws, args, adapter)

@@ -1,0 +1,311 @@
+"""kx deep-learning experiment $EXP_ID — PyTorch, image or text, a Kaggle script kernel.
+
+STAGE "train": a fold loop with mixed precision that checkpoints every epoch to
+/kaggle/working/checkpoints/. It stops itself before the runtime limit (time
+budget), so the run ends COMPLETE and `kx run $EXP_ID --resume` continues from the
+last checkpoint instead of starting over.
+STAGE "infer": loads the fold models an upstream training kernel wrote (mounted
+through kernel_sources) and predicts the test set.
+
+Edit ONLY the AI BLOCK. The KX HARNESS is hashed at `kx new`. Exceptions are never caught.
+"""
+import json
+import os
+import platform
+import shutil
+import sys
+import time
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+
+EXP_ID = $EXP_ID_LIT
+IDEA = $IDEA_LIT
+COMPETITION_REF = $COMPETITION_REF_LIT
+SLUG = $SLUG_LIT
+SAMPLE_SUBMISSION = $SAMPLE_LIT
+TRAIN_FILE = $TRAIN_LIT
+TEST_FILE = $TEST_LIT
+EXPECTED_OUTPUT = $OUTPUT_LIT
+METRIC = $METRIC_LIT
+METRIC_INFO = $METRIC_INFO_LIT
+N_FOLDS = $N_FOLDS_LIT
+SEED = 42
+TARGET = None   # None: the sample submission's second column
+ID_COL = None   # None: the sample submission's first column
+STAGE = $STAGE_LIT                  # "train" or "infer"
+KERNEL_SLUG = $KERNEL_SLUG_LIT      # this experiment's kernel (for resume)
+UPSTREAM = $UPSTREAM_LIT            # infer stage: {"ref": "owner/slug", "exp_id": ...}
+TIME_BUDGET_S = $TIME_BUDGET_LIT    # stop training (cleanly) after this many seconds
+MODEL_SOURCES = $MODEL_SOURCES_LIT  # Kaggle Models mounted at /kaggle/input/models/...
+
+$HOST_METRIC
+
+
+# === AI BLOCK: data, CV, model and training settings for this idea ==============
+MODE = "image"          # "image" or "text"
+EPOCHS = 2
+BATCH_SIZE = 128
+LR = 2e-3
+NUM_WORKERS = 2
+
+
+def load_tables(data_dir: Path):
+    """Return (train, test) DataFrames; image paths / text columns live in them."""
+    return _read(data_dir / TRAIN_FILE), _read(data_dir / TEST_FILE)
+
+
+def assign_folds(train: pd.DataFrame, y: pd.Series) -> np.ndarray:
+    from sklearn.model_selection import StratifiedKFold
+
+    folds = np.full(len(train), -1, dtype=int)
+    skf = StratifiedKFold(n_splits=N_FOLDS, shuffle=True, random_state=SEED)
+    for k, (_, va) in enumerate(skf.split(train, y)):
+        folds[va] = k
+    return folds
+
+
+def load_item(row: pd.Series, split: str):
+    """One example: an image as an HxWxC uint8 array (image mode) or a string (text).
+    Default: digit-recognizer style 28x28 pixel columns."""
+    pix = row[[c for c in row.index if str(c).startswith("pixel")]].to_numpy(dtype=np.uint8)
+    return pix.reshape(28, 28, 1)
+
+
+def make_transform(split: str):
+    """numpy item -> float tensor. Augment only when split == "train"."""
+    import torch
+
+    def tf(img):
+        x = torch.from_numpy(np.ascontiguousarray(img)).permute(2, 0, 1).float() / 255.0
+        if split == "train":
+            shift = np.random.randint(-2, 3, size=2)
+            x = torch.roll(x, shifts=(int(shift[0]), int(shift[1])), dims=(1, 2))
+        return x
+    return tf
+
+
+def make_model(n_outputs: int):
+    """A fresh model. With MODEL_SOURCES attached, load pretrained weights from
+    /kaggle/input/models/... (internet is off)."""
+    import torch.nn as nn
+
+    return nn.Sequential(
+        nn.Conv2d(1, 32, 3, padding=1), nn.BatchNorm2d(32), nn.ReLU(), nn.MaxPool2d(2),
+        nn.Conv2d(32, 64, 3, padding=1), nn.BatchNorm2d(64), nn.ReLU(), nn.MaxPool2d(2),
+        nn.Conv2d(64, 128, 3, padding=1), nn.BatchNorm2d(128), nn.ReLU(),
+        nn.AdaptiveAvgPool2d(1), nn.Flatten(), nn.Dropout(0.2), nn.Linear(128, n_outputs))
+
+
+def collate(batch):
+    """Text mode: turn a list of (text, target) into model inputs. Image mode: default."""
+    return None
+# === END AI BLOCK ===============================================================
+
+
+# === KX HARNESS (do not edit) ===================================================
+$HARNESS
+
+
+def _torch():
+    import torch
+
+    dev = "cuda" if torch.cuda.is_available() else "cpu"
+    amp_dtype = torch.float16 if dev == "cuda" else torch.bfloat16
+    return torch, dev, amp_dtype
+
+
+class _DS:
+    def __init__(self, df, split, targets=None):
+        self.df, self.split, self.targets = df.reset_index(drop=True), split, targets
+        self.tf = make_transform(split) if MODE == "image" else None
+
+    def __len__(self):
+        return len(self.df)
+
+    def __getitem__(self, i):
+        item = load_item(self.df.iloc[i], self.split)
+        x = self.tf(item) if self.tf else item
+        t = self.targets[i] if self.targets is not None else -1
+        return x, t
+
+
+def _loader(ds, shuffle):
+    import torch
+
+    kw = {}
+    if MODE == "text" and collate(None) is not None:
+        kw["collate_fn"] = collate
+    return torch.utils.data.DataLoader(ds, batch_size=BATCH_SIZE, shuffle=shuffle,
+                                       num_workers=NUM_WORKERS if MODE == "image" else 0,
+                                       drop_last=shuffle and len(ds) > BATCH_SIZE, **kw)
+
+
+def _predict(model, loader, torch, dev, amp_dtype, n_out):
+    model.eval()
+    out = []
+    with torch.no_grad(), torch.autocast(device_type=dev, dtype=amp_dtype):
+        for x, _ in loader:
+            x = x.to(dev) if hasattr(x, "to") else x
+            logits = model(x).float()
+            out.append((torch.sigmoid(logits) if n_out == 1 else torch.softmax(logits, 1))
+                       .cpu().numpy() if METRIC_INFO["prediction_type"] != "raw"
+                       else logits.cpu().numpy())
+    return np.concatenate(out).reshape(-1, n_out)
+
+
+def _restore_checkpoints(ck: Path) -> bool:
+    """Copy a previous run's checkpoints (its own earlier COMPLETE version, mounted
+    via kernel_sources) into /kaggle/working so training resumes, not restarts."""
+    if any(ck.glob("fold*/*")):
+        return True
+    cands = [Path("/kaggle/input") / KERNEL_SLUG / "checkpoints"]
+    cands += list(Path("/kaggle/input/notebooks").glob(f"*/{KERNEL_SLUG}/checkpoints"))
+    for c in cands:
+        if c.is_dir():
+            shutil.copytree(c, ck, dirs_exist_ok=True)
+            print(f"KX_RESUME from {c}", flush=True)
+            return True
+    return False
+
+
+def _train(train, test, y, folds, classes, n_out, out, started):
+    torch, dev, amp_dtype = _torch()
+    torch.manual_seed(SEED)
+    ck = out / "checkpoints"
+    ck.mkdir(parents=True, exist_ok=True)
+    resumed = _restore_checkpoints(ck)
+    if classes is not None:
+        cls_index = {c: i for i, c in enumerate(classes)}
+        y_idx = np.array([cls_index[v] for v in y])
+    else:
+        y_idx = y.to_numpy(dtype=np.float32)
+    test_dl = _loader(_DS(test, "test"), False)
+    epoch_s = None
+    for k in range(N_FOLDS):
+        fdir = ck / f"fold{k}"
+        fdir.mkdir(exist_ok=True)
+        if (fdir / "done.npz").exists():
+            continue
+        tr, va = np.where(folds != k)[0], np.where(folds == k)[0]
+        model = make_model(n_out).to(dev)
+        opt = torch.optim.AdamW(model.parameters(), lr=LR)
+        scaler = torch.amp.GradScaler("cuda", enabled=dev == "cuda")
+        start_epoch = 0
+        if (fdir / "last.pt").exists():
+            state = torch.load(fdir / "last.pt", map_location=dev, weights_only=True)
+            model.load_state_dict(state["model"])
+            opt.load_state_dict(state["opt"])
+            scaler.load_state_dict(state["scaler"])
+            start_epoch = state["epoch"] + 1
+            print(f"KX_RESUMED fold {k} at epoch {start_epoch}", flush=True)
+        tr_dl = _loader(_DS(train.iloc[tr], "train", y_idx[tr]), True)
+        loss_fn = (torch.nn.BCEWithLogitsLoss() if n_out == 1 and classes is not None
+                   else torch.nn.CrossEntropyLoss() if classes is not None
+                   else torch.nn.MSELoss())
+        for epoch in range(start_epoch, EPOCHS):
+            elapsed = time.time() - started
+            if elapsed + (epoch_s or 0) > TIME_BUDGET_S:
+                return {"incomplete": True, "stopped_at": {"fold": k, "epoch": epoch},
+                        "resumed": resumed}
+            t0 = time.time()
+            model.train()
+            for x, t in tr_dl:
+                x = x.to(dev) if hasattr(x, "to") else x
+                t = torch.as_tensor(t).to(dev)
+                opt.zero_grad(set_to_none=True)
+                with torch.autocast(device_type=dev, dtype=amp_dtype):
+                    logits = model(x)
+                    if n_out == 1:
+                        loss = loss_fn(logits.float().view(-1), t.float())
+                    elif classes is not None:
+                        loss = loss_fn(logits.float(), t.long())
+                    else:
+                        loss = loss_fn(logits.float().view(-1), t.float())
+                scaler.scale(loss).backward()
+                scaler.step(opt)
+                scaler.update()
+            torch.save({"model": model.state_dict(), "opt": opt.state_dict(),
+                        "scaler": scaler.state_dict(), "epoch": epoch}, fdir / "last.pt")
+            epoch_s = time.time() - t0
+            print(f"fold {k} epoch {epoch}: loss={float(loss):.4f} ({epoch_s:.0f}s)", flush=True)
+        va_dl = _loader(_DS(train.iloc[va], "valid", y_idx[va]), False)
+        p_va = _predict(model, va_dl, torch, dev, amp_dtype, n_out)
+        p_te = _predict(model, test_dl, torch, dev, amp_dtype, n_out)
+        torch.save(model.state_dict(), fdir / "model.pt")
+        np.savez(fdir / "done.npz", va=va, p_va=p_va, p_te=p_te)
+        (fdir / "last.pt").unlink(missing_ok=True)
+    return {"incomplete": False, "resumed": resumed}
+
+
+def _infer(test, n_out, out):
+    torch, dev, amp_dtype = _torch()
+    owner, slug = UPSTREAM["ref"].split("/", 1)
+    cands = [Path("/kaggle/input/notebooks") / owner / slug, Path("/kaggle/input") / slug]
+    up = next((c for c in cands if c.is_dir()), None)
+    if up is None:
+        raise FileNotFoundError(f"upstream output {UPSTREAM['ref']} is not mounted")
+    shutil.copy(up / "kx_manifest.json", out / "upstream_manifest.json")
+    shutil.copy(up / "oof.csv", out / "oof.csv")
+    upres = json.loads((up / "result.json").read_text())
+    test_dl = _loader(_DS(test, "test"), False)
+    p_te = np.zeros((len(test), n_out))
+    for k in range(N_FOLDS):
+        model = make_model(n_out).to(dev)
+        model.load_state_dict(torch.load(up / "checkpoints" / f"fold{k}" / "model.pt",
+                                         map_location=dev, weights_only=True))
+        p_te += _predict(model, test_dl, torch, dev, amp_dtype, n_out) / N_FOLDS
+    return upres, p_te
+
+
+def main():
+    started = time.time()
+    global DATA_DIR
+    DATA_DIR = _resolve_data_dir()
+    train, test = load_tables(DATA_DIR)
+    _setup_columns(_read(DATA_DIR / SAMPLE_SUBMISSION), train)
+    out = _output_dir()
+    classification = METRIC_INFO["prediction_type"] in ("proba", "label")
+    y = train[TARGET]
+    classes = sorted(pd.unique(y).tolist()) if classification else None
+    n_out = 1 if (not classification or len(classes) == 2) else len(classes)
+
+    if STAGE == "infer":
+        upres, p_te = _infer(test, n_out, out)
+        oof = pd.read_csv(out / "oof.csv")
+        folds = oof["fold"].to_numpy()
+        pred_cols = [c for c in oof.columns if c.startswith("pred")]
+        _write_outputs(out, train=train, test=test, y=oof["target"], folds=folds,
+                       oof=oof[pred_cols].to_numpy(), test_pred=p_te,
+                       fold_scores=upres["fold_scores"], classes=classes,
+                       classification=classification,
+                       extra={"stage": "infer", "cv_source": UPSTREAM})
+        return
+
+    folds = np.asarray(assign_folds(train, y), dtype=int)
+    assert folds.shape == (len(train),)
+    status = _train(train, test, y, folds, classes, n_out, out, started)
+    if status["incomplete"]:
+        (out / "result.json").write_text(json.dumps({"exp_id": EXP_ID, "stage": "train",
+                                                     "incomplete": True, **status}, indent=2))
+        print(f"KX_INCOMPLETE {status['stopped_at']}: time budget reached; resume with "
+              f"`kx run {EXP_ID} --resume`", flush=True)
+        return
+    ck = out / "checkpoints"
+    oof = np.full((len(train), n_out), np.nan)
+    p_te = np.zeros((len(test), n_out))
+    fold_scores = []
+    for k in range(N_FOLDS):
+        d = np.load(ck / f"fold{k}" / "done.npz")
+        oof[d["va"]] = d["p_va"]
+        p_te += d["p_te"] / N_FOLDS
+        pv = d["p_va"][:, 0] if n_out == 1 else d["p_va"]
+        fold_scores.append(_score(y.iloc[d["va"]], pv, classes, train.iloc[d["va"]]))
+        print(f"fold {k}: {METRIC}={fold_scores[-1]:.6f}", flush=True)
+    _write_outputs(out, train=train, test=test, y=y, folds=folds, oof=oof, test_pred=p_te,
+                   fold_scores=fold_scores, classes=classes, classification=classification,
+                   extra={"stage": "train", "resumed": status["resumed"]})
+
+
+main()

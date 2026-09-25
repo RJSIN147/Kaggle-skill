@@ -1,0 +1,156 @@
+"""RUN-02..07: resume, pipelines, env provenance, partial downloads, error mapping."""
+
+import json
+
+import pytest
+from conftest import FakeAdapter, kx
+from test_run_record import make_outputs, scaffold
+
+from kx.adapter import KaggleAdapter, _is_network_error
+from kx.util import KxError
+
+
+def test_pipeline_waits_for_upstream_and_records_consumed_version(ready_ws, fake):
+    up, up_dir = scaffold(ready_ws, fake, idea="upstream")
+    env = kx(ready_ws, fake, "new", "--idea", "down", "--hypothesis", "h", "--after", up)
+    down = env["data"]["exp_id"]
+    spec = json.loads((ready_ws / "experiments" / down / "experiment.json").read_text())
+    spec["cv"]["reasoning"] = "same"
+    (ready_ws / "experiments" / down / "experiment.json").write_text(json.dumps(spec))
+    env = kx(ready_ws, fake, "run", down)
+    assert env["status"] == "invalid" and env["errors"] == ["upstream_not_ready"]
+    assert env["next_action"]["command"] == f"kx run {up}"
+    assert fake.pushed() == []
+
+    fake.outputs = make_outputs()
+    nonce = "abc123"
+    fake.outputs["kx_manifest.json"] = json.dumps({"run_nonce": nonce, "created": "t1"}).encode()
+    assert kx(ready_ws, fake, "run", up, "--wait", "5")["data"]["result"] == "SUCCESS"
+    fake.statuses = ["COMPLETE"]
+    fake.outputs["upstream_manifest.json"] = json.dumps({"run_nonce": nonce}).encode()
+    env = kx(ready_ws, fake, "run", down, "--wait", "5")
+    assert env["data"]["result"] == "SUCCESS"
+    (_, meta, _), = [c for c in fake.pushed() if "exp-002" in c[1]["id"]]
+    assert meta["kernel_sources"] == [f"tester/{fake.pushed()[0][1]['id'].split('/')[1]}"]
+    m = json.loads((ready_ws / "experiments" / down / "meta.json").read_text())
+    (u,) = m["kernel"]["upstream"]
+    assert u["consumed"] == "v1" and u["consumed_version"] == 1
+
+
+def test_consumed_mismatch_is_reported(ready_ws, fake):
+    up, _ = scaffold(ready_ws, fake, idea="upstream")
+    fake.outputs = make_outputs()
+    fake.outputs["kx_manifest.json"] = json.dumps({"run_nonce": "n1"}).encode()
+    kx(ready_ws, fake, "run", up, "--wait", "5")
+    env = kx(ready_ws, fake, "new", "--idea", "down", "--hypothesis", "h", "--after", up)
+    down = env["data"]["exp_id"]
+    p = ready_ws / "experiments" / down / "experiment.json"
+    spec = json.loads(p.read_text())
+    spec["cv"]["reasoning"] = "same"
+    p.write_text(json.dumps(spec))
+    fake.statuses = ["COMPLETE"]
+    fake.outputs["upstream_manifest.json"] = json.dumps({"run_nonce": "OTHER", "created": "x"}).encode()
+    kx(ready_ws, fake, "run", down, "--wait", "5")
+    m = json.loads((ready_ws / "experiments" / down / "meta.json").read_text())
+    assert m["kernel"]["upstream"][0]["consumed"].startswith("a different upstream run")
+
+
+def test_budget_stop_is_resumable_and_resume_mounts_itself(ready_ws, fake):
+    exp, d = scaffold(ready_ws, fake)
+    fake.outputs = {"result.json": json.dumps({"incomplete": True,
+                                               "stopped_at": {"fold": 0, "epoch": 3}}).encode(),
+                    "checkpoints/fold0/last.pt": b"x"}
+    env = kx(ready_ws, fake, "run", exp, "--wait", "5")
+    assert env["data"]["result"] == "FAILED" and env["data"]["failure_reason"] == "runtime_limit"
+    assert env["data"]["resumable"] is True
+    assert env["next_action"]["command"] == f"kx run {exp} --resume"
+    m = json.loads((d / "meta.json").read_text())
+    assert m["resumable"] is True and m["stopped_at"] == {"fold": 0, "epoch": 3}
+    assert (d / "output/checkpoints/fold0/last.pt").exists()
+
+    fake.outputs = make_outputs()
+    fake.kernel_meta["current_version_number"] = 2
+    fake.push_response = {"version_number": 2}
+    env = kx(ready_ws, fake, "run", exp, "--resume", "--wait", "5")
+    assert env["data"]["result"] == "SUCCESS"
+    last_push = fake.pushed()[-1][1]
+    assert last_push["kernel_sources"] == [last_push["id"]]
+    assert json.loads((d / "meta.json").read_text())["kernel"]["resumed_from_version"] == 1
+
+
+def test_resume_refuses_a_hard_stop(ready_ws, fake):
+    exp, _ = scaffold(ready_ws, fake)
+    fake.statuses = ["CANCEL_ACKNOWLEDGED"]
+    kx(ready_ws, fake, "run", exp, "--wait", "5")
+    env = kx(ready_ws, fake, "run", exp, "--resume")
+    assert env["errors"] == ["not_resumable"]
+
+
+def test_rules_not_accepted_is_needs_user(ready_ws, fake):
+    exp, _ = scaffold(ready_ws, fake)
+    fake.push_response = {"error": "You must accept this competition's rules before you'll be "
+                                   "able to add it as a datasource: titanic"}
+    env = kx(ready_ws, fake, "run", exp)
+    assert env["status"] == "needs_user" and env["errors"] == ["rules_not_accepted"]
+    assert "competitions/titanic/rules" in env["next_action"]["instruction"]
+
+
+def test_env_compares_runs_with_local(ready_ws, fake):
+    exp, _ = scaffold(ready_ws, fake)
+    fake.outputs = make_outputs()
+    kx(ready_ws, fake, "run", exp, "--wait", "5")
+    env = kx(ready_ws, fake, "env")
+    (row,) = env["data"]["runs"]
+    assert row["docker_image"].startswith("gcr.io/kaggle-images/python@sha256")
+    assert row["libraries"] == {"pandas": "2.3.3"}
+    assert env["data"]["local"]["python"]
+
+
+def test_partial_file_download_is_bounded_and_listed(ready_ws, fake, tmp_path):
+    env = kx(ready_ws, fake, "sync", "--files", "nope.csv")
+    assert env["errors"] == ["unknown_file"]
+    env = kx(ready_ws, fake, "sync", "--files", *[f"f{i}.csv" for i in range(11)])
+    assert env["errors"] == ["too_many_files"]
+
+    def download_file(slug, name, dest, timeout):
+        dest.mkdir(parents=True, exist_ok=True)
+        p = dest / name
+        p.write_text("a,b\n1,2\n")
+        return p
+
+    fake.download_file = download_file
+    env = kx(ready_ws, fake, "sync", "--files", "train.csv")
+    assert env["status"] == "ok" and env["data"]["download"]["partial"] is True
+    assert (ready_ws / "data/titanic/train.csv").exists()
+
+
+def test_network_errors_are_not_credential_errors():
+    import requests
+
+    try:
+        try:
+            raise OSError("dns")
+        except OSError as inner:
+            raise requests.ConnectionError("down") from inner
+    except requests.ConnectionError as exc:
+        assert _is_network_error(exc)
+    assert not _is_network_error(ValueError("bad token"))
+
+
+def test_push_is_never_retried_but_reads_are(monkeypatch):
+    a = KaggleAdapter()
+    calls = {"n": 0}
+
+    def once(op, fn, timeout):
+        calls["n"] += 1
+        raise KxError("error", "x", errors=[f"ConnectionError:{op}"])
+
+    monkeypatch.setattr(a, "_call_once", once)
+    monkeypatch.setattr("time.sleep", lambda s: None)
+    with pytest.raises(KxError):
+        a._call("get_kernel", lambda api: None)
+    assert calls["n"] == 3
+    calls["n"] = 0
+    with pytest.raises(KxError):
+        a._call("save_kernel", lambda api: None, retries=0)
+    assert calls["n"] == 1

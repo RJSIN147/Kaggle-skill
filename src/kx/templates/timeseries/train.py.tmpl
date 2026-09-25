@@ -77,7 +77,7 @@ def make_model(seed: int):
 
 def postprocess_submission(sub, test_pred, classes):
     if METRIC == "rmsle":
-        sub[TARGET] = np.clip(sub[TARGET], 0, None)
+        sub[SUB_TARGET] = np.clip(sub[SUB_TARGET], 0, None)
     return sub
 # === END AI BLOCK ===============================================================
 

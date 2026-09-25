@@ -189,10 +189,12 @@ def cmd_sync(ws: Path, args, adapter) -> dict:
     workspace.save_config(ws, cfg)
 
     download = None
-    if getattr(args, "download", False) or getattr(args, "force_download", False):
+    if getattr(args, "download", False) or getattr(args, "force_download", False) \
+            or getattr(args, "files", None):
         from kx import data as kxdata
         download = kxdata.download_bundle(ws, adapter, profile,
-                                          force=getattr(args, "force_download", False))
+                                          force=getattr(args, "force_download", False),
+                                          files=getattr(args, "files", None))
         state = workspace.load_state(ws)
         state["data"] = download
         workspace.save_state(ws, state)
@@ -316,6 +318,15 @@ def cmd_new(ws: Path, args, adapter) -> dict:
     profile = workspace.load_profile(ws)
     eff = _require_confirmed(profile)
     picked, why = templates_registry.select(eff)
+    if args.after and not args.template:
+        from kx import pipeline
+
+        up_t = pipeline.upstream_template(ws, args.after[0])
+        if up_t is None:
+            raise KxError("invalid", f"no upstream experiment {args.after[0]}",
+                          errors=["no_such_upstream"])
+        if up_t == "deep":
+            picked, why = "deep-infer", f"inference stage for {args.after[0]} (deep)"
     name = args.template or picked
     reason = why
     if args.template and args.template != picked:
@@ -362,7 +373,16 @@ def cmd_new(ws: Path, args, adapter) -> dict:
         spec["local"] = {"subsample": args.subsample}
     if args.after:
         spec["sources"]["kernels"] = [f"@{a}" for a in args.after]
+        if name == "deep-infer":
+            up = read_json(ws / "experiments" / args.after[0] / "experiment.json")
+            spec["cv"] = {"n_folds": up["cv"]["n_folds"],
+                          "reasoning": f"inherits {args.after[0]}'s CV (its OOF predictions)"}
+            spec["sources"]["models"] = list(up["sources"].get("models") or [])
     code = templates_registry.render(name, spec, profile | {"effective": eff, "_ws": ws}, metric_cfg)
+    if name == "deep-infer":
+        # The inference stage must rebuild the upstream's exact model: carry its AI block over.
+        up_code = (ws / "experiments" / args.after[0] / "train.py").read_text()
+        code = templates_registry.copy_ai_block(up_code, code)
     (exp_dir / spec["code_file"]).write_text(code)
     spec["harness_sha256"] = experiment.harness_hash(code)
     write_json(exp_dir / "experiment.json", spec)
@@ -409,6 +429,7 @@ def _record_and_envelope(ws: Path, exp_dir: Path, spec: dict, run: dict, log_tex
                                           verdict_stub)
     run["recorded"] = True
     run["record_status"] = meta["status"]
+    run["resumable"] = bool(meta.get("resumable"))
     if run.get("backend") == "kernel":
         kernel.save_run(exp_dir, run)
     else:
@@ -424,6 +445,14 @@ def _record_and_envelope(ws: Path, exp_dir: Path, spec: dict, run: dict, log_tex
                    f"{strategy.fmt_score(meta['cv_mean'], meta['cv_std'])} ({meta['n_folds']} folds)")
     else:
         summary = f"{exp_id} recorded FAILED ({meta['failure_reason']}); no score recorded"
+    if run["resumable"]:
+        data["resumable"] = True
+        return E.make("run", "ok", f"{exp_id} stopped at its time budget with checkpoints saved "
+                                   "(recorded FAILED runtime_limit until it finishes)",
+                      data=data, warnings=warnings,
+                      next_action=E.run(f"kx run {exp_id} --resume",
+                                        "Continues from the saved checkpoints; the kernel mounts "
+                                        "its own previous output."))
     return E.make("run", "ok", summary, data=data, warnings=warnings,
                   next_action=E.edit(
                       f"Write the verdict in experiments/{exp_id}/VERDICT.md (replace every _TODO) "
@@ -440,6 +469,13 @@ def cmd_run(ws: Path, args, adapter) -> dict:
     run_path = exp_dir / "kernel_run.json"
     existing = read_json(run_path) if run_path.exists() else None
 
+    resume = getattr(args, "resume", False)
+    if resume:
+        if not existing or existing.get("status") != "COMPLETE" or not existing.get("resumable"):
+            raise KxError("invalid", "nothing to resume: --resume continues a run that stopped "
+                                     "at its time budget (recorded FAILED runtime_limit, resumable)",
+                          errors=["not_resumable"], next_action=E.run("kx status"))
+        args.rerun = True
     if existing and existing.get("recorded") and not args.rerun:
         return E.make("run", "ok", f"{exp_dir.name} is already recorded "
                                    f"({existing.get('record_status')}); use --rerun to run again",
@@ -486,6 +522,10 @@ def cmd_run(ws: Path, args, adapter) -> dict:
         meta = kernel.build_metadata(owner, slug, spec, profile)
         if upstream:
             meta["kernel_sources"] = upstream["kernel_sources"]
+        if resume:
+            # Mount this kernel's own last COMPLETE output (its checkpoints) at
+            # /kaggle/input/<slug>/ so training continues instead of restarting.
+            meta["kernel_sources"] = [*meta["kernel_sources"], f"{owner}/{slug}"]
         write_json(exp_dir / "kernel-metadata.json", meta)
         commit = git_commit_paths(ws, f"kx: {exp_dir.name} code before push",
                                   [f"experiments/{exp_dir.name}/experiment.json",
@@ -493,10 +533,21 @@ def cmd_run(ws: Path, args, adapter) -> dict:
                                    f"experiments/{exp_dir.name}/kernel-metadata.json"]) \
             or git_head(ws)
         code_text = (exp_dir / spec["code_file"]).read_text()
-        pushed = kernel.push_checked(adapter, meta, code_text, spec["runtime"]["limit_s"])
+        try:
+            pushed = kernel.push_checked(adapter, meta, code_text, spec["runtime"]["limit_s"])
+        except KxError as exc:
+            if exc.status == "error" and exc.next_action is None:
+                # A push can fail client-side after Kaggle accepted it; a retry makes the
+                # next version and kx polls whichever version it reads back.
+                exc.next_action = E.run(f"kx run {exp_dir.name}", "Retry once.")
+            raise
         run = kernel.new_run_record(meta, spec, pushed, commit or "uncommitted")
         if upstream:
             run["upstream"] = upstream["used"]
+            for u in upstream["used"]:
+                warnings += u.get("warnings") or []
+        if resume:
+            run["resumed_from_version"] = existing["kernel_version"]
         if spec["runtime"].get("internet"):
             warnings.append("internet is ON for this kernel (declared in experiment.json)")
         kernel.save_run(exp_dir, run)
@@ -553,6 +604,10 @@ def cmd_run(ws: Path, args, adapter) -> dict:
         warnings.append(f"refused {len(pulled['refused'])} unsafe output file name(s)")
     run["log_file"] = f"experiments/{exp_dir.name}/output/kernel.log" if pulled["log_file"] else None
     run["pulled_files"] = pulled["files"]
+    if run.get("upstream"):
+        from kx import pipeline
+
+        run["upstream"] = pipeline.consumed(ws, exp_dir, run)
     kernel.save_run(exp_dir, run)
     return _record_and_envelope(ws, exp_dir, spec, run, pulled["log_text"], warnings,
                                 {"backend": "kernel", "kernel": run["kernel_ref"],

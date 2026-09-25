@@ -153,6 +153,8 @@ def classify(run: dict, output_dir: Path, log_text: str | None, metric_cfg: dict
     result, err = _read_json(output_dir / "result.json")
     if err:
         return "FAILED", err, None
+    if isinstance(result, dict) and result.get("incomplete") is True:
+        return "FAILED", "runtime_limit", None  # stopped at its time budget (resumable)
     reason = validate_result(result, metric_cfg)
     if reason:
         return "FAILED", reason, None
@@ -213,10 +215,15 @@ def record(ws: Path, exp_dir: Path, spec: dict, run: dict, metric_cfg: dict,
         "result_path": f"{rel}/output/result.json",
         "verdict_path": f"{rel}/VERDICT.md",
     }
+    raw, _ = _read_json(output_dir / "result.json")
+    if reason == "runtime_limit" and isinstance(raw, dict) and raw.get("incomplete") is True \
+            and run.get("status") == "COMPLETE":
+        meta["resumable"] = True
+        meta["stopped_at"] = raw.get("stopped_at")
     if run.get("backend", "kernel") == "kernel":
         meta["kernel"] = {k: run.get(k) for k in (
             "kernel_ref", "kernel_version", "accelerator", "enable_internet", "is_private",
-            "status", "failure_message_quarantined", "upstream")}
+            "status", "failure_message_quarantined", "upstream", "resumed_from_version")}
     if result is not None:
         meta.update({
             "n_folds": result["n_folds"],

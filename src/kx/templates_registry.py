@@ -35,6 +35,57 @@ TEMPLATES = {
     },
 }
 
+def _deep_values(spec: dict, profile: dict) -> dict:
+    """Stage, own kernel slug (resume), upstream (infer), time budget, model sources."""
+    import json as _json
+
+    from kx import kernel
+
+    ws = Path(profile["_ws"])
+    cfg = _json.loads((ws / "control" / "config.json").read_text())
+    state = _json.loads((ws / "control" / "state.json").read_text())
+    owner = (state.get("credentials") or {}).get("username") or "owner"
+    wsid = cfg.get("workspace_id", "ws")
+    upstream = None
+    kernels = (spec.get("sources") or {}).get("kernels") or []
+    ups = [k[1:] for k in kernels if k.startswith("@")]
+    if ups:
+        upstream = {"ref": f"{owner}/{kernel.kernel_slug(profile['slug'], wsid, ups[0])}",
+                    "exp_id": ups[0]}
+    limit = int((spec.get("runtime") or {}).get("limit_s") or 3600)
+    return {
+        "STAGE_LIT": repr("infer" if spec["template"] == "deep-infer" else "train"),
+        "KERNEL_SLUG_LIT": repr(kernel.kernel_slug(profile["slug"], wsid, spec["exp_id"])),
+        "UPSTREAM_LIT": repr(upstream),
+        "TIME_BUDGET_LIT": repr(max(60, int(limit * 0.85))),
+        "MODEL_SOURCES_LIT": repr(list((spec.get("sources") or {}).get("models") or [])),
+    }
+
+
+TEMPLATES["deep"] = {
+    "file": "deep/train.py.tmpl",
+    "modalities": {"image", "text", "audio"},
+    "modes": {"csv_upload", "code_kernel"},
+    "needs_cv": True,
+    "needs_metric": True,
+    "default_accelerator": "NvidiaTeslaT4",
+    "default_limit_s": 3600,
+    "extra_values": _deep_values,
+    "summary": "PyTorch image/text fold loop: AMP, per-epoch checkpoints, time-budgeted resume",
+}
+TEMPLATES["deep-infer"] = {
+    "file": "deep/train.py.tmpl",
+    "modalities": {"image", "text", "audio"},
+    "modes": {"csv_upload", "code_kernel"},
+    "needs_cv": True,
+    "needs_metric": True,
+    "auto": False,  # chosen by `kx new --after <deep experiment>`
+    "default_accelerator": "cpu",
+    "default_limit_s": 1800,
+    "extra_values": _deep_values,
+    "summary": "inference stage: loads an upstream deep experiment's fold models",
+}
+
 TABULAR_EXTS = (".csv", ".parquet")
 
 
@@ -125,6 +176,19 @@ def host_metric_block(ws, metric_cfg: dict | None) -> str:
             "    exec(compile(HOST_METRIC_SOURCE, 'host_metric.py', 'exec'), ns)\n"
             "    return types.SimpleNamespace(**ns)\n\n\n"
             "host_metric = _load_host_metric()")
+
+
+AI_START, AI_END = "# === AI BLOCK", "# === END AI BLOCK"
+
+
+def copy_ai_block(src_code: str, dst_code: str) -> str:
+    """Replace dst's AI block with src's (both rendered from the same template)."""
+    def span(code):
+        i = code.index(AI_START)
+        return i, code.index(AI_END, i)
+    si, sj = span(src_code)
+    di, dj = span(dst_code)
+    return dst_code[:di] + src_code[si:sj] + dst_code[dj:]
 
 
 def harness_hash(code: str) -> str | None:
