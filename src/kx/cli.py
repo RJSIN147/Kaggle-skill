@@ -82,6 +82,7 @@ def build_parser() -> KxParser:
     s.add_argument("--limit", type=int, help="kernel runtime limit in seconds")
     s.add_argument("--local", action="store_true", help="run on this machine instead of a kernel")
     s.add_argument("--subsample", type=float, help="local runs: fraction of train rows")
+    s.add_argument("--from-idea", type=int, help="run research idea #N (marks it tried)")
     s.add_argument("--after", action="append", help="upstream experiment whose kernel output "
                                                     "this one reads (repeatable)")
 
@@ -109,7 +110,7 @@ def build_parser() -> KxParser:
 
     s = sub.add_parser("research", help="discussions, public notebooks and metric kernels")
     s.add_argument("what", nargs="?", default="all",
-                   choices=("all", "discussions", "notebooks", "metric", "idea"))
+                   choices=("all", "pages", "discussions", "notebooks", "metric", "idea"))
     s.add_argument("--limit", type=int, default=8)
     s.add_argument("--idea")
     s.add_argument("--source")

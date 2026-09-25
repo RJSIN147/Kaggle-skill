@@ -134,7 +134,24 @@ class KaggleAdapter:
         self.username = api.get_config_value("username")
         return api
 
-    def _call(self, op: str, fn, timeout: float | None = None):
+    def _call(self, op: str, fn, timeout: float | None = None, retries: int = 2):
+        """Run fn(api) under a deadline. Idempotent reads retry transient failures
+        (connection errors, 429, 5xx) with backoff; pushes pass retries=0."""
+        import time
+
+        for attempt in range(retries + 1):
+            try:
+                return self._call_once(op, fn, timeout)
+            except KxError as exc:
+                transient = exc.status == "error" and any(
+                    e.startswith(("ConnectionError", "ChunkedEncodingError", "http_429", "http_5",
+                                  "ReadTimeout", "kaggle_timeout")) for e in exc.errors)
+                if not transient or attempt == retries:
+                    raise
+                time.sleep(2 * (attempt + 1) ** 2)
+        raise AssertionError("unreachable")
+
+    def _call_once(self, op: str, fn, timeout: float | None = None):
         api = self.load()
         try:
             with quiet(), deadline(timeout or self.timeout):
@@ -215,6 +232,67 @@ class KaggleAdapter:
 
         return self._call("list_data_tree_files", fn)
 
+    def download_bundle(self, slug: str, dest_dir: Path, timeout: float) -> Path:
+        """Download the competition's data as ONE bundle (never a per-file loop,
+        which hits HTTP 429). Returns the archive path."""
+
+        def fn(api):
+            dest_dir.mkdir(parents=True, exist_ok=True)
+            api.competition_download_files(slug, path=str(dest_dir), force=True, quiet=True)
+            found = sorted(dest_dir.glob(f"{slug}.*"))
+            if not found:
+                raise FileNotFoundError("bundle not written")
+            return found[0]
+
+        return self._call("download_data_files", fn, timeout=timeout)
+
+    # -- research (all readable without joining) --------------------------- #
+    def pages(self, slug: str) -> list[dict]:
+        """Competition pages (overview, evaluation, rules, data...): untrusted text."""
+        return self._call("list_competition_pages",
+                          lambda api: plain(api.competition_list_pages(slug)) or [])
+
+    def topics(self, slug: str, sort_by: str = "top", page: int = 1) -> list[dict]:
+        def fn(api):
+            resp = plain(api.competition_list_topics(slug, sort_by=sort_by, page=page)) or {}
+            return resp.get("topics") or []
+
+        return self._call("list_competition_topics", fn)
+
+    def topic_messages(self, slug: str, topic_id: int) -> list[dict]:
+        """Full thread incl. the original post (the CLI's `topics show` drops it)."""
+        from kagglesdk.competitions.types.competition_api_service import ApiListTopicMessagesRequest
+
+        def fn(api):
+            with api.build_kaggle_client() as client:
+                r = ApiListTopicMessagesRequest()
+                r.competition_name = slug
+                r.topic_id = int(topic_id)
+                r.page_size = -1
+                resp = plain(client.competitions.competition_api_client.list_topic_messages(r)) or {}
+            return resp.get("messages") or resp.get("topic_messages") or []
+
+        return self._call("list_topic_messages", fn)
+
+    def kernels_list(self, **kw) -> list[dict]:
+        return self._call("list_kernels", lambda api: plain(api.kernels_list(**kw)) or [])
+
+    def kernel_source(self, owner: str, slug: str) -> dict:
+        """A kernel's code + metadata, returned in memory (never written by the SDK)."""
+        from kagglesdk.kernels.types.kernels_api_service import ApiGetKernelRequest
+
+        def fn(api):
+            with api.build_kaggle_client() as client:
+                r = ApiGetKernelRequest()
+                r.user_name = owner
+                r.kernel_slug = slug
+                resp = plain(client.kernels.kernels_api_client.get_kernel(r)) or {}
+            blob = resp.get("blob") or {}
+            return {"source": blob.get("source") or "", "language": blob.get("language"),
+                    "kernel_type": blob.get("kernel_type"), "metadata": resp.get("metadata") or {}}
+
+        return self._call("get_kernel", fn)
+
     # -- kernels ---------------------------------------------------------- #
     def push(self, metadata: dict, code_text: str, timeout_s: int | None = None) -> dict:
         from kagglesdk.kernels.types.kernels_api_service import ApiSaveKernelRequest
@@ -242,7 +320,7 @@ class KaggleAdapter:
                     r.session_timeout_seconds = int(timeout_s)
                 return plain(client.kernels.kernels_api_client.save_kernel(r))
 
-        return self._call("save_kernel", fn, timeout=180)
+        return self._call("save_kernel", fn, timeout=180, retries=0)
 
     def kernel_status(self, owner: str, slug: str) -> dict:
         from kagglesdk.kernels.types.kernels_api_service import ApiGetKernelSessionStatusRequest

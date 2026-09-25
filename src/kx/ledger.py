@@ -19,14 +19,15 @@ REQUIRED_TOP_KEYS = ("exp_id", "status")
 REQUIRED_PROVENANCE_KEYS = ("run_id", "artifact_hash", "git_commit", "seed")
 
 # The exact, ordered key set of a derived ledger row (byte-stable rebuild).
+# `subsample` marks a local run on a fraction of the train rows (null = full data).
 LEDGER_ROW_KEYS = (
     "exp_id", "status", "idea", "metric", "greater_is_better", "cv_mean", "cv_std",
-    "git_commit", "seed", "created", "verdict_path",
+    "git_commit", "seed", "created", "verdict_path", "subsample",
 )
 
 
 def to_ledger_row(meta: dict) -> dict:
-    """The 11-key derived row, in fixed order. A pure projection (no validation)."""
+    """The derived row, in fixed key order. A pure projection (no validation)."""
     provenance = meta.get("provenance") or {}
     return {
         "exp_id": meta.get("exp_id"),
@@ -40,6 +41,7 @@ def to_ledger_row(meta: dict) -> dict:
         "seed": provenance.get("seed"),
         "created": meta.get("created"),
         "verdict_path": meta.get("verdict_path"),
+        "subsample": meta.get("subsample"),
     }
 
 

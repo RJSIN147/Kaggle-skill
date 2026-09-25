@@ -1,0 +1,164 @@
+def _resolve_data_dir() -> Path:
+    """One resolver for kernel and local runs: KX_DATA_DIR (local), then the
+    current competitions mount (canonical case), then the legacy mounts."""
+    env = os.environ.get("KX_DATA_DIR")
+    candidates = [Path(env)] if env else []
+    candidates += [Path("/kaggle/input/competitions") / COMPETITION_REF,
+                   Path("/kaggle/input") / COMPETITION_REF,
+                   Path("/kaggle/input") / SLUG]
+    for p in candidates:
+        if p.is_dir():
+            return p
+    root = Path("/kaggle/input")
+    if root.is_dir():  # case-insensitive fallback: canonical refs carry capitals
+        for p in root.rglob(Path(SAMPLE_SUBMISSION).name):
+            if p.parent.name.lower() == SLUG.lower():
+                return p.parent
+    raise FileNotFoundError(f"competition data for {COMPETITION_REF} not found")
+
+
+def _output_dir() -> Path:
+    if os.environ.get("KX_OUTPUT_DIR"):
+        out = Path(os.environ.get("KX_OUTPUT_DIR"))
+    elif Path("/kaggle/working").is_dir():
+        out = Path("/kaggle/working")
+    else:
+        out = Path("output")
+    out.mkdir(parents=True, exist_ok=True)
+    return out
+
+
+def _read(path: Path) -> pd.DataFrame:
+    if path.suffix == ".parquet":
+        return pd.read_parquet(path)
+    return pd.read_csv(path)
+
+
+def _labels(proba, classes):
+    proba = np.asarray(proba, dtype=float)
+    if proba.ndim == 1:
+        return np.where(proba >= 0.5, classes[1], classes[0])
+    return np.asarray(classes)[proba.argmax(axis=1)]
+
+
+def _score(y_true, pred, classes, rows=None):
+    import inspect
+
+    import sklearn.metrics as skm
+
+    if "custom_score" in globals():
+        fn = globals()["custom_score"]
+        if len(inspect.signature(fn).parameters) >= 3:
+            return float(fn(y_true, pred, rows))
+        return float(fn(y_true, pred))
+    ptype, name = METRIC_INFO["prediction_type"], METRIC
+    if ptype == "raw":
+        yt, yp = np.asarray(y_true, dtype=float), np.asarray(pred, dtype=float)
+        if name == "rmse":
+            return float(np.sqrt(np.mean((yt - yp) ** 2)))
+        if name == "rmsle":
+            return float(np.sqrt(np.mean((np.log1p(np.clip(yp, 0, None)) - np.log1p(yt)) ** 2)))
+        return float(getattr(skm, METRIC_INFO["sklearn_callable"])(yt, yp))
+    proba = np.asarray(pred, dtype=float)
+    if ptype == "proba":
+        if name == "roc_auc":
+            if proba.ndim == 1:
+                return float(skm.roc_auc_score(y_true, proba))
+            return float(skm.roc_auc_score(y_true, proba, multi_class="ovr", labels=classes))
+        if proba.ndim == 1:
+            proba = np.column_stack([1 - proba, proba])
+        return float(skm.log_loss(y_true, proba, labels=classes))
+    labels = _labels(proba, classes)
+    fn = getattr(skm, METRIC_INFO["sklearn_callable"])
+    if name == "f1_macro" or (name in ("f1", "precision", "recall") and len(classes) > 2):
+        return float(fn(y_true, labels, average="macro"))
+    if name == "qwk":
+        return float(fn(y_true, labels, weights="quadratic"))
+    return float(fn(y_true, labels))
+
+
+def _versions() -> dict:
+    out = {}
+    for mod in ("numpy", "pandas", "sklearn", "lightgbm", "xgboost", "catboost", "torch",
+                "timm", "transformers"):
+        m = sys.modules.get(mod)
+        if m is None and mod in ("numpy", "pandas", "sklearn"):
+            m = __import__(mod)
+        if m is not None:
+            out[mod] = getattr(m, "__version__", None)
+    return out
+
+
+def _write_outputs(out, *, train, test, y, folds, oof, test_pred, fold_scores, classes,
+                   classification, extra=None):
+    """kx-preds/1 files, the submission, result.json and kx_manifest.json."""
+    n_cols = oof.shape[1]
+    pred_cols = ["pred"] if n_cols == 1 else [f"pred_{i}" for i in range(n_cols)]
+    row_ids = train[ID_COL] if ID_COL in train.columns else pd.Series(range(len(train)))
+    test_ids = test[ID_COL] if ID_COL in test.columns else pd.Series(range(len(test)))
+    oof_df = pd.DataFrame(oof, columns=pred_cols)
+    oof_df.insert(0, "target", np.asarray(y))
+    oof_df.insert(0, "fold", folds)
+    oof_df.insert(0, "row_id", row_ids.values)
+    oof_df.to_csv(out / "oof.csv", index=False)
+    te_df = pd.DataFrame(test_pred, columns=pred_cols)
+    te_df.insert(0, "row_id", test_ids.values)
+    te_df.to_csv(out / "test_preds.csv", index=False)
+
+    sub = pd.DataFrame({ID_COL: test_ids.values})
+    flat = test_pred[:, 0] if n_cols == 1 else test_pred
+    if METRIC_INFO["prediction_type"] == "label":
+        sub[TARGET] = _labels(flat, classes)
+    elif n_cols == 1:
+        sub[TARGET] = flat
+    else:
+        for i, c in enumerate(classes):
+            sub[str(c)] = test_pred[:, i]
+    if "postprocess_submission" in globals():
+        sub = globals()["postprocess_submission"](sub, test_pred, classes)
+    sub.to_csv(out / EXPECTED_OUTPUT, index=False)
+
+    subsample = os.environ.get("KX_SUBSAMPLE")
+    result = {
+        "exp_id": EXP_ID, "metric": METRIC, "n_folds": N_FOLDS,
+        "fold_scores": [float(s) for s in fold_scores],
+        "cv_mean": float(np.mean(fold_scores)), "cv_std": float(np.std(fold_scores)),
+        "seed": SEED, "greater_is_better": METRIC_INFO["greater_is_better"],
+        "subsample": float(subsample) if subsample else None,
+        "predictions": {"format": "kx-preds/1", "oof": "oof.csv", "test": "test_preds.csv",
+                        "pred_columns": pred_cols,
+                        "classes": [str(c) for c in classes] if n_cols > 1 else None,
+                        "n_oof": int(len(oof_df)), "n_test": int(len(te_df)),
+                        "id_column": str(ID_COL), "target_column": str(TARGET),
+                        "prediction_type": "proba" if classification else "raw"},
+        "submission_file": EXPECTED_OUTPUT,
+    }
+    result.update(extra or {})
+    (out / "result.json").write_text(json.dumps(result, indent=2))
+    manifest = {
+        "exp_id": EXP_ID, "python": sys.version.split()[0], "platform": platform.platform(),
+        "libraries": _versions(), "data_dir": str(DATA_DIR),
+        "kaggle_env_keys": sorted(k for k in os.environ if k.startswith("KAGGLE")),
+        "run_type": os.environ.get("KAGGLE_KERNEL_RUN_TYPE"),
+    }
+    (out / "kx_manifest.json").write_text(json.dumps(manifest, indent=2))
+    print(f"KX_RESULT {METRIC}={result['cv_mean']:.6f}±{result['cv_std']:.6f}", flush=True)
+
+
+def _load():
+    """Resolve the data, read sample/train/test, apply a local subsample."""
+    global TARGET, ID_COL, DATA_DIR
+    DATA_DIR = _resolve_data_dir()
+    sample = _read(DATA_DIR / SAMPLE_SUBMISSION)
+    ID_COL = ID_COL or sample.columns[0]
+    TARGET = TARGET or sample.columns[1]
+    train = _read(DATA_DIR / TRAIN_FILE)
+    test = _read(DATA_DIR / TEST_FILE)
+    subsample = os.environ.get("KX_SUBSAMPLE")
+    if subsample:
+        train = train.sample(frac=float(subsample), random_state=SEED)
+        train = train.sort_index().reset_index(drop=True)
+    return train, test
+
+
+DATA_DIR = None
