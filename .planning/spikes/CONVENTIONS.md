@@ -30,6 +30,9 @@ question requires otherwise.
 - **Submissions are human actions:** Claude prepares and validates; the user runs the exact
   `kaggle competitions submit ...` with `!`; Claude confirms by read-back only (never trusts
   submit's exit code/stdout).
+- **Live-check targets:** closed competitions that still accept late submissions
+  (`submissions_disabled=False`) or perpetual sandboxes (Titanic, ConnectX) — never a competition
+  the user is actively competing in. The user joins via the browser when a spike needs it.
 - **Parse CLI JSON defensively:** decode the leading JSON value (`JSONDecoder().raw_decode`) —
   some commands append a prose hint after the JSON.
 - **Never commit third-party content** (other users' notebook code, forum posts, replays with
