@@ -1,7 +1,8 @@
 ---
 phase: 05-submission-leaderboard-tracking
 verified: 2026-07-12T00:00:00Z
-status: human_needed
+status: passed
+re_verified: 2026-09-25
 score: 7/7 must-haves verified
 overrides_applied: 0
 human_verification:
@@ -9,6 +10,13 @@ human_verification:
     expected: "The Kaggle-returned `date` matches the noted UTC wall clock at submit time; if it differs by a local UTC offset, A1 is REFUTED and the day-boundary logic in charged_today/parse_utc must be corrected."
     why_human: "Cannot be proven without spending a real, irreversible daily submission slot with live Kaggle credentials — explicitly deferred per 05-HUMAN-UAT.md, no credentials/scored workspace exist on this machine."
 resolved_after_verification:
+  - item: "A1 — submissions.date is UTC"
+    decision: "Live check on 2026-09-25 (spike 003a late submission to equity-post-HCT-survival-predictions)."
+    outcome: >-
+      CONFIRMED. Read-back date 2026-09-25T00:56:32.697 vs `date -u` 00:56:52 (local +0530), so the
+      naive string is UTC and charged_today/parse_utc are correct. Recorded in
+      references/kaggle-cli-behavior.md and 05-HUMAN-UAT.md (status complete). Caveat: the submit
+      itself was the raw CLI, not scripts/submit.py.
   - item: "WR-02 — submit.py did not mechanically re-check the daily budget or the CV-improvement gate before spending a slot"
     decision: "Option (b) — harden. Chosen by the developer on 2026-07-12."
     outcome: >-
@@ -39,7 +47,7 @@ resolved_after_verification:
 
 **Phase Goal:** Submit under CV-first discipline with budget gating and CV-to-LB gap tracking
 **Verified:** 2026-07-12
-**Status:** human_needed
+**Status:** human_needed → **passed** (re-verified 2026-09-25: A1 confirmed live; WR-02 resolved 2026-07-12)
 **Re-verification:** No — initial verification
 
 ## Goal Achievement

@@ -21,38 +21,53 @@ the framework exists to serve that loop.
 
 <!-- Shipped and confirmed valuable. -->
 
-- [x] Capture static competition context — data schema, eval metric, rules, submission limits — in a dedicated file at setup — *Validated in Phase 2: Competition Context & Data (COMP-01, machine-derived "constitution" with provenance-tagged limits and untrusted-content wrapping)*
-- [x] Download competition data for local runs — *Validated in Phase 2: Competition Context & Data (COMP-02, UI-only rules gate cleared, zip-slip-protected extraction, never busy-loops)*
-- [x] Represent an experiment as an idea + hypothesis, its generated notebook/script, its result, and a written verdict (worked / didn't / why) — *Validated in Phase 3: Local Experiment Loop, Ledger & Strategy (immutable per-experiment folder: meta.json canonical + VERDICT.md; numeric fields written only by tooling from a machine-checked result.json)*
-- [x] AI authors a fresh notebook/script per experiment from a template scaffold — *Validated in Phase 3 (EXP-01, scaffold_experiment.py renders experiment.py with a backend-agnostic data-path resolver and injection-safe repr() literals)*
-- [x] Run an experiment locally (the default path), producing a cross-validation score and artifacts — *Validated in Phase 3 (EXP-02, run_local.py under `uv run --no-sync`; fold-internal preprocessing enforced; anti-lie fail-closed result validation)*
-- [x] Log every experiment to a structured ledger (metadata, CV score, links to artifacts), backed by git — *Validated in Phase 3 (MEM-01, meta.json canonical + derived ledger.jsonl that fully rebuilds from the folders; SUCCESS and FAILED both recorded with provenance — run id, artifact hash, git commit, seed)*
-- [x] Maintain a living strategy doc the AI updates each cycle (current best, hypothesis queue, what to try next) — *Validated in Phase 3 (MEM-03, regen_strategy.py regenerates strategy.md from the ledger each cycle, never hand-edited)*
-- [x] Maintain experiment history the AI reasons over so it never re-proposes an already-tried idea — *Validated in Phase 3 (MEM-02, tried-list digest surfaces both tried-and-succeeded and tried-and-failed ideas)*
+- ✓ Initialize an experiment workspace in an empty folder (layout, config, repo init, context stubs) — v1.0 (Phase 1, SETUP-01)
+- ✓ Choose a default execution target (local vs Kaggle Kernel), overridable globally or per experiment — v1.0 (Phase 1, SETUP-02)
+- ✓ Connect to the user's Kaggle account, with a live credential check that never echoes the secret — v1.0 (Phase 1, SETUP-03/04; the egress half was only partially demonstrated)
+- ✓ Capture static competition context into a dedicated file at setup — v1.0 (Phase 2, COMP-01). v1 scraped type and limits from rules prose; v2 replaces this with API profiles.
+- ✓ Preflight UI-only Kaggle gates, and download data with zip-slip-safe extraction — v1.0 (Phase 2, COMP-02/03)
+- ✓ An experiment is an idea, a hypothesis, a generated script, a machine-captured result and a written verdict — v1.0 (Phase 3, EXP-01)
+- ✓ The AI writes a fresh script for each experiment from a kernel-portable scaffold — v1.0 (Phase 3, EXP-02)
+- ✓ Run an experiment locally, producing a CV score and artifacts — v1.0 (Phase 3, EXP-03)
+- ✓ Only tooling writes numeric results, from a machine-checked `result.json`, with provenance — v1.0 (Phase 3, EXP-04)
+- ✓ A version-controlled ledger (`meta.json` canonical, derived `ledger.jsonl`), a never-repeat history and a regenerated strategy doc — v1.0 (Phase 3, MEM-01/02/03)
+- ✓ Push an experiment to a Kaggle Kernel, poll it, pull its artifacts and detect silent failures — v1.0 (Phase 4, EXP-05; live-verified 2026-09-25 after quick task 260925-66x)
+- ✓ Submit via the Kaggle CLI and record the LB score, confirmed by read-back — v1.0 (Phase 5, SCORE-01; the only live submits so far used the raw CLI, not `submit.py`)
+- ✓ CV-first decisions, a CV→LB gap trend with a divergence alarm, and submissions rationed against the daily limit — v1.0 (Phase 5, SCORE-02/03; `submissions.date` confirmed UTC live)
 
 ### Active
 
 <!-- Current scope. Building toward these. All are hypotheses until shipped and validated. -->
 
-- [ ] Initialize an experiment workspace in an empty folder (directory structure, config, context files)
-- [ ] Connect to the user's Kaggle account via the Kaggle CLI/API (credential setup + validation)
-- [ ] Choose a default execution target (local vs Kaggle Kernel) at init; overridable anytime, globally or per-experiment
-- [ ] Push a notebook to a Kaggle Kernel, run it on Kaggle compute (GPU), and pull results/artifacts back
-- [ ] CV-first scoring: local cross-validation is the primary signal; submissions rationed against the daily limit; track the CV→LB gap
-- [ ] Submit predictions to the competition via the Kaggle CLI and record the resulting LB score
+(To be defined at the next milestone.)
 
 ### Out of Scope
 
 <!-- Explicit boundaries. Includes reasoning to prevent re-adding. -->
 
-- Dependency on shepsci/kaggle-skill — building fully standalone; reimplement only the Kaggle ops actually needed
-- Broad Kaggle toolkit features (badges, forum/writeup discovery, benchmarks, model publishing) — not core to the experiment loop; revisit in v2 (writeup retrieval could feed competition knowledge)
-- Proven multi-agent portability (opencode / other agents) in v1 — Claude Code first; keep structure portable and port later
-- General (non-competition) ML R&D workflows — competition-optimized for v1
-- Automated hyperparameter sweeps as a first-class feature — an experiment is a single idea + verdict for v1; sweeps can layer on later
+- Dependency on shepsci/kaggle-skill — built fully standalone; reimplement only the Kaggle operations actually needed.
+- Badges, benchmarks, model/dataset publishing — Kaggle-ops features that don't help win a competition. (v1 also excluded forum and notebook research; that moves into scope for v2, because spike 005 showed it is the highest-signal input.)
+- Proven multi-agent portability (opencode, other agents) — Claude Code first; keep the structure portable and port later.
+- General (non-competition) ML R&D workflows — the framework is competition-focused.
+- Automated hyperparameter sweeps as a first-class feature — an experiment is a single idea plus a verdict; sweeps can be layered on later.
+- Autonomous submitting — the human runs every submission. Claude Code auto-mode also treats a submit as a real-world transaction and blocks it.
 
 ## Context
 
+- **Current state (v1.0 shipped 2026-09-25):**
+  - 29 stdlib-only helper scripts (~9.4k LOC Python), 42 test modules (~9.6k LOC, 341 passing) and a 488-line SKILL.md.
+  - The loop runs end to end, both locally and on a Kaggle kernel (live parity CV of 0.8305 on Titanic).
+  - v1 is shaped around tabular data and CSV submissions:
+    - It regex-scraped competition type and limits from rules prose, and labelled Titanic a code competition.
+    - Its kernel path converts `.py` to a notebook, which caused 4 live bugs (fixed in quick task 260925-66x).
+    - It has no path for code-only, API-served, simulation or writeup competitions.
+- **v2 groundwork:** the Phase 0 spikes (2026-09-25, `.planning/spikes/`, packaged as the `spike-findings-kaggle-skill`
+  skill) live-validated:
+  - competition profiles derived from the Kaggle API
+  - script kernels and `kernel_sources` chaining
+  - submitting a script kernel version to code competitions, both tabular and `kaggle_evaluation` API-served
+  - a ConnectX agent loop
+  - reading discussions, public notebooks and host metric kernels for research
 - **Reference point:** `shepsci/kaggle-skill` is installed in this environment (the `kaggle-skill:kaggle` plugin) and is a broad Kaggle *operations* toolkit (setup, downloads, notebooks, submissions, writeups, benchmarks, badges). This project targets a different layer — the *experimentation loop* — and is deliberately built standalone rather than on top of it.
 - **Kaggle integration** relies on the Kaggle CLI/API and a user API token (`~/.kaggle/kaggle.json`). Kernel execution requires kernel metadata, competition-dataset attachment, and completion polling to pull outputs.
 - **Data flow follows the execution target:** local runs download competition data locally; Kaggle-Kernel runs attach data on Kaggle. Submissions always route through the Kaggle CLI regardless of where code ran.
@@ -73,16 +88,20 @@ the framework exists to serve that loop.
 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
-| Build fully standalone (no shepsci/kaggle-skill dependency) | Full control; avoid coupling to another skill's surface and lifecycle | — Pending |
-| Competition-focused for v1 | Tightest, most valuable loop; general R&D would dilute it | — Pending |
-| Local-first default, Kaggle Kernels for GPU/submissions; execution target set at init and changeable anytime | Fast local iteration, free GPU when needed, flexibility per experiment | — Pending |
-| Experiment = idea + hypothesis + result + written verdict | Matches the documented-reasoning vision; the unit the AI reasons over | — Pending |
-| Versioning = structured ledger + git | Queryable/summarizable for the AI, with diffable code history underneath | — Pending |
-| Context split: static comp file / experiment history / living strategy doc | Separates rarely-changing facts from evolving state; keeps AI context clean | — Pending |
-| AI authors a fresh notebook per experiment from a scaffold | Maximum flexibility; the AI owns the code each cycle | — Pending |
-| CV-first scoring; ration submissions | Standard competition discipline; conserves submission budget; watch the CV→LB gap | — Pending |
-| Claude Code first for portability | Ship a working loop before investing in multi-agent support | — Pending |
-| Working project name "Kaggle Experimentation Framework" | Descriptive placeholder; final skill name can be chosen at packaging | — Pending |
+| Build fully standalone (no shepsci/kaggle-skill dependency) | Full control; avoid coupling to another skill's surface and lifecycle | ✓ Good |
+| Competition-focused | The tightest, most valuable loop; general R&D would dilute it | ✓ Good |
+| Local-first default, Kaggle Kernels for GPU/submissions; target set at init, changeable anytime | Fast local iteration, free GPU when needed | ⚠️ Revisit — v2 makes the kernel the default runtime, because most prize competitions are code-only or too large to run locally. Local stays an option. |
+| Experiment = idea + hypothesis + result + written verdict | The unit the AI reasons over | ✓ Good |
+| Versioning = structured ledger + git | Queryable for the AI, diffable underneath | ✓ Good |
+| Context split: static competition file / experiment history / living strategy doc | Separates rarely-changing facts from evolving state | ✓ Good — in v2 the static file comes from an API profile instead of scraped prose |
+| AI writes a fresh notebook per experiment from a scaffold | The AI owns the code each cycle | ✓ Good — but as a plain script: v2 pushes script kernels (spike 003 gave identical scores with no conversion step) |
+| Machine-checked result contract (tooling writes scores, never the AI) | Prevents fabrication; a throwing or lying run is recorded FAILED | ✓ Good |
+| CV-first scoring; ration submissions | Conserves the submission budget; watch the CV→LB gap | ✓ Good |
+| Stdlib-only helper scripts | Portability, nothing to install | ⚠️ Revisit — dropped for v2: the `kaggle` package's SDK exposes structured facts the CLI hides, and it is the same dependency as the CLI |
+| Regex-scrape competition type and daily limit from rules prose | The CLI's JSON lacked these fields | ⚠️ Revisit — it mislabelled Titanic; v2 reads SDK `is_kernels_submissions_only` and `max_daily_submissions` instead |
+| Exit-code protocol across 28 scripts (65/69/75/77/78) | Machine-readable gates | ⚠️ Revisit — v2 consolidates into one `kx` CLI that prints JSON with `next_action` |
+| Claude Code first for portability | Ship a working loop before multi-agent support | ✓ Good |
+| Working project name "Kaggle Experimentation Framework" | Descriptive placeholder | — Pending |
 
 ## Evolution
 
@@ -102,4 +121,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-07-11 after Phase 3 (Local Experiment Loop, Ledger & Strategy) complete — the full idea→run→verdict→ledger→strategy cycle works end-to-end on local CV-only compute. Machine-verified scores only (anti-lie fail-closed result contract; a throwing/lying run is recorded FAILED, never a success), git-backed ledger that rebuilds from per-experiment folders, and a regenerated-from-ledger strategy with a never-repeat digest. Injection-safe experiment scaffolding (CR-01). Deferred low-risk: --exp-dir path traversal (IN-01), verbatim-trusted artifacts paths (IN-02).*
+*Last updated: 2026-09-25 after the v1.0 milestone (Experiment Loop MVP archived; Phase 0 v2 spikes validated)*

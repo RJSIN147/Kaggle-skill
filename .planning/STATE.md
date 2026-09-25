@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: milestone_complete
-stopped_at: Milestone complete (Phase 05 was final phase)
-last_updated: 2026-09-24T22:53:36.000Z
-last_activity: 2026-09-25 -- Quick 260925-66x: kernel-path live bugs fixed (kernelspec, ipykernel argv/exit, flat /kaggle/working)
+status: Awaiting next milestone
+stopped_at: v1.0 archived; starting v2.0 milestone
+last_updated: "2026-09-25T01:46:01.738Z"
+last_activity: 2026-09-25 — Milestone v1.0 completed and archived
 progress:
   total_phases: 5
   completed_phases: 5
@@ -18,20 +18,17 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-07-09)
+See: .planning/PROJECT.md (updated 2026-09-25)
 
 **Core value:** One clean end-to-end experiment cycle — empty folder to an idea run, its result and reasoning logged to the ledger, and the strategy doc updated.
-**Current focus:** Milestone complete
+**Current focus:** Planning next milestone (v2.0 Kaggle-general)
 
 ## Current Position
 
-Phase: 05 (complete)
-Plan: All plans complete
-Status: Milestone complete
-Phase 5 verification: `human_needed` — the A1 live UTC check on `submissions.date` is outstanding (see `.planning/phases/05-submission-leaderboard-tracking/05-HUMAN-UAT.md`)
-Last activity: 2026-09-25 -- Quick 260925-66x: kernel-path live bugs fixed; EXP-05 live-verified
-
-Progress: [██████████] 100%
+Phase: Milestone v1.0 complete
+Plan: —
+Status: Awaiting next milestone
+Last activity: 2026-09-25 — Milestone v1.0 completed and archived
 
 ## Performance Metrics
 
@@ -96,7 +93,7 @@ None.
 Research flags to resolve during phase planning:
 
 - ~~Phase 4: exact `kaggle kernels status` output shape unconfirmed; verify against a live run before finalizing the poller. Known API bugs #473/#509.~~ RESOLVED (live-verified 2026-09-25: `KernelWorkerStatus.<NAME>` render, see references/kaggle-cli-behavior.md).
-- Phase 5: code-competition submission path (notebook-only, no CSV-via-CLI) needs validation for the target competition type; may need a competition-type flag captured in Phase 2.
+- ~~Phase 5: the code-competition submission path needs validation for the target competition type.~~ RESOLVED by spike 003 (2026-09-25): `submit <ref> -k -v -f` with a script kernel version scores, including API-served competitions. The competition type now comes from the SDK profile (spike 001).
 - Phase 2: `competitions download --unzip` reliability on CLI 2.x needs direct verification.
 - Outstanding human verification (01-03): run discriminating egress probe (example.org/example.net/wikipedia.org/google.com/httpbin.org, declining prompts) to settle whether an undocumented pre-allowed set exists for the local CLI sandbox — the example.com anomaly
 
@@ -115,8 +112,19 @@ Items acknowledged and carried forward from previous milestone close:
 |----------|------|--------|-------------|
 | Live verification (EXP-05) | One opt-in live Kaggle GPU push (convert→push→poll→pull→record) to confirm A1 T4×2 string / A2 status render / A3 log+marker coverage / A4 push version regex, findings into references/kaggle-cli-behavior.md. Needs Phase 1 creds + Phase 2 data + Phase 3 scaffolded experiment. | Live-verified 2026-09-25 (A2/A3/A4 + T4 default; T4x2 string still unverified) — 4 bugs fixed in quick 260925-66x | 04-05 (2026-07-12) |
 
+Items acknowledged at the v1.0 milestone close on 2026-09-25:
+
+| Category | Item | Status |
+|----------|------|--------|
+| quick_task | 260925-5z0-fix-skill-md-script-paths-docstring-esca | False positive: the task is complete (commit 2951a70), but its summary is named `260925-5z0-SUMMARY.md` and the audit expects `SUMMARY.md` |
+| quick_task | 260925-66x-fix-kernel-path-notebook-kernelspec-ipyk | False positive: the task is complete (commit fbfaa33), same file-naming mismatch |
+
 ## Session Continuity
 
-Last session: 2026-07-12T11:18:39.595Z
-Stopped at: Milestone complete; Quick 260925-66x (kernel-path live bug fixes) executed; orchestrator final live push pending
+Last session: 2026-09-25
+Stopped at: v1.0 archived (milestones/); v2.0 milestone being defined
 Resume file: None
+
+## Operator Next Steps
+
+- Start the next milestone with /gsd-new-milestone
