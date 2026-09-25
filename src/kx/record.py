@@ -132,7 +132,8 @@ def _read_json(path: Path):
         return None, "schema_invalid"
 
 
-def classify(run: dict, output_dir: Path, log_text: str | None, metric_cfg: dict):
+def classify(run: dict, output_dir: Path, log_text: str | None, metric_cfg: dict,
+             require_predictions: bool = True):
     """(status, failure_reason, valid_result) by the ladder above."""
     backend = run.get("backend", "kernel")
     st = run.get("status")
@@ -158,18 +159,21 @@ def classify(run: dict, output_dir: Path, log_text: str | None, metric_cfg: dict
     reason = validate_result(result, metric_cfg)
     if reason:
         return "FAILED", reason, None
-    if preds.validate(output_dir, result.get("predictions"), int(result["n_folds"])):
+    if (require_predictions or result.get("predictions") is not None) and \
+            preds.validate(output_dir, result.get("predictions"), int(result["n_folds"])):
         return "FAILED", "predictions_invalid", None
     return "SUCCESS", None, result
 
 
 def record(ws: Path, exp_dir: Path, spec: dict, run: dict, metric_cfg: dict,
-           log_text: str | None, verdict_stub: str) -> tuple[dict, list[str]]:
+           log_text: str | None, verdict_stub: str,
+           require_predictions: bool = True) -> tuple[dict, list[str]]:
     """Classify, write meta.json + VERDICT.md stub, rebuild the ledger.
     Returns (meta, ledger warnings)."""
     rel = f"experiments/{exp_dir.name}"
     output_dir = exp_dir / "output"
-    status, reason, result = classify(run, output_dir, log_text, metric_cfg)
+    status, reason, result = classify(run, output_dir, log_text, metric_cfg,
+                                      require_predictions)
 
     code = exp_dir / spec.get("code_file", "train.py")
     artifact_hash = "sha256:" + hashlib.sha256(code.read_bytes()).hexdigest() if code.is_file() \
@@ -231,6 +235,8 @@ def record(ws: Path, exp_dir: Path, spec: dict, run: dict, metric_cfg: dict,
             "cv_mean": result["cv_mean"],
             "cv_std": result["cv_std"],
             "predictions": result.get("predictions"),
+            "agent_eval": {k: result[k] for k in ("validation", "opponents") if k in result}
+            or None,
         })
     else:
         partial = sorted(p.name for p in output_dir.iterdir()) if output_dir.is_dir() else []

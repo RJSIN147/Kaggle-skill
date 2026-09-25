@@ -27,6 +27,8 @@ REGISTRY = {
     "r2":        {"greater_is_better": True,  "prediction_type": "raw",   "range": (-inf, 1.0), "sklearn_callable": "r2_score"},
     "qwk":       {"greater_is_better": True,  "prediction_type": "label", "range": (-1.0, 1.0), "sklearn_callable": "cohen_kappa_score"},
     "mcc":       {"greater_is_better": True,  "prediction_type": "label", "range": (-1.0, 1.0), "sklearn_callable": "matthews_corrcoef"},
+    # Simulation agents: local win rate against a pool (W=1, D=0.5, L=0).
+    "win_rate":  {"greater_is_better": True,  "prediction_type": None,    "range": (0.0, 1.0),  "sklearn_callable": None},
     # Escape hatch: the experiment supplies its own score(); direction and range
     # must be given explicitly to `kx metric custom`.
     "custom":    {"greater_is_better": None,  "prediction_type": None,    "range": (-inf, inf), "sklearn_callable": None},

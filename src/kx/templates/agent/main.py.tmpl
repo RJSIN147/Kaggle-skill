@@ -1,0 +1,47 @@
+"""kx simulation agent $EXP_ID for $COMPETITION_REF — the whole file is what gets uploaded.
+
+Kaggle calls the LAST top-level function as the agent: agent(observation, configuration).
+Keep it stdlib-only and fast (per-step time limits apply). This default is a ConnectX
+heuristic (win now > block > never hand the opponent a win > prefer the centre); rewrite
+it for other simulations. `kx run $EXP_ID` validates it with a self-play episode and
+measures its win rate against baselines plus your earlier agents.
+"""
+
+
+def agent(observation, configuration):
+    rows, cols, inarow = configuration.rows, configuration.columns, configuration.inarow
+    me = observation.mark
+    opp = 3 - me
+    board = list(observation.board)
+
+    def drop(b, col, mark):
+        nb = list(b)
+        for r in range(rows - 1, -1, -1):
+            if nb[r * cols + col] == 0:
+                nb[r * cols + col] = mark
+                return nb
+        return None
+
+    def wins(b, mark):
+        for r in range(rows):
+            for c in range(cols):
+                for dr, dc in ((0, 1), (1, 0), (1, 1), (1, -1)):
+                    if all(0 <= r + dr * k < rows and 0 <= c + dc * k < cols
+                           and b[(r + dr * k) * cols + c + dc * k] == mark for k in range(inarow)):
+                        return True
+        return False
+
+    moves = [c for c in range(cols) if board[c] == 0]
+    for c in moves:
+        if wins(drop(board, c, me), me):
+            return c
+    for c in moves:
+        if wins(drop(board, c, opp), opp):
+            return c
+    centre = cols // 2
+    safe = []
+    for c in moves:
+        after = drop(board, c, me)
+        if not any(after[c2] == 0 and wins(drop(after, c2, opp), opp) for c2 in range(cols)):
+            safe.append(c)
+    return min(safe or moves, key=lambda c: abs(c - centre))

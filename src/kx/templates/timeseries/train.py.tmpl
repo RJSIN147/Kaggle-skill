@@ -114,6 +114,7 @@ def main():
         print(f"fold {k}: train<{t[va].min().date()} {METRIC}={fold_scores[-1]:.6f}", flush=True)
     model = make_model(SEED)
     model.fit(X, y)
+    _save_model(model, "full")
     test_pred = np.asarray(model.predict(X_test), dtype=float).reshape(-1, 1)
 
     _write_outputs(out, train=train, test=test, y=y, folds=folds, oof=oof, test_pred=test_pred,
