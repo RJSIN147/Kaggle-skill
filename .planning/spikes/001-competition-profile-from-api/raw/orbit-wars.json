@@ -1,0 +1,125 @@
+{
+  "slug": "orbit-wars",
+  "competition": {
+    "id": 138420,
+    "ref": "https://www.kaggle.com/competitions/orbit-wars",
+    "title": "Orbit Wars",
+    "url": "https://www.kaggle.com/competitions/orbit-wars",
+    "description": "Conquer planets rotating around a sun in continuous 2D space. A real-time strategy game for 2 or 4 players.",
+    "organization_name": "Kaggle",
+    "organization_ref": "",
+    "category": "Featured",
+    "reward": "50,000 Usd",
+    "tags": [
+      {
+        "ref": "games",
+        "name": "games",
+        "description": "One of the hallmarks of intelligence is the use of games and toys to occupy free time and develop intellectually. Often stored in Mom's basement.",
+        "full_path": "subject > culture and humanities > games",
+        "competition_count": 33,
+        "dataset_count": 10963,
+        "script_count": 34465,
+        "total_count": 45461
+      },
+      {
+        "ref": "artificial intelligence",
+        "name": "artificial intelligence",
+        "description": "This tag has datasets and kernels where people come together and use cutting-edge research to train models on pictures of cats.",
+        "full_path": "subject > science and technology > computer science > artificial intelligence",
+        "competition_count": 114,
+        "dataset_count": 5487,
+        "script_count": 4286,
+        "total_count": 9887
+      },
+      {
+        "ref": "reinforcement learning",
+        "name": "reinforcement learning",
+        "description": "",
+        "full_path": "task > reinforcement-learning",
+        "competition_count": 30,
+        "dataset_count": 257,
+        "script_count": 850,
+        "total_count": 1137
+      },
+      {
+        "ref": "custom metric",
+        "name": "custom metric",
+        "description": "This competition's metric is defined under the 'Evaluation' tab",
+        "full_path": "",
+        "competition_count": 0,
+        "dataset_count": 0,
+        "script_count": 0,
+        "total_count": 0
+      }
+    ],
+    "deadline": "2026-07-07T23:59:00",
+    "kernel_count": 0,
+    "team_count": 4729,
+    "user_has_entered": true,
+    "user_rank": 0,
+    "merger_deadline": null,
+    "new_entrant_deadline": "2026-06-16T23:59:00",
+    "enabled_date": "2026-04-16T19:01:30.503000",
+    "max_daily_submissions": 5,
+    "max_team_size": 5,
+    "evaluation_metric": "orbit_wars",
+    "awards_points": true,
+    "is_kernels_submissions_only": false,
+    "submissions_disabled": true,
+    "thumbnail_image_url": "https://storage.googleapis.com/kaggle-media/competitions/orbit-wars-large-slow.gif?GoogleAccessId=web-data@kaggle-161607.iam.gserviceaccount.com&Expires=1790320587&Signature=MzP5iiiEZ%2FoWOLXTJBraBHactkf5jkf0MevR4Ie8cEIOddUjJeTDxQcu0nuH1iZBCzOYpPYQScKf3VKIEh039qdif6%2BUXtb%2FwPV689fOIUFOHetcSoVD2fPLqPVkgBz2kZ%2BT730EEiHmtqmkDPycVX6ipGNdw1nda3Y%2BTQotRvixwPEpLy5YYYg3PjHa3NVTB43El%2BAsTMhtICNsLVBQ3aFzRz9pdr9uhovVhJwcd7dH56%2F8zTeHj9qTvEmWwYolqoXO5VCaDKjJD5MmvUnmGOZ0v4dW4OQdzQ0TmGgIW6L8D1FjxqKz1XYGLzxHc3zDXYyVqaS%2BeioYzR%2BI%2BTPUpw%3D%3D",
+    "host_name": "Kaggle",
+    "date_created": "2026-04-15T20:54:14.398000"
+  },
+  "files_summary": {
+    "file_summary_info": {
+      "total_file_count": 3,
+      "file_types": [
+        {
+          "extension": ".md",
+          "file_count": 2,
+          "total_size": 14727
+        },
+        {
+          "extension": ".py",
+          "file_count": 1,
+          "total_size": 2079
+        }
+      ]
+    },
+    "column_summary_info": {
+      "total_column_count": 0,
+      "column_types": []
+    }
+  },
+  "tree_root": {
+    "directories": [],
+    "files": [
+      {
+        "name": "README.md",
+        "creation_date": "2026-05-01T20:46:38.553000",
+        "total_bytes": 8241,
+        "relative_url": "README.md",
+        "description": "Game rules"
+      },
+      {
+        "name": "agents.md",
+        "creation_date": "2026-05-01T20:46:38.553000",
+        "total_bytes": 6486,
+        "relative_url": "agents.md",
+        "description": "Game overview and instructions on participating using MCP or Kaggle CLI"
+      },
+      {
+        "name": "main.py",
+        "creation_date": "2026-05-01T20:46:38.553000",
+        "total_bytes": 2079,
+        "relative_url": "main.py",
+        "description": "A documented starter agent"
+      }
+    ],
+    "total_children": 3,
+    "total_directories": 0,
+    "total_files": 3,
+    "next_page_token": ""
+  },
+  "tree_depth1": {}
+}

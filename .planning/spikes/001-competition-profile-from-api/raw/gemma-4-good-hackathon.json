@@ -1,0 +1,96 @@
+{
+  "slug": "gemma-4-good-hackathon",
+  "competition": {
+    "id": 134561,
+    "ref": "https://www.kaggle.com/competitions/gemma-4-good-hackathon",
+    "title": "The Gemma 4 Good Hackathon",
+    "url": "https://www.kaggle.com/competitions/gemma-4-good-hackathon",
+    "description": "Harness the power of Gemma 4 to drive positive change and global impact.",
+    "organization_name": "Google DeepMind",
+    "organization_ref": "",
+    "category": "Featured",
+    "reward": "200,000 Usd",
+    "tags": [
+      {
+        "ref": "tabular",
+        "name": "tabular",
+        "description": "",
+        "full_path": "data type > tabular",
+        "competition_count": 15864,
+        "dataset_count": 18090,
+        "script_count": 8363,
+        "total_count": 42317
+      },
+      {
+        "ref": "text",
+        "name": "text",
+        "description": "",
+        "full_path": "data type > text",
+        "competition_count": 198,
+        "dataset_count": 11322,
+        "script_count": 5114,
+        "total_count": 16634
+      },
+      {
+        "ref": "artificial intelligence",
+        "name": "artificial intelligence",
+        "description": "This tag has datasets and kernels where people come together and use cutting-edge research to train models on pictures of cats.",
+        "full_path": "subject > science and technology > computer science > artificial intelligence",
+        "competition_count": 114,
+        "dataset_count": 5487,
+        "script_count": 4286,
+        "total_count": 9887
+      }
+    ],
+    "deadline": "2026-05-18T23:59:00",
+    "kernel_count": 0,
+    "team_count": 1607,
+    "user_has_entered": false,
+    "user_rank": 0,
+    "merger_deadline": null,
+    "new_entrant_deadline": null,
+    "enabled_date": "2026-04-02T15:54:58.447000",
+    "max_daily_submissions": 5,
+    "max_team_size": 5,
+    "evaluation_metric": "",
+    "awards_points": false,
+    "is_kernels_submissions_only": false,
+    "submissions_disabled": false,
+    "thumbnail_image_url": "https://storage.googleapis.com/kaggle-competitions/kaggle/134561/logos/thumb76_76.png?GoogleAccessId=web-data@kaggle-161607.iam.gserviceaccount.com&Expires=1790313121&Signature=hYen8hLvlzn96zFZVlEwL0JRSzeTjBeVWZTKHSikfJi0%2B7lksbh%2BXaDdDpC2JusQf67LYMbDfdGJ4AN6YpqrsGMqsuO%2BJs3vn3jFa6LMHMAIZA%2BBQypEiENM15SDTMCyq5CAoBoPIco6CIZ83XBycziKeG%2FGVeu6Jx%2BbhkoDcKvWnxzjyGdq%2BsqJmAWETDf5MMfEOfAzGdpVk0MI%2FZA69OnoN9WpEHC6rb052U6O5q0o%2F06wfoDIJmhY2RLOrMeI4%2FyrpAEqLWOMo2Vrkrs4AmiEdgd5yjaXF7xKwWYB2Mkt5EHMPNmGnLVKSK8807xics%2FTnuglMWbr0UkiKmIexA%3D%3D&t=2026-03-30-23-31-15",
+    "host_name": "Google DeepMind",
+    "date_created": "2026-03-18T00:00:51.174000"
+  },
+  "files_summary": {
+    "file_summary_info": {
+      "total_file_count": 1,
+      "file_types": [
+        {
+          "extension": ".md",
+          "file_count": 1,
+          "total_size": 56
+        }
+      ]
+    },
+    "column_summary_info": {
+      "total_column_count": 0,
+      "column_types": []
+    }
+  },
+  "tree_root": {
+    "directories": [],
+    "files": [
+      {
+        "name": "NOTE.md",
+        "creation_date": "2026-04-02T19:17:49.034000",
+        "total_bytes": 56,
+        "relative_url": "NOTE.md",
+        "description": ""
+      }
+    ],
+    "total_children": 1,
+    "total_directories": 0,
+    "total_files": 1,
+    "next_page_token": ""
+  },
+  "tree_depth1": {}
+}

@@ -1,0 +1,111 @@
+{
+  "slug": "cooked-or-not",
+  "competition": {
+    "id": 167065,
+    "ref": "https://www.kaggle.com/competitions/cooked-or-not",
+    "title": "Cooked or Not?",
+    "url": "https://www.kaggle.com/competitions/cooked-or-not",
+    "description": "Predict if there is a crash in video or No?",
+    "organization_name": "",
+    "organization_ref": "",
+    "category": "Community",
+    "reward": "Kudos",
+    "tags": [
+      {
+        "ref": "roc auc score",
+        "name": "roc auc score",
+        "description": "Compute Area Under the Receiver Operating Characteristic Curve (ROC AUC)     from prediction scores. See https://scikit-learn.org/stable/modules/generated/sklearn.metrics.roc_auc_score.html",
+        "full_path": "",
+        "competition_count": 0,
+        "dataset_count": 0,
+        "script_count": 0,
+        "total_count": 0
+      }
+    ],
+    "deadline": "2026-10-05T18:29:59",
+    "kernel_count": 0,
+    "team_count": 15,
+    "user_has_entered": true,
+    "user_rank": 8,
+    "merger_deadline": null,
+    "new_entrant_deadline": null,
+    "enabled_date": "2026-09-21T05:33:02.670000",
+    "max_daily_submissions": 5,
+    "max_team_size": 1,
+    "evaluation_metric": "Roc Auc Score",
+    "awards_points": false,
+    "is_kernels_submissions_only": false,
+    "submissions_disabled": false,
+    "thumbnail_image_url": "https://storage.googleapis.com/kaggle-competitions/kaggle/167065/logos/thumb76_76.png?GoogleAccessId=web-data@kaggle-161607.iam.gserviceaccount.com&Expires=1790355990&Signature=Gup6%2BPZeQg6F9wO2G37yfkjjrLw%2FHGQL0iV0Y5xjt7xMvkRfXZyiOpy2jw0mN7l%2BOIdAee6xqN8oqQtZAt29IatEMYw46zqfd9jIYtcIZn5tCtq%2BrZfOnx8eHgSwL%2BSj%2Bte098yGYmmbhcMpjby8u%2F2q8xuL5dJ0%2Bxn3WnHPvK9IUHwH2R7CFeZOxfwnPfx5fWUrniJAC9g4hYRdvu3h9Op73juLwMIUvUEISzw8umISmHE4PAtSlyiEggX%2Fa96e58URabiSHYQIoQzLdv8%2FrnA0gZziNAp9juLlOOCXfYpKheFOgK8EC1A0G8t4R%2BYPT28V1oWv1PAbVfUXEHuA8w%3D%3D&t=2026-09-20-18-18-09",
+    "host_name": "Shubham Jain",
+    "date_created": "2026-09-20T15:16:17.014000"
+  },
+  "files_summary": {
+    "file_summary_info": {
+      "total_file_count": 142503,
+      "file_types": [
+        {
+          "extension": ".jpg",
+          "file_count": 142500,
+          "total_size": 3102862211
+        },
+        {
+          "extension": ".csv",
+          "file_count": 2,
+          "total_size": 79789
+        },
+        {
+          "extension": ".yaml",
+          "file_count": 1,
+          "total_size": 91
+        }
+      ]
+    },
+    "column_summary_info": {
+      "total_column_count": 5,
+      "column_types": [
+        {
+          "column_type": "String",
+          "column_count": 3
+        },
+        {
+          "column_type": "Integer",
+          "column_count": 1
+        },
+        {
+          "column_type": "Decimal",
+          "column_count": 1
+        }
+      ]
+    }
+  },
+  "tree_root": {
+    "directories": [
+      {
+        "name": "crash_competition_data",
+        "relative_url": "crash_competition_data",
+        "total_directories": 2,
+        "total_files": 3,
+        "total_children": 2
+      }
+    ],
+    "files": [],
+    "total_children": 1,
+    "total_directories": 1,
+    "total_files": 0,
+    "next_page_token": ""
+  },
+  "tree_depth1": {
+    "crash_competition_data": {
+      "files": [
+        "clip_spec.yaml",
+        "sample_submission.csv",
+        "train_labels.csv"
+      ],
+      "directories": [
+        "test",
+        "train"
+      ]
+    }
+  }
+}

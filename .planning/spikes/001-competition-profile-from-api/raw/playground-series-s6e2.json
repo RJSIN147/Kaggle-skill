@@ -1,0 +1,127 @@
+{
+  "slug": "playground-series-s6e2",
+  "competition": {
+    "id": 125192,
+    "ref": "https://www.kaggle.com/competitions/playground-series-s6e2",
+    "title": "Predicting Heart Disease",
+    "url": "https://www.kaggle.com/competitions/playground-series-s6e2",
+    "description": "Playground Series - Season 6 Episode 2",
+    "organization_name": "Kaggle",
+    "organization_ref": "",
+    "category": "Playground",
+    "reward": "Swag",
+    "tags": [
+      {
+        "ref": "beginner",
+        "name": "beginner",
+        "description": "New to data science? Explore tips, tricks, and beginner friendly work from other Kagglers.",
+        "full_path": "audience > beginner",
+        "competition_count": 15046,
+        "dataset_count": 11930,
+        "script_count": 46173,
+        "total_count": 73149
+      },
+      {
+        "ref": "tabular",
+        "name": "tabular",
+        "description": "",
+        "full_path": "data type > tabular",
+        "competition_count": 15864,
+        "dataset_count": 18090,
+        "script_count": 8363,
+        "total_count": 42317
+      },
+      {
+        "ref": "roc auc score",
+        "name": "roc auc score",
+        "description": "Compute Area Under the Receiver Operating Characteristic Curve (ROC AUC)     from prediction scores. See https://scikit-learn.org/stable/modules/generated/sklearn.metrics.roc_auc_score.html",
+        "full_path": "",
+        "competition_count": 0,
+        "dataset_count": 0,
+        "script_count": 0,
+        "total_count": 0
+      }
+    ],
+    "deadline": "2026-02-28T23:59:00",
+    "kernel_count": 0,
+    "team_count": 4370,
+    "user_has_entered": true,
+    "user_rank": 3599,
+    "merger_deadline": null,
+    "new_entrant_deadline": null,
+    "enabled_date": "2026-02-01T00:00:00",
+    "max_daily_submissions": 10,
+    "max_team_size": 3,
+    "evaluation_metric": "Roc Auc Score",
+    "awards_points": false,
+    "is_kernels_submissions_only": false,
+    "submissions_disabled": false,
+    "thumbnail_image_url": "https://storage.googleapis.com/kaggle-competitions/kaggle/125192/logos/thumb76_76.png?GoogleAccessId=web-data@kaggle-161607.iam.gserviceaccount.com&Expires=1790380282&Signature=m%2BB4Vpgzl%2B89a6dWbA%2FeVYHLOCLJn5Z4eAWlPaYvmWko%2BhaDWauDf6N2HhsxP2rq%2BAq3wUBaNJ0X5%2FiaO3Vt7xLkebJhN888wzCKT8FFnhTS2sRSGqKt1lcHi25Ifg4J2Mqpaz6QHq6hFSL6uWwSclM510hr4i7TtaBWDP8SLVC3vAFtvpAu528lyOM0V9z8Z4WehjMXLQ1lkfGl%2BVDmp8cXQw2cScnkMIPK24yTv%2BQVnEgwv9ZhxuRs%2FYYCEe%2B%2BK1MVOS73vOaAS5ekRzYbQE7Cie5FfjkRyAtBRyIYbn9AHEqP0DzUzjxScHX8vOQ7QsD3EC3qTZ6Bcahcg4m7JQ%3D%3D&t=2026-01-23-23-16-43",
+    "host_name": "Kaggle",
+    "date_created": "2025-12-03T19:22:30.620000"
+  },
+  "files_summary": {
+    "file_summary_info": {
+      "total_file_count": 3,
+      "file_types": [
+        {
+          "extension": ".csv",
+          "file_count": 3,
+          "total_size": 45431105
+        }
+      ]
+    },
+    "column_summary_info": {
+      "total_column_count": 31,
+      "column_types": [
+        {
+          "column_type": "Integer",
+          "column_count": 25
+        },
+        {
+          "column_type": "Id",
+          "column_count": 3
+        },
+        {
+          "column_type": "Decimal",
+          "column_count": 2
+        },
+        {
+          "column_type": "String",
+          "column_count": 1
+        }
+      ]
+    }
+  },
+  "tree_root": {
+    "directories": [],
+    "files": [
+      {
+        "name": "sample_submission.csv",
+        "creation_date": "2026-01-21T23:14:35.643000",
+        "total_bytes": 2430017,
+        "relative_url": "sample_submission.csv",
+        "description": ""
+      },
+      {
+        "name": "test.csv",
+        "creation_date": "2026-01-21T23:14:35.643000",
+        "total_bytes": 11336861,
+        "relative_url": "test.csv",
+        "description": ""
+      },
+      {
+        "name": "train.csv",
+        "creation_date": "2026-01-21T23:14:35.643000",
+        "total_bytes": 31664227,
+        "relative_url": "train.csv",
+        "description": ""
+      }
+    ],
+    "total_children": 3,
+    "total_directories": 0,
+    "total_files": 3,
+    "next_page_token": ""
+  },
+  "tree_depth1": {}
+}

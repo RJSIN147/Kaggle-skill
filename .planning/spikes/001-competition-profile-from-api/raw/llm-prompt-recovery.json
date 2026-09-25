@@ -1,0 +1,119 @@
+{
+  "slug": "llm-prompt-recovery",
+  "competition": {
+    "id": 67121,
+    "ref": "https://www.kaggle.com/competitions/llm-prompt-recovery",
+    "title": "LLM Prompt Recovery",
+    "url": "https://www.kaggle.com/competitions/llm-prompt-recovery",
+    "description": "Recover the prompt used to transform a given text",
+    "organization_name": "Kaggle",
+    "organization_ref": "",
+    "category": "Featured",
+    "reward": "200,000 Usd",
+    "tags": [
+      {
+        "ref": "nlp",
+        "name": "nlp",
+        "description": "Natural Language Processing gives a computer program the ability to extract meaning human language. Applications include sentiment analysis, translation, and speech recognition.",
+        "full_path": "analysis > nlp",
+        "competition_count": 140,
+        "dataset_count": 8115,
+        "script_count": 10869,
+        "total_count": 19124
+      },
+      {
+        "ref": "artificial intelligence",
+        "name": "artificial intelligence",
+        "description": "This tag has datasets and kernels where people come together and use cutting-edge research to train models on pictures of cats.",
+        "full_path": "subject > science and technology > computer science > artificial intelligence",
+        "competition_count": 114,
+        "dataset_count": 5487,
+        "script_count": 4286,
+        "total_count": 9887
+      },
+      {
+        "ref": "custom metric",
+        "name": "custom metric",
+        "description": "This competition's metric is defined under the 'Evaluation' tab",
+        "full_path": "",
+        "competition_count": 0,
+        "dataset_count": 0,
+        "script_count": 0,
+        "total_count": 0
+      }
+    ],
+    "deadline": "2024-04-16T23:59:00",
+    "kernel_count": 0,
+    "team_count": 2175,
+    "user_has_entered": false,
+    "user_rank": 0,
+    "merger_deadline": null,
+    "new_entrant_deadline": "2024-04-09T23:59:00",
+    "enabled_date": "2024-02-27T18:42:53.640000",
+    "max_daily_submissions": 5,
+    "max_team_size": 5,
+    "evaluation_metric": "LLM Nerd-Off Sharpened Cosine Similarity",
+    "awards_points": true,
+    "is_kernels_submissions_only": true,
+    "submissions_disabled": false,
+    "thumbnail_image_url": "https://storage.googleapis.com/kaggle-competitions/kaggle/67121/logos/thumb76_76.png?GoogleAccessId=web-data@kaggle-161607.iam.gserviceaccount.com&Expires=1790328857&Signature=TvX7ojQdDN%2BocnnChyGzKdcT2kHA3WUnKPq5C7DzfyZzGa21h09FwP%2FIw02BNseR%2FQwJNsVw7zpfwbBzc8BAcSrAvFD1VSDbeXRaTzgiRd8002GZHLu2cvoUzltU3CWm8SbWRk3CH%2F7Vuwfg8qoCZYsImYbvmdlZ2l7IDzhWmlwyGpv7xXV3yYaoYP96hSZjK2EvJS6Fbvy8Cm6imvU%2FHaHs7qm6UN2i50cpEo5ZDI2B%2B2u78ofnes3BjVMKejUVF3sK3zhnbAlYiGn2mNAz6sLT2xXxM8RQWIlZ5jU4MULYEMg%2FFVNwfTKtKIhbwZPnXEq%2BoUcsoXoEoq2LMW22wg%3D%3D&t=2024-02-15-00-58-50",
+    "host_name": "Kaggle",
+    "date_created": "2024-01-08T22:30:37.189000"
+  },
+  "files_summary": {
+    "file_summary_info": {
+      "total_file_count": 3,
+      "file_types": [
+        {
+          "extension": ".csv",
+          "file_count": 3,
+          "total_size": 2355
+        }
+      ]
+    },
+    "column_summary_info": {
+      "total_column_count": 9,
+      "column_types": [
+        {
+          "column_type": "String",
+          "column_count": 6
+        },
+        {
+          "column_type": "Id",
+          "column_count": 3
+        }
+      ]
+    }
+  },
+  "tree_root": {
+    "directories": [],
+    "files": [
+      {
+        "name": "sample_submission.csv",
+        "creation_date": "2024-02-26T21:44:47.545000",
+        "total_bytes": 45,
+        "relative_url": "sample_submission.csv",
+        "description": ""
+      },
+      {
+        "name": "test.csv",
+        "creation_date": "2024-02-26T21:44:47.545000",
+        "total_bytes": 911,
+        "relative_url": "test.csv",
+        "description": ""
+      },
+      {
+        "name": "train.csv",
+        "creation_date": "2024-02-26T21:44:47.545000",
+        "total_bytes": 1399,
+        "relative_url": "train.csv",
+        "description": ""
+      }
+    ],
+    "total_children": 3,
+    "total_directories": 0,
+    "total_files": 3,
+    "next_page_token": ""
+  },
+  "tree_depth1": {}
+}

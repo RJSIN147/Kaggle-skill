@@ -1,0 +1,196 @@
+{
+  "slug": "birdclef-2025",
+  "competition": {
+    "id": 91844,
+    "ref": "https://www.kaggle.com/competitions/birdclef-2025",
+    "title": "BirdCLEF+ 2025",
+    "url": "https://www.kaggle.com/competitions/birdclef-2025",
+    "description": "Species identification from audio, focused on birds, amphibians, mammals and insects from the Middle Magdalena Valley of Colombia.",
+    "organization_name": "Cornell Lab of Ornithology",
+    "organization_ref": "",
+    "category": "Research",
+    "reward": "50,000 Usd",
+    "tags": [
+      {
+        "ref": "earth and nature",
+        "name": "earth and nature",
+        "description": "",
+        "full_path": "subject > earth and nature",
+        "competition_count": 25,
+        "dataset_count": 79345,
+        "script_count": 478,
+        "total_count": 79848
+      },
+      {
+        "ref": "audio event classification",
+        "name": "audio event classification",
+        "description": "",
+        "full_path": "task > audio-event-classification",
+        "competition_count": 13,
+        "dataset_count": 68,
+        "script_count": 28,
+        "total_count": 109
+      },
+      {
+        "ref": "animals",
+        "name": "animals",
+        "description": "The animals tag is as diverse as a rainforest. Is there a correlation between animal bites and NYC rat sightings? We're not sure. But the data is here and the world needs to know.",
+        "full_path": "subject > earth and nature > animals",
+        "competition_count": 676,
+        "dataset_count": 2993,
+        "script_count": 1191,
+        "total_count": 4860
+      },
+      {
+        "ref": "multilabel classification",
+        "name": "multilabel classification",
+        "description": "",
+        "full_path": "task > multilabel-classification",
+        "competition_count": 32,
+        "dataset_count": 376,
+        "script_count": 748,
+        "total_count": 1156
+      },
+      {
+        "ref": "custom metric",
+        "name": "custom metric",
+        "description": "This competition's metric is defined under the 'Evaluation' tab",
+        "full_path": "",
+        "competition_count": 0,
+        "dataset_count": 0,
+        "script_count": 0,
+        "total_count": 0
+      }
+    ],
+    "deadline": "2025-06-05T23:59:00",
+    "kernel_count": 0,
+    "team_count": 2031,
+    "user_has_entered": false,
+    "user_rank": 0,
+    "merger_deadline": null,
+    "new_entrant_deadline": "2025-05-29T23:59:00",
+    "enabled_date": "2025-03-10T17:08:06.810000",
+    "max_daily_submissions": 5,
+    "max_team_size": 5,
+    "evaluation_metric": "Birdclef ROC AUC",
+    "awards_points": true,
+    "is_kernels_submissions_only": true,
+    "submissions_disabled": false,
+    "thumbnail_image_url": "https://storage.googleapis.com/kaggle-competitions/kaggle/91844/logos/thumb76_76.png?GoogleAccessId=web-data@kaggle-161607.iam.gserviceaccount.com&Expires=1790327142&Signature=CjG21rIS2XWRWEAvYM%2FkWDEJL87Q1k79gBzxynT0S4XClNiy3Ki%2FmilGF3iOy%2FOQlYk9BaWII048U3Bu%2FVq5aYuwfa9kkVr7SqW3whFDe2xHwEtnnJS0HA7WMGh9NWwBg3yw7aOdFtQirMvmjb%2FN6teUEJ%2FUSZcIV%2BNiGmuMxuc%2BoHXRgASMyEdbbay4EDTX3zlrgab8gyssJOdnsCBV2qOFuF2Nc3wEgw0ey7jrZ%2FjTc%2FRGBTuZ7Y2T3WO0tCZ8qSx3uFTJ%2FbgtrM5GlO8jYFeuoQthzzaYAAOSBuZCMJUcjIuup3%2BltgaiRsfaD6LeD0%2BZ9ZGKNfrL2zxRX8n2Tw%3D%3D&t=2025-02-12-09-14-34",
+    "host_name": "Cornell Lab of Ornithology",
+    "date_created": "2025-01-23T17:17:20.247000"
+  },
+  "files_summary": {
+    "file_summary_info": {
+      "total_file_count": 38295,
+      "file_types": [
+        {
+          "extension": ".ogg",
+          "file_count": 38290,
+          "total_size": 12379141971
+        },
+        {
+          "extension": ".csv",
+          "file_count": 3,
+          "total_size": 5025745
+        },
+        {
+          "extension": ".txt",
+          "file_count": 2,
+          "total_size": 315
+        }
+      ]
+    },
+    "column_summary_info": {
+      "total_column_count": 225,
+      "column_types": [
+        {
+          "column_type": "Decimal",
+          "column_count": 207
+        },
+        {
+          "column_type": "String",
+          "column_count": 16
+        },
+        {
+          "column_type": "Id",
+          "column_count": 1
+        },
+        {
+          "column_type": "Url",
+          "column_count": 1
+        }
+      ]
+    }
+  },
+  "tree_root": {
+    "directories": [
+      {
+        "name": "test_soundscapes",
+        "relative_url": "test_soundscapes",
+        "total_directories": 0,
+        "total_files": 1,
+        "total_children": 0
+      },
+      {
+        "name": "train_audio",
+        "relative_url": "train_audio",
+        "total_directories": 206,
+        "total_files": 0,
+        "total_children": 206
+      },
+      {
+        "name": "train_soundscapes",
+        "relative_url": "train_soundscapes",
+        "total_directories": 0,
+        "total_files": 9726,
+        "total_children": 0
+      }
+    ],
+    "files": [
+      {
+        "name": "sample_submission.csv",
+        "creation_date": "2025-03-10T16:55:16.576000",
+        "total_bytes": 15191,
+        "relative_url": "sample_submission.csv",
+        "description": ""
+      },
+      {
+        "name": "recording_location.txt",
+        "creation_date": "2025-03-10T16:55:16.576000",
+        "total_bytes": 232,
+        "relative_url": "recording_location.txt",
+        "description": ""
+      },
+      {
+        "name": "train.csv",
+        "creation_date": "2025-03-10T16:55:16.576000",
+        "total_bytes": 4998282,
+        "relative_url": "train.csv",
+        "description": ""
+      },
+      {
+        "name": "taxonomy.csv",
+        "creation_date": "2025-03-10T16:55:16.576000",
+        "total_bytes": 12272,
+        "relative_url": "taxonomy.csv",
+        "description": ""
+      }
+    ],
+    "total_children": 7,
+    "total_directories": 3,
+    "total_files": 4,
+    "next_page_token": ""
+  },
+  "tree_depth1": {
+    "test_soundscapes": {
+      "error": "HTTPError: 403 Client Error: Forbidden for url: https://api.kaggle.com/v1/competitions.Comp"
+    },
+    "train_audio": {
+      "error": "HTTPError: 403 Client Error: Forbidden for url: https://api.kaggle.com/v1/competitions.Comp"
+    },
+    "train_soundscapes": {
+      "error": "HTTPError: 403 Client Error: Forbidden for url: https://api.kaggle.com/v1/competitions.Comp"
+    }
+  }
+}

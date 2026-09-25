@@ -1,0 +1,133 @@
+{
+  "slug": "spaceship-titanic",
+  "competition": {
+    "id": 34377,
+    "ref": "https://www.kaggle.com/competitions/spaceship-titanic",
+    "title": "Spaceship Titanic",
+    "url": "https://www.kaggle.com/competitions/spaceship-titanic",
+    "description": "Predict which passengers are transported to an alternate dimension",
+    "organization_name": "Kaggle",
+    "organization_ref": "",
+    "category": "Getting Started",
+    "reward": "Knowledge",
+    "tags": [
+      {
+        "ref": "beginner",
+        "name": "beginner",
+        "description": "New to data science? Explore tips, tricks, and beginner friendly work from other Kagglers.",
+        "full_path": "audience > beginner",
+        "competition_count": 15046,
+        "dataset_count": 11930,
+        "script_count": 46173,
+        "total_count": 73149
+      },
+      {
+        "ref": "tabular",
+        "name": "tabular",
+        "description": "",
+        "full_path": "data type > tabular",
+        "competition_count": 15864,
+        "dataset_count": 18090,
+        "script_count": 8363,
+        "total_count": 42317
+      },
+      {
+        "ref": "binary classification",
+        "name": "binary classification",
+        "description": "",
+        "full_path": "task > binary-classification",
+        "competition_count": 11847,
+        "dataset_count": 2150,
+        "script_count": 8373,
+        "total_count": 22370
+      },
+      {
+        "ref": "categorizationaccuracy",
+        "name": "categorizationaccuracy",
+        "description": "Percentage of correctly categorized items",
+        "full_path": "",
+        "competition_count": 0,
+        "dataset_count": 0,
+        "script_count": 0,
+        "total_count": 0
+      }
+    ],
+    "deadline": "2030-01-01T00:00:00",
+    "kernel_count": 0,
+    "team_count": 1647,
+    "user_has_entered": false,
+    "user_rank": 0,
+    "merger_deadline": null,
+    "new_entrant_deadline": null,
+    "enabled_date": "2022-02-23T19:33:28.377000",
+    "max_daily_submissions": 10,
+    "max_team_size": 10,
+    "evaluation_metric": "Categorization Accuracy",
+    "awards_points": false,
+    "is_kernels_submissions_only": false,
+    "submissions_disabled": false,
+    "thumbnail_image_url": "https://storage.googleapis.com/kaggle-competitions/kaggle/34377/logos/thumb76_76.png?GoogleAccessId=web-data@kaggle-161607.iam.gserviceaccount.com&Expires=1790323679&Signature=DS6HGlA5xFntmOEwDi9TAe%2F9ThleAO%2Bbef5pSphYBLM6F99BKzZZEXcXGsBfYu7SuuD%2BPHRkr1rvtltwIghXLWc2OybIin2y5MScwDN45q4wrXTGO6q8TeEu86zKJ02Xn9%2FKO25y%2BBOoouxNsz50SUe1WCu6p98Y1pcNM2Rs9lN0kpeH1sF8jE1WUBE5MyxxxLfoxPlZ8R5pBfQVHzdISncTLhoo7WrRsAOrZ75V%2Fn%2FUbPY0rTFuGYVF%2FCngJs4qTcYVfj8daEFTSocaiy2eqLeMEWws%2FggcdiXVBjkdLtrSrnIaG%2FFGnyQqjiVZL3Cez5KsPRrm22Mxo96nam3tQw%3D%3D&t=2022-02-11-22-07-57",
+    "host_name": "Kaggle",
+    "date_created": "2022-02-10T01:28:07.206000"
+  },
+  "files_summary": {
+    "file_summary_info": {
+      "total_file_count": 3,
+      "file_types": [
+        {
+          "extension": ".csv",
+          "file_count": 3,
+          "total_size": 1237810
+        }
+      ]
+    },
+    "column_summary_info": {
+      "total_column_count": 29,
+      "column_types": [
+        {
+          "column_type": "Decimal",
+          "column_count": 12
+        },
+        {
+          "column_type": "String",
+          "column_count": 11
+        },
+        {
+          "column_type": "Boolean",
+          "column_count": 6
+        }
+      ]
+    }
+  },
+  "tree_root": {
+    "directories": [],
+    "files": [
+      {
+        "name": "sample_submission.csv",
+        "creation_date": "2022-02-11T14:02:47.630000",
+        "total_bytes": 59902,
+        "relative_url": "sample_submission.csv",
+        "description": "A submission file in the correct format."
+      },
+      {
+        "name": "test.csv",
+        "creation_date": "2022-02-11T14:02:47.630000",
+        "total_bytes": 372487,
+        "relative_url": "test.csv",
+        "description": "Personal records for one-third (~4300) of the passengers, to be used as test data. Your task is to predict the value of `Transported` for the passengers in this set."
+      },
+      {
+        "name": "train.csv",
+        "creation_date": "2022-02-11T14:02:47.630000",
+        "total_bytes": 805421,
+        "relative_url": "train.csv",
+        "description": "Personal records for about two-thirds (~8700) of the passengers, to be used as training data."
+      }
+    ],
+    "total_children": 3,
+    "total_directories": 0,
+    "total_files": 3,
+    "next_page_token": ""
+  },
+  "tree_depth1": {}
+}
