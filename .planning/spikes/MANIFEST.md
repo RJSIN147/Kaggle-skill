@@ -22,6 +22,8 @@ Design decisions accepted by the user (2026-09-25, "go with your recommendations
 - Submission modes: `csv_upload | code_kernel (+api_served) | agent | writeup | artifact_upload | unknown` (spike 001 found `artifact_upload`, e.g. a LoRA adapter).
 - Kernels default to `kernel_type: "script"` (no notebook conversion); data resolver checks `/kaggle/input/competitions/<slug>` first (spike 002).
 - Pipelines wait for upstream COMPLETE before pushing downstream, and record the upstream `kx_manifest.json` actually consumed — `kernel_sources` version pins are silently dropped (spike 002).
+- Research ingestion reads discussions + public notebooks (labelled external, never executed/obeyed); thread bodies via SDK `list_topic_messages(page_size=-1)`; CV uses the host `metric/*` kernel's `score()` when one exists (spike 005).
+- Third-party notebook code / forum text is read live but never committed to this repo.
 - Never submit to a competition the user is actively competing in (e.g. rsna-knee-abnormality-detection, cooked-or-not) — spikes use closed competitions (late submissions) or perpetual sandboxes (ConnectX, Titanic).
 
 ## Spikes
@@ -30,3 +32,4 @@ Design decisions accepted by the user (2026-09-25, "go with your recommendations
 |---|------|------|-----------|---------|------|
 | 001 | competition-profile-from-api | standard | Given SDK metadata + files summary + root tree, when classifying 20 mixed comps, then mode/modality/API-served/size are right without prose scraping | ✓ VALIDATED (mode 19/20, residual = safe `unknown`) | kaggle-api, competition-profile |
 | 002 | script-kernel-chaining | standard | Given a CPU script kernel A writing artifacts, when kernel B lists A in kernel_sources, then B reads A's output at a discoverable path | ✓ VALIDATED (version pin silently dropped — ✗ sub-assumption) | kaggle-kernels, script-kernel, kernel-sources |
+| 005 | research-ingestion | standard | Given a competition, when reading top topics + public notebooks via CLI/SDK, then full write-ups and code are retrievable without joining | ✓ VALIDATED (thread bodies need SDK; host metric kernels found) | research, discussions, metric-kernels |
