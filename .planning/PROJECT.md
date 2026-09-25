@@ -3,17 +3,58 @@
 ## What This Is
 
 A standalone Claude Code skill that turns an empty folder into an AI-driven Kaggle
-**competition** experimentation workspace. It connects to the user's Kaggle account via the
-Kaggle CLI/API, scaffolds a structured workspace, and drives a well-documented experiment loop:
-the AI proposes an idea, runs it (locally by default or pushed to a Kaggle Kernel for GPU),
-captures the result and a written verdict, versions it in a ledger backed by git, and updates a
-living strategy. Built first for a single practitioner competing on Kaggle through Claude Code.
+**competition** experimentation workspace, for any competition type: tabular, vision, NLP,
+time-series, code-only, API-served, simulation or writeup. It connects to the user's Kaggle
+account through the `kaggle` CLI and Python API. It profiles the competition from structured
+API facts, and drives a well-documented experiment loop:
+- the AI proposes an idea
+- runs it on a Kaggle kernel by default (locally as an option for small data)
+- captures the result and a written verdict
+- versions it in a ledger backed by git
+- updates a living strategy
+- prepares the competition's own kind of submission for the human to run
+
+Built first for a single practitioner competing on Kaggle through Claude Code.
 
 ## Core Value
 
 One clean end-to-end experiment cycle must work reliably — from an empty folder to an idea run,
 its result and reasoning logged to the ledger, and the strategy doc updated. Everything else in
 the framework exists to serve that loop.
+
+## Current Milestone: v2.0 Kaggle-general
+
+**Goal:** kaggle-exp works across Kaggle competition types. It runs on a Kaggle kernel by default, and a
+competition profile built from the API drives it. A phase counts as done only when it has run live on a real
+competition.
+
+**Target features:**
+- **`kx` core:**
+  - One CLI whose every command prints JSON with a `next_action`, replacing the 28 scripts and the exit-code
+    protocol.
+  - A Kaggle adapter built on `kaggle.api`/`kagglesdk`.
+  - An `experiment.json` spec.
+  - `SKILL.md` of about 150 lines, with per-type `references/types/*.md`.
+  - Reuses v1's ledger, record, gateway and kernel modules.
+- **Competition profiles (`kx sync`):**
+  - SDK-derived submission mode (`csv_upload | code_kernel (+api_served) | agent | writeup | artifact_upload |
+    unknown`), modality, data size and limits, confirmed by the AI.
+  - Type-specific experiment templates.
+- **Kaggle-first compute:**
+  - Script kernels by default.
+  - Sources, accelerator and runtime limit set per experiment.
+  - A train → inference kernel pipeline with manifests.
+  - Local runs on a subsample.
+  - Recording the kernel image's versions.
+- **Submission modes (`kx submit` / `kx lb`):**
+  - `csv_upload`, `code_kernel` (incl. API-served) and `agent` (simulation track), plus writeup guidance.
+  - The human runs every submit; kx confirms it by read-back.
+- **Tools for winning:**
+  - `kx research`: discussions, public notebooks and host metric kernels.
+  - `kx ensemble`: blending saved OOF predictions.
+  - `kx select`: picking the two final submissions.
+
+**Groundwork:** the Phase 0 spikes all passed (`.planning/spikes/`, and the `spike-findings-kaggle-skill` skill).
 
 ## Requirements
 
@@ -39,7 +80,14 @@ the framework exists to serve that loop.
 
 <!-- Current scope. Building toward these. All are hypotheses until shipped and validated. -->
 
-(To be defined at the next milestone.)
+- [ ] One `kx` CLI with JSON `next_action` output replaces the v1 scripts and exit-code protocol, reusing the kept v1 modules
+- [ ] Competition profile from SDK structured fields (six submission modes, modality, data size, limits), confirmed by the AI
+- [ ] Type-specific experiment templates selected by the profile
+- [ ] Script kernels as the default runtime, with per-experiment sources, accelerator and runtime limit; local runs as an option
+- [ ] Train → inference kernel pipelines with recorded upstream manifests
+- [ ] Submission modes: `csv_upload`, `code_kernel` (incl. API-served), `agent`; writeup guidance only. Every submit is human-run and confirmed by read-back
+- [ ] Research ingestion (discussions, public notebooks, host metric kernels for exact-metric CV)
+- [ ] OOF ensembling and final-submission selection
 
 ### Out of Scope
 
@@ -77,8 +125,10 @@ the framework exists to serve that loop.
 ## Constraints
 
 - **Runtime**: Claude Code first — avoid hard dependencies that would block porting to opencode/other agents later.
-- **Dependencies**: Kaggle CLI/API only; no dependency on external skills (standalone).
-- **Compute**: Kaggle Kernels for GPU/heavy compute and official submissions; local execution for fast default iteration.
+- **Dependencies**: The `kaggle` package only (CLI + its bundled `kagglesdk`), with no dependency on external skills. The skill has its own locked uv environment; "stdlib-only" was dropped at v2.
+- **Compute**: A Kaggle kernel is the default runtime (script kernels). Local execution is an option for small or tabular data. Live checks use CPU kernels where possible, because the GPU quota is shared with the user's other work.
+- **Live verification**: "Done" for any phase means a live run on a real competition. Fixtures only guard against regressions. Live checks never submit to a competition the user is actively competing in.
+- **Submissions**: The human runs every `kaggle competitions submit`. kx prepares and validates, hands over the exact command, then confirms by read-back.
 - **Kaggle limits**: Respect competition submission limits and kernel quotas; CV-first discipline conserves submission budget.
 - **Security**: Requires a Kaggle API token; network egress scoped to Kaggle and standard package sources.
 
@@ -102,6 +152,11 @@ the framework exists to serve that loop.
 | Exit-code protocol across 28 scripts (65/69/75/77/78) | Machine-readable gates | ⚠️ Revisit — v2 consolidates into one `kx` CLI that prints JSON with `next_action` |
 | Claude Code first for portability | Ship a working loop before multi-agent support | ✓ Good |
 | Working project name "Kaggle Experimentation Framework" | Descriptive placeholder | — Pending |
+| v2 pivot to "Kaggle-general" (2026-09-25) | v1 only covered Playground/Getting-Started-shaped competitions; most prize competitions are code, vision/NLP or simulation | — Pending |
+| Kernel-first runtime with script kernels | Code comps accept script kernel versions, including API-served ones; no notebook conversion (spikes 002/003) | — Pending |
+| Competition profile from SDK structured fields | Classified the submission mode correctly on 19 of 20 competitions without prose scraping (spike 001) | — Pending |
+| Human-run submissions, confirmed by read-back | Irreversible and budgeted; auto-mode denies it; a code submit prints nothing on success (spike 003) | — Pending |
+| One `kx` CLI with JSON `next_action` | Replaces 28 scripts and the exit-code protocol; a smaller SKILL.md | — Pending |
 
 ## Evolution
 
@@ -121,4 +176,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-09-25 after the v1.0 milestone (Experiment Loop MVP archived; Phase 0 v2 spikes validated)*
+*Last updated: 2026-09-25 at the start of milestone v2.0 Kaggle-general*
