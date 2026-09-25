@@ -1,0 +1,141 @@
+{
+ "slug": "pokemon-tcg-ai-battle-challenge-strategy",
+ "competition": {
+  "id": 131772,
+  "ref": "https://www.kaggle.com/competitions/pokemon-tcg-ai-battle-challenge-strategy",
+  "title": "The Pok\u00e9mon Company - PTCG AI Battle Challenge Strategy",
+  "organization_name": "The Pok\u00e9mon Company - PTCGABC Team",
+  "organization_ref": "",
+  "category": "Featured",
+  "reward": "240,000 Usd",
+  "tags": [
+   {
+    "ref": "games",
+    "name": "games",
+    "full_path": "subject > culture and humanities > games",
+    "competition_count": 33,
+    "dataset_count": 10963,
+    "script_count": 34465,
+    "total_count": 45461
+   },
+   {
+    "ref": "artificial intelligence",
+    "name": "artificial intelligence",
+    "full_path": "subject > science and technology > computer science > artificial intelligence",
+    "competition_count": 114,
+    "dataset_count": 5487,
+    "script_count": 4286,
+    "total_count": 9887
+   },
+   {
+    "ref": "reinforcement learning",
+    "name": "reinforcement learning",
+    "full_path": "task > reinforcement-learning",
+    "competition_count": 30,
+    "dataset_count": 257,
+    "script_count": 850,
+    "total_count": 1137
+   }
+  ],
+  "deadline": "2026-09-13T23:59:00",
+  "kernel_count": 0,
+  "team_count": 940,
+  "user_has_entered": false,
+  "user_rank": 0,
+  "merger_deadline": null,
+  "new_entrant_deadline": "2026-09-06T23:59:00",
+  "enabled_date": "2026-06-16T11:00:00",
+  "max_daily_submissions": 5,
+  "max_team_size": 5,
+  "evaluation_metric": "",
+  "awards_points": false,
+  "is_kernels_submissions_only": false,
+  "submissions_disabled": false,
+  "host_name": "The Pok\u00e9mon Company - PTCGABC Team",
+  "date_created": "2026-02-24T15:41:46.073000"
+ },
+ "files_summary": {
+  "file_summary_info": {
+   "total_file_count": 8,
+   "file_types": [
+    {
+     "extension": ".pdf",
+     "file_count": 4,
+     "total_size": 639877026
+    },
+    {
+     "extension": ".csv",
+     "file_count": 4,
+     "total_size": 1603158
+    }
+   ]
+  },
+  "column_summary_info": {
+   "total_column_count": 68,
+   "column_types": [
+    {
+     "column_type": "String",
+     "column_count": 62
+    },
+    {
+     "column_type": "Id",
+     "column_count": 4
+    },
+    {
+     "column_type": "Integer",
+     "column_count": 2
+    }
+   ]
+  }
+ },
+ "tree_root": {
+  "directories": [],
+  "files": [
+   {
+    "name": "Card_ID List_EN_.pdf",
+    "creation_date": "2026-08-03T17:19:26.964000",
+    "total_bytes": 137654485
+   },
+   {
+    "name": "Card_ID List_EN.pdf",
+    "creation_date": "2026-08-03T17:19:26.964000",
+    "total_bytes": 137654485
+   },
+   {
+    "name": "JP_Card_Data.csv",
+    "creation_date": "2026-08-03T17:19:26.964000",
+    "total_bytes": 442788
+   },
+   {
+    "name": "EN Card Data.csv",
+    "creation_date": "2026-08-03T17:19:26.964000",
+    "total_bytes": 358345
+   },
+   {
+    "name": "Card_ID List_JP_.pdf",
+    "creation_date": "2026-08-03T17:19:26.964000",
+    "total_bytes": 182284028
+   },
+   {
+    "name": "JP Card Data.csv",
+    "creation_date": "2026-08-03T17:19:26.964000",
+    "total_bytes": 442874
+   },
+   {
+    "name": "EN_Card_Data.csv",
+    "creation_date": "2026-08-03T17:19:26.964000",
+    "total_bytes": 359151
+   },
+   {
+    "name": "Card_ID List_JP.pdf",
+    "creation_date": "2026-08-03T17:19:26.964000",
+    "total_bytes": 182284028
+   }
+  ],
+  "total_children": 8,
+  "total_directories": 0,
+  "total_files": 8,
+  "next_page_token": ""
+ },
+ "tree_depth1": {}
+}

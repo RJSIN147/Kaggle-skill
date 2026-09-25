@@ -1,0 +1,200 @@
+{
+ "slug": "rsna-knee-abnormality-detection",
+ "competition": {
+  "id": 154281,
+  "ref": "https://www.kaggle.com/competitions/rsna-knee-abnormality-detection",
+  "title": "RSNA Knee Abnormality Detection",
+  "organization_name": "Radiological Society of North America",
+  "organization_ref": "",
+  "category": "Research",
+  "reward": "77,000 Usd",
+  "tags": [
+   {
+    "ref": "image classification",
+    "name": "image classification",
+    "full_path": "task > image-classification",
+    "competition_count": 84,
+    "dataset_count": 3032,
+    "script_count": 2348,
+    "total_count": 5464
+   },
+   {
+    "ref": "image",
+    "name": "image",
+    "full_path": "data type > image",
+    "competition_count": 705,
+    "dataset_count": 63263,
+    "script_count": 7126,
+    "total_count": 71094
+   },
+   {
+    "ref": "text",
+    "name": "text",
+    "full_path": "data type > text",
+    "competition_count": 198,
+    "dataset_count": 11322,
+    "script_count": 5114,
+    "total_count": 16634
+   },
+   {
+    "ref": "computer vision",
+    "name": "computer vision",
+    "full_path": "technique > computer vision",
+    "competition_count": 154,
+    "dataset_count": 7685,
+    "script_count": 6533,
+    "total_count": 14372
+   },
+   {
+    "ref": "medicine",
+    "name": "medicine",
+    "full_path": "subject > health and fitness > health > medicine",
+    "competition_count": 28,
+    "dataset_count": 1625,
+    "script_count": 1682,
+    "total_count": 3335
+   },
+   {
+    "ref": "roc auc score",
+    "name": "roc auc score",
+    "full_path": "",
+    "competition_count": 0,
+    "dataset_count": 0,
+    "script_count": 0,
+    "total_count": 0
+   }
+  ],
+  "deadline": "2026-10-22T23:59:00",
+  "kernel_count": 0,
+  "team_count": 4299,
+  "user_has_entered": true,
+  "user_rank": 0,
+  "merger_deadline": null,
+  "new_entrant_deadline": "2026-10-15T23:59:00",
+  "enabled_date": "2026-08-05T15:51:31.833000",
+  "max_daily_submissions": 5,
+  "max_team_size": 5,
+  "evaluation_metric": "Roc Auc Score",
+  "awards_points": true,
+  "is_kernels_submissions_only": true,
+  "submissions_disabled": false,
+  "host_name": "Radiological Society of North America",
+  "date_created": "2026-07-13T23:48:20.713000"
+ },
+ "files_summary": {
+  "file_summary_info": {
+   "total_file_count": 819640,
+   "file_types": [
+    {
+     "extension": ".dcm",
+     "file_count": 819635,
+     "total_size": 569755324064
+    },
+    {
+     "extension": ".csv",
+     "file_count": 5,
+     "total_size": 9151736
+    }
+   ]
+  },
+  "column_summary_info": {
+   "total_column_count": 38,
+   "column_types": [
+    {
+     "column_type": "Integer",
+     "column_count": 16
+    },
+    {
+     "column_type": "Decimal",
+     "column_count": 12
+    },
+    {
+     "column_type": "String",
+     "column_count": 10
+    }
+   ]
+  }
+ },
+ "tree_root": {
+  "directories": [
+   {
+    "name": "test_series",
+    "total_directories": 3,
+    "total_files": 0,
+    "total_children": 3
+   },
+   {
+    "name": "train_series",
+    "total_directories": 4407,
+    "total_files": 0,
+    "total_children": 4407
+   }
+  ],
+  "files": [
+   {
+    "name": "sample_submission.csv",
+    "creation_date": "2026-09-18T23:19:42.604000",
+    "total_bytes": 470
+   },
+   {
+    "name": "test.csv",
+    "creation_date": "2026-09-18T23:19:42.604000",
+    "total_bytes": 212
+   },
+   {
+    "name": "test_series.csv",
+    "creation_date": "2026-09-18T23:19:42.604000",
+    "total_bytes": 2213
+   },
+   {
+    "name": "train.csv",
+    "creation_date": "2026-09-18T23:19:42.604000",
+    "total_bytes": 5690007
+   },
+   {
+    "name": "train_series.csv",
+    "creation_date": "2026-09-18T23:19:42.604000",
+    "total_bytes": 3458834
+   }
+  ],
+  "total_children": 7,
+  "total_directories": 2,
+  "total_files": 5,
+  "next_page_token": ""
+ },
+ "tree_depth1": {
+  "test_series": {
+   "files": [],
+   "directories": [
+    "1.2.826.0.1.3680043.8.498.10047035057544427318018579121635276191",
+    "1.2.826.0.1.3680043.8.498.10062861783145312629332250977456991776",
+    "1.2.826.0.1.3680043.8.498.10067514707072572280263481548497591402"
+   ]
+  },
+  "train_series": {
+   "files": [],
+   "directories": [
+    "1.2.826.0.1.3680043.8.498.10004873229099053869093324292195817260",
+    "1.2.826.0.1.3680043.8.498.10004945927472656027199792075652399585",
+    "1.2.826.0.1.3680043.8.498.10009278692606631573540062909909132231",
+    "1.2.826.0.1.3680043.8.498.10009639203170750274174707434356622764",
+    "1.2.826.0.1.3680043.8.498.10013663742400736029415768216599146542",
+    "1.2.826.0.1.3680043.8.498.10018552945042470316597008531304016339",
+    "1.2.826.0.1.3680043.8.498.10018749256316287542884435387067561101",
+    "1.2.826.0.1.3680043.8.498.10021179701366615563817491713738306606",
+    "1.2.826.0.1.3680043.8.498.10021288557171866794624317186288618513",
+    "1.2.826.0.1.3680043.8.498.10025765742726180988537955593315007559",
+    "1.2.826.0.1.3680043.8.498.10026410865298348818136520318965356394",
+    "1.2.826.0.1.3680043.8.498.10029168398037940681915299760479434938",
+    "1.2.826.0.1.3680043.8.498.10029520033957968044048068502185417806",
+    "1.2.826.0.1.3680043.8.498.10039686090738454718354181337513293981",
+    "1.2.826.0.1.3680043.8.498.10048842414095994814596043262132965018",
+    "1.2.826.0.1.3680043.8.498.10058298717414171145622092128156266866",
+    "1.2.826.0.1.3680043.8.498.10059200627175320481920009076697103801",
+    "1.2.826.0.1.3680043.8.498.10061120822929703004201627784850458401",
+    "1.2.826.0.1.3680043.8.498.10064642360075735959136394136507408269",
+    "1.2.826.0.1.3680043.8.498.10066945398485042741116657288959323922"
+   ]
+  }
+ }
+}

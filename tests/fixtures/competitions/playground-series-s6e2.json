@@ -1,0 +1,115 @@
+{
+ "slug": "playground-series-s6e2",
+ "competition": {
+  "id": 125192,
+  "ref": "https://www.kaggle.com/competitions/playground-series-s6e2",
+  "title": "Predicting Heart Disease",
+  "organization_name": "Kaggle",
+  "organization_ref": "",
+  "category": "Playground",
+  "reward": "Swag",
+  "tags": [
+   {
+    "ref": "beginner",
+    "name": "beginner",
+    "full_path": "audience > beginner",
+    "competition_count": 15046,
+    "dataset_count": 11930,
+    "script_count": 46173,
+    "total_count": 73149
+   },
+   {
+    "ref": "tabular",
+    "name": "tabular",
+    "full_path": "data type > tabular",
+    "competition_count": 15864,
+    "dataset_count": 18090,
+    "script_count": 8363,
+    "total_count": 42317
+   },
+   {
+    "ref": "roc auc score",
+    "name": "roc auc score",
+    "full_path": "",
+    "competition_count": 0,
+    "dataset_count": 0,
+    "script_count": 0,
+    "total_count": 0
+   }
+  ],
+  "deadline": "2026-02-28T23:59:00",
+  "kernel_count": 0,
+  "team_count": 4370,
+  "user_has_entered": true,
+  "user_rank": 3599,
+  "merger_deadline": null,
+  "new_entrant_deadline": null,
+  "enabled_date": "2026-02-01T00:00:00",
+  "max_daily_submissions": 10,
+  "max_team_size": 3,
+  "evaluation_metric": "Roc Auc Score",
+  "awards_points": false,
+  "is_kernels_submissions_only": false,
+  "submissions_disabled": false,
+  "host_name": "Kaggle",
+  "date_created": "2025-12-03T19:22:30.620000"
+ },
+ "files_summary": {
+  "file_summary_info": {
+   "total_file_count": 3,
+   "file_types": [
+    {
+     "extension": ".csv",
+     "file_count": 3,
+     "total_size": 45431105
+    }
+   ]
+  },
+  "column_summary_info": {
+   "total_column_count": 31,
+   "column_types": [
+    {
+     "column_type": "Integer",
+     "column_count": 25
+    },
+    {
+     "column_type": "Id",
+     "column_count": 3
+    },
+    {
+     "column_type": "Decimal",
+     "column_count": 2
+    },
+    {
+     "column_type": "String",
+     "column_count": 1
+    }
+   ]
+  }
+ },
+ "tree_root": {
+  "directories": [],
+  "files": [
+   {
+    "name": "sample_submission.csv",
+    "creation_date": "2026-01-21T23:14:35.643000",
+    "total_bytes": 2430017
+   },
+   {
+    "name": "test.csv",
+    "creation_date": "2026-01-21T23:14:35.643000",
+    "total_bytes": 11336861
+   },
+   {
+    "name": "train.csv",
+    "creation_date": "2026-01-21T23:14:35.643000",
+    "total_bytes": 31664227
+   }
+  ],
+  "total_children": 3,
+  "total_directories": 0,
+  "total_files": 3,
+  "next_page_token": ""
+ },
+ "tree_depth1": {}
+}

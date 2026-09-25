@@ -1,0 +1,185 @@
+{
+ "slug": "jane-street-real-time-market-data-forecasting",
+ "competition": {
+  "id": 84493,
+  "ref": "https://www.kaggle.com/competitions/jane-street-real-time-market-data-forecasting",
+  "title": "Jane Street Real-Time Market Data Forecasting",
+  "organization_name": "Jane Street Group",
+  "organization_ref": "",
+  "category": "Featured",
+  "reward": "120,000 Usd",
+  "tags": [
+   {
+    "ref": "finance",
+    "name": "finance",
+    "full_path": "subject > people and society > business > finance",
+    "competition_count": 127,
+    "dataset_count": 15486,
+    "script_count": 5169,
+    "total_count": 20782
+   },
+   {
+    "ref": "regression",
+    "name": "regression",
+    "full_path": "task > regression",
+    "competition_count": 1660,
+    "dataset_count": 3114,
+    "script_count": 9216,
+    "total_count": 13990
+   },
+   {
+    "ref": "tabular",
+    "name": "tabular",
+    "full_path": "data type > tabular",
+    "competition_count": 15864,
+    "dataset_count": 18090,
+    "script_count": 8363,
+    "total_count": 42317
+   },
+   {
+    "ref": "custom metric",
+    "name": "custom metric",
+    "full_path": "",
+    "competition_count": 0,
+    "dataset_count": 0,
+    "script_count": 0,
+    "total_count": 0
+   }
+  ],
+  "deadline": "2025-07-12T23:59:00",
+  "kernel_count": 0,
+  "team_count": 3757,
+  "user_has_entered": false,
+  "user_rank": 0,
+  "merger_deadline": null,
+  "new_entrant_deadline": "2025-01-06T23:59:00",
+  "enabled_date": "2024-10-14T14:01:59.993000",
+  "max_daily_submissions": 5,
+  "max_team_size": 5,
+  "evaluation_metric": "Jane Street Zero-Mean R2",
+  "awards_points": true,
+  "is_kernels_submissions_only": true,
+  "submissions_disabled": true,
+  "host_name": "Jane Street Group",
+  "date_created": "2024-08-29T15:50:58.013000"
+ },
+ "files_summary": {
+  "file_summary_info": {
+   "total_file_count": 26,
+   "file_types": [
+    {
+     "extension": ".parquet",
+     "file_count": 12,
+     "total_size": 12299738107
+    },
+    {
+     "extension": ".py",
+     "file_count": 10,
+     "total_size": 48083
+    },
+    {
+     "extension": ".csv",
+     "file_count": 3,
+     "total_size": 9542
+    },
+    {
+     "extension": ".proto",
+     "file_count": 1,
+     "total_size": 1789
+    }
+   ]
+  },
+  "column_summary_info": {
+   "total_column_count": 1043,
+   "column_types": [
+    {
+     "column_type": "Decimal",
+     "column_count": 700
+    },
+    {
+     "column_type": "Uuid",
+     "column_count": 186
+    },
+    {
+     "column_type": "Integer",
+     "column_count": 94
+    },
+    {
+     "column_type": "Id",
+     "column_count": 38
+    },
+    {
+     "column_type": "Boolean",
+     "column_count": 23
+    },
+    {
+     "column_type": "String",
+     "column_count": 2
+    }
+   ]
+  }
+ },
+ "tree_root": {
+  "directories": [
+   {
+    "name": "train.parquet",
+    "total_directories": 10,
+    "total_files": 0,
+    "total_children": 10
+   },
+   {
+    "name": "test.parquet",
+    "total_directories": 1,
+    "total_files": 0,
+    "total_children": 1
+   },
+   {
+    "name": "lags.parquet",
+    "total_directories": 1,
+    "total_files": 0,
+    "total_children": 1
+   },
+   {
+    "name": "kaggle_evaluation",
+    "total_directories": 1,
+    "total_files": 3,
+    "total_children": 1
+   }
+  ],
+  "files": [
+   {
+    "name": "sample_submission.csv",
+    "creation_date": "2025-03-05T17:24:26.108000",
+    "total_bytes": 282
+   },
+   {
+    "name": "responders.csv",
+    "creation_date": "2025-03-05T17:24:26.108000",
+    "total_bytes": 403
+   },
+   {
+    "name": "features.csv",
+    "creation_date": "2025-03-05T17:24:26.108000",
+    "total_bytes": 8857
+   }
+  ],
+  "total_children": 7,
+  "total_directories": 4,
+  "total_files": 3,
+  "next_page_token": ""
+ },
+ "tree_depth1": {
+  "train.parquet": {
+   "error": "HTTPError: 403 Client Error: Forbidden for url: https://api.kaggle.com/v1/competitions.Comp"
+  },
+  "test.parquet": {
+   "error": "HTTPError: 403 Client Error: Forbidden for url: https://api.kaggle.com/v1/competitions.Comp"
+  },
+  "lags.parquet": {
+   "error": "HTTPError: 403 Client Error: Forbidden for url: https://api.kaggle.com/v1/competitions.Comp"
+  },
+  "kaggle_evaluation": {
+   "error": "HTTPError: 403 Client Error: Forbidden for url: https://api.kaggle.com/v1/competitions.Comp"
+  }
+ }
+}

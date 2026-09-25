@@ -1,0 +1,26 @@
+# Secrets: never commit a credential.
+.env
+*.env
+kaggle.json
+**/kaggle.json
+access_token
+**/access_token
+
+# Competition data and heavy artifacts.
+data/
+cache/
+
+# Transient error dumps may hold server text: never commit them.
+control/raw/
+
+# Pulled kernel outputs: predictions, submissions, logs and binaries are heavy
+# and derived. result.json, kx_manifest.json and the experiment sources stay tracked.
+experiments/*/output/*
+!experiments/*/output/result.json
+!experiments/*/output/kx_manifest.json
+experiments/*/checkpoints/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/

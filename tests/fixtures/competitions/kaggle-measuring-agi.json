@@ -1,0 +1,88 @@
+{
+ "slug": "kaggle-measuring-agi",
+ "competition": {
+  "id": 128852,
+  "ref": "https://www.kaggle.com/competitions/kaggle-measuring-agi",
+  "title": "Measuring Progress Toward AGI - Cognitive Abilities",
+  "organization_name": "Google DeepMind",
+  "organization_ref": "",
+  "category": "Featured",
+  "reward": "200,000 Usd",
+  "tags": [
+   {
+    "ref": "personal benchmark",
+    "name": "personal benchmark",
+    "full_path": "admin > personal benchmark",
+    "competition_count": 2,
+    "dataset_count": 0,
+    "script_count": 110142,
+    "total_count": 110144
+   },
+   {
+    "ref": "benchmark",
+    "name": "benchmark",
+    "full_path": "technique > benchmark",
+    "competition_count": 17,
+    "dataset_count": 996,
+    "script_count": 1559,
+    "total_count": 2572
+   },
+   {
+    "ref": "research",
+    "name": "research",
+    "full_path": "subject > science and technology > research",
+    "competition_count": 31,
+    "dataset_count": 3301,
+    "script_count": 1268,
+    "total_count": 4600
+   }
+  ],
+  "deadline": "2026-04-16T23:59:00",
+  "kernel_count": 0,
+  "team_count": 1063,
+  "user_has_entered": false,
+  "user_rank": 0,
+  "merger_deadline": null,
+  "new_entrant_deadline": null,
+  "enabled_date": "2026-03-17T15:54:59.853000",
+  "max_daily_submissions": 1,
+  "max_team_size": 5,
+  "evaluation_metric": "",
+  "awards_points": false,
+  "is_kernels_submissions_only": false,
+  "submissions_disabled": false,
+  "host_name": "Google DeepMind",
+  "date_created": "2026-01-26T19:28:15.963000"
+ },
+ "files_summary": {
+  "file_summary_info": {
+   "total_file_count": 1,
+   "file_types": [
+    {
+     "extension": ".md",
+     "file_count": 1,
+     "total_size": 144
+    }
+   ]
+  },
+  "column_summary_info": {
+   "total_column_count": 0,
+   "column_types": []
+  }
+ },
+ "tree_root": {
+  "directories": [],
+  "files": [
+   {
+    "name": "NOTE.md",
+    "creation_date": "2026-02-19T21:34:43.586000",
+    "total_bytes": 144
+   }
+  ],
+  "total_children": 1,
+  "total_directories": 0,
+  "total_files": 1,
+  "next_page_token": ""
+ },
+ "tree_depth1": {}
+}

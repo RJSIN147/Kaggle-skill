@@ -1,0 +1,107 @@
+{
+ "slug": "llm-prompt-recovery",
+ "competition": {
+  "id": 67121,
+  "ref": "https://www.kaggle.com/competitions/llm-prompt-recovery",
+  "title": "LLM Prompt Recovery",
+  "organization_name": "Kaggle",
+  "organization_ref": "",
+  "category": "Featured",
+  "reward": "200,000 Usd",
+  "tags": [
+   {
+    "ref": "nlp",
+    "name": "nlp",
+    "full_path": "analysis > nlp",
+    "competition_count": 140,
+    "dataset_count": 8115,
+    "script_count": 10869,
+    "total_count": 19124
+   },
+   {
+    "ref": "artificial intelligence",
+    "name": "artificial intelligence",
+    "full_path": "subject > science and technology > computer science > artificial intelligence",
+    "competition_count": 114,
+    "dataset_count": 5487,
+    "script_count": 4286,
+    "total_count": 9887
+   },
+   {
+    "ref": "custom metric",
+    "name": "custom metric",
+    "full_path": "",
+    "competition_count": 0,
+    "dataset_count": 0,
+    "script_count": 0,
+    "total_count": 0
+   }
+  ],
+  "deadline": "2024-04-16T23:59:00",
+  "kernel_count": 0,
+  "team_count": 2175,
+  "user_has_entered": false,
+  "user_rank": 0,
+  "merger_deadline": null,
+  "new_entrant_deadline": "2024-04-09T23:59:00",
+  "enabled_date": "2024-02-27T18:42:53.640000",
+  "max_daily_submissions": 5,
+  "max_team_size": 5,
+  "evaluation_metric": "LLM Nerd-Off Sharpened Cosine Similarity",
+  "awards_points": true,
+  "is_kernels_submissions_only": true,
+  "submissions_disabled": false,
+  "host_name": "Kaggle",
+  "date_created": "2024-01-08T22:30:37.189000"
+ },
+ "files_summary": {
+  "file_summary_info": {
+   "total_file_count": 3,
+   "file_types": [
+    {
+     "extension": ".csv",
+     "file_count": 3,
+     "total_size": 2355
+    }
+   ]
+  },
+  "column_summary_info": {
+   "total_column_count": 9,
+   "column_types": [
+    {
+     "column_type": "String",
+     "column_count": 6
+    },
+    {
+     "column_type": "Id",
+     "column_count": 3
+    }
+   ]
+  }
+ },
+ "tree_root": {
+  "directories": [],
+  "files": [
+   {
+    "name": "sample_submission.csv",
+    "creation_date": "2024-02-26T21:44:47.545000",
+    "total_bytes": 45
+   },
+   {
+    "name": "test.csv",
+    "creation_date": "2024-02-26T21:44:47.545000",
+    "total_bytes": 911
+   },
+   {
+    "name": "train.csv",
+    "creation_date": "2024-02-26T21:44:47.545000",
+    "total_bytes": 1399
+   }
+  ],
+  "total_children": 3,
+  "total_directories": 0,
+  "total_files": 3,
+  "next_page_token": ""
+ },
+ "tree_depth1": {}
+}

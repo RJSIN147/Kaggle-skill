@@ -1,0 +1,16 @@
+[{"stream_name":"stderr","time":9.122216269,"data":"Traceback (most recent call last):\n"}
+,{"stream_name":"stderr","time":9.122318212,"data":"  File \"/kaggle/src/script.py\", line 249, in \u003cmodule\u003e\n"}
+,{"stream_name":"stderr","time":9.122366272,"data":"    main()\n"}
+,{"stream_name":"stderr","time":9.122376088,"data":"  File \"/kaggle/src/script.py\", line 176, in main\n"}
+,{"stream_name":"stderr","time":9.12264362,"data":"    X, X_test = build_features(train, test)\n"}
+,{"stream_name":"stderr","time":9.122675341,"data":"                ^^^^^^^^^^^^^^^^^^^^^^^^^^^\n"}
+,{"stream_name":"stderr","time":9.12268102,"data":"  File \"/kaggle/src/script.py\", line 49, in build_features\n"}
+,{"stream_name":"stderr","time":9.122936376,"data":"    raise RuntimeError(\"deliberate failure: fail-closed live check\")\n"}
+,{"stream_name":"stderr","time":9.122948291,"data":"RuntimeError: deliberate failure: fail-closed live check\n"}
+,{"stream_name":"stderr","time":12.853338412,"data":"/usr/local/lib/python3.12/dist-packages/mistune.py:435: SyntaxWarning: invalid escape sequence '\\|'\n"}
+,{"stream_name":"stderr","time":12.853376182,"data":"  cells[i][c] = re.sub('\\\\\\\\\\|', '|', cell)\n"}
+,{"stream_name":"stderr","time":13.44282462,"data":"/usr/local/lib/python3.12/dist-packages/nbconvert/filters/filter_links.py:36: SyntaxWarning: invalid escape sequence '\\_'\n"}
+,{"stream_name":"stderr","time":13.442855254,"data":"  text = re.sub(r'_', '\\_', text) # Escape underscores in display text\n"}
+,{"stream_name":"stderr","time":17.299486327,"data":"[NbConvertApp] Converting notebook __script__.ipynb to html\n"}
+,{"stream_name":"stderr","time":19.501249264,"data":"[NbConvertApp] Writing 332849 bytes to __results__.html\n"}
+]

@@ -1,0 +1,124 @@
+{
+ "slug": "titanic",
+ "competition": {
+  "id": 3136,
+  "ref": "https://www.kaggle.com/competitions/titanic",
+  "title": "Titanic - Machine Learning from Disaster",
+  "organization_name": "Kaggle",
+  "organization_ref": "",
+  "category": "Getting Started",
+  "reward": "Knowledge",
+  "tags": [
+   {
+    "ref": "binary classification",
+    "name": "binary classification",
+    "full_path": "task > binary-classification",
+    "competition_count": 11847,
+    "dataset_count": 2150,
+    "script_count": 8373,
+    "total_count": 22370
+   },
+   {
+    "ref": "tabular",
+    "name": "tabular",
+    "full_path": "data type > tabular",
+    "competition_count": 15864,
+    "dataset_count": 18090,
+    "script_count": 8363,
+    "total_count": 42317
+   },
+   {
+    "ref": "beginner",
+    "name": "beginner",
+    "full_path": "audience > beginner",
+    "competition_count": 15046,
+    "dataset_count": 11930,
+    "script_count": 46173,
+    "total_count": 73149
+   },
+   {
+    "ref": "categorizationaccuracy",
+    "name": "categorizationaccuracy",
+    "full_path": "",
+    "competition_count": 0,
+    "dataset_count": 0,
+    "script_count": 0,
+    "total_count": 0
+   }
+  ],
+  "deadline": "2030-01-01T00:00:00",
+  "kernel_count": 0,
+  "team_count": 10310,
+  "user_has_entered": true,
+  "user_rank": 0,
+  "merger_deadline": null,
+  "new_entrant_deadline": null,
+  "enabled_date": "2012-09-28T21:13:33.550000",
+  "max_daily_submissions": 10,
+  "max_team_size": 10,
+  "evaluation_metric": "Categorization Accuracy",
+  "awards_points": false,
+  "is_kernels_submissions_only": false,
+  "submissions_disabled": false,
+  "host_name": "Kaggle",
+  "date_created": "2012-09-14T16:40:22.604000"
+ },
+ "files_summary": {
+  "file_summary_info": {
+   "total_file_count": 3,
+   "file_types": [
+    {
+     "extension": ".csv",
+     "file_count": 3,
+     "total_size": 93081
+    }
+   ]
+  },
+  "column_summary_info": {
+   "total_column_count": 25,
+   "column_types": [
+    {
+     "column_type": "String",
+     "column_count": 10
+    },
+    {
+     "column_type": "Integer",
+     "column_count": 8
+    },
+    {
+     "column_type": "Decimal",
+     "column_count": 4
+    },
+    {
+     "column_type": "Id",
+     "column_count": 3
+    }
+   ]
+  }
+ },
+ "tree_root": {
+  "directories": [],
+  "files": [
+   {
+    "name": "gender_submission.csv",
+    "creation_date": "2018-04-09T05:33:22.396000",
+    "total_bytes": 3258
+   },
+   {
+    "name": "test.csv",
+    "creation_date": "2018-04-09T05:33:22.396000",
+    "total_bytes": 28629
+   },
+   {
+    "name": "train.csv",
+    "creation_date": "2018-04-09T05:33:22.396000",
+    "total_bytes": 61194
+   }
+  ],
+  "total_children": 3,
+  "total_directories": 0,
+  "total_files": 3,
+  "next_page_token": ""
+ },
+ "tree_depth1": {}
+}
