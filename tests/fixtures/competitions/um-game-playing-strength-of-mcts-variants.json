@@ -1,0 +1,163 @@
+{
+ "slug": "um-game-playing-strength-of-mcts-variants",
+ "competition": {
+  "id": 70089,
+  "ref": "https://www.kaggle.com/competitions/um-game-playing-strength-of-mcts-variants",
+  "title": "UM - Game-Playing Strength of MCTS Variants",
+  "organization_name": "Maastricht University",
+  "organization_ref": "",
+  "category": "Research",
+  "reward": "50,000 Usd",
+  "tags": [
+   {
+    "ref": "regression",
+    "name": "regression",
+    "full_path": "task > regression",
+    "competition_count": 1660,
+    "dataset_count": 3114,
+    "script_count": 9216,
+    "total_count": 13990
+   },
+   {
+    "ref": "artificial intelligence",
+    "name": "artificial intelligence",
+    "full_path": "subject > science and technology > computer science > artificial intelligence",
+    "competition_count": 114,
+    "dataset_count": 5487,
+    "script_count": 4286,
+    "total_count": 9887
+   },
+   {
+    "ref": "board games",
+    "name": "board games",
+    "full_path": "subject > culture and humanities > games > board games",
+    "competition_count": 7,
+    "dataset_count": 436,
+    "script_count": 172,
+    "total_count": 615
+   },
+   {
+    "ref": "games",
+    "name": "games",
+    "full_path": "subject > culture and humanities > games",
+    "competition_count": 33,
+    "dataset_count": 10963,
+    "script_count": 34465,
+    "total_count": 45461
+   },
+   {
+    "ref": "mean squared error",
+    "name": "mean squared error",
+    "full_path": "",
+    "competition_count": 0,
+    "dataset_count": 0,
+    "script_count": 0,
+    "total_count": 0
+   }
+  ],
+  "deadline": "2024-12-02T23:59:00",
+  "kernel_count": 0,
+  "team_count": 1608,
+  "user_has_entered": false,
+  "user_rank": 0,
+  "merger_deadline": null,
+  "new_entrant_deadline": "2024-11-25T23:59:00",
+  "enabled_date": "2024-09-05T15:24:08.763000",
+  "max_daily_submissions": 5,
+  "max_team_size": 5,
+  "evaluation_metric": "Mean Squared Error",
+  "awards_points": true,
+  "is_kernels_submissions_only": true,
+  "submissions_disabled": false,
+  "host_name": "Maastricht University",
+  "date_created": "2024-02-07T09:59:26.461000"
+ },
+ "files_summary": {
+  "file_summary_info": {
+   "total_file_count": 15,
+   "file_types": [
+    {
+     "extension": ".csv",
+     "file_count": 4,
+     "total_size": 1319989673
+    },
+    {
+     "extension": ".py",
+     "file_count": 10,
+     "total_size": 39427
+    },
+    {
+     "extension": ".proto",
+     "file_count": 1,
+     "total_size": 1789
+    }
+   ]
+  },
+  "column_summary_info": {
+   "total_column_count": 1635,
+   "column_types": [
+    {
+     "column_type": "Integer",
+     "column_count": 1213
+    },
+    {
+     "column_type": "Decimal",
+     "column_count": 366
+    },
+    {
+     "column_type": "Uuid",
+     "column_count": 36
+    },
+    {
+     "column_type": "String",
+     "column_count": 13
+    },
+    {
+     "column_type": "Id",
+     "column_count": 7
+    }
+   ]
+  }
+ },
+ "tree_root": {
+  "directories": [
+   {
+    "name": "kaggle_evaluation",
+    "total_directories": 1,
+    "total_files": 3,
+    "total_children": 1
+   }
+  ],
+  "files": [
+   {
+    "name": "sample_submission.csv",
+    "creation_date": "2024-09-04T19:23:52.382000",
+    "total_bytes": 51
+   },
+   {
+    "name": "concepts.csv",
+    "creation_date": "2024-09-04T19:23:52.382000",
+    "total_bytes": 57200
+   },
+   {
+    "name": "test.csv",
+    "creation_date": "2024-09-04T19:23:52.382000",
+    "total_bytes": 28491
+   },
+   {
+    "name": "train.csv",
+    "creation_date": "2024-09-04T19:23:52.382000",
+    "total_bytes": 1319903931
+   }
+  ],
+  "total_children": 5,
+  "total_directories": 1,
+  "total_files": 4,
+  "next_page_token": ""
+ },
+ "tree_depth1": {
+  "kaggle_evaluation": {
+   "error": "HTTPError: 403 Client Error: Forbidden for url: https://api.kaggle.com/v1/competitions.Comp"
+  }
+ }
+}

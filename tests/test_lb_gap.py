@@ -36,7 +36,7 @@ import re
 
 def _gap():
     """Import scripts/lb_gap.py (on sys.path via conftest). Absent at RED."""
-    return importlib.import_module("lb_gap")
+    return importlib.import_module("kx.lb_gap")
 
 
 def _sub(exp_id, *, status="SCORED", public_score=None, ref=1):

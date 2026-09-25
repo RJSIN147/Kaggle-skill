@@ -1,1 +1,0 @@
-titanic-exp-001 has status "KernelWorkerStatus.RUNNING"

@@ -1,0 +1,313 @@
+"""KaggleAdapter: every Kaggle call kx makes, in-process through the SDK.
+
+Rules this module enforces (all verified against kaggle 2.2.3):
+
+* ``kaggle`` is imported lazily. Importing it runs ``authenticate()``, which with
+  no credential prints help on stdout and calls ``exit(1)``; ``load()`` catches
+  that and raises ``CredentialUnavailable`` instead.
+* The SDK's HTTP client has no timeout, so every call runs under a SIGALRM
+  ``deadline``. Library chatter is swallowed by ``quiet``.
+* Push builds its own ``ApiSaveKernelRequest`` so every flag is explicit
+  (``kernels_push`` defaults a missing ``enable_internet`` to True).
+* Output is pulled by our own loop with ``safe_join`` (``kernels_output`` in
+  2.2.3 writes server-supplied names without a traversal check).
+* Server text (error bodies, URLs, signed download links) is never returned in
+  an error: callers get an op name and an HTTP status code only.
+
+Tests pass a fake with the same method names; nothing here is a module global.
+"""
+
+from __future__ import annotations
+
+import contextlib
+import enum
+import io
+import signal
+from pathlib import Path
+
+from kx.util import KxError
+
+
+class KxTimeout(Exception):
+    pass
+
+
+class CredentialUnavailable(Exception):
+    pass
+
+
+@contextlib.contextmanager
+def deadline(seconds: float):
+    """Raise KxTimeout if the block runs longer than ``seconds`` (POSIX, main thread)."""
+
+    def _raise(signum, frame):
+        raise KxTimeout(f"deadline {seconds}s")
+
+    old = signal.signal(signal.SIGALRM, _raise)
+    signal.setitimer(signal.ITIMER_REAL, seconds)
+    try:
+        yield
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        signal.signal(signal.SIGALRM, old)
+
+
+@contextlib.contextmanager
+def quiet():
+    with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+        yield
+
+
+def plain(obj, depth: int = 0):
+    """KaggleObject / enum / datetime -> plain JSON-able structure."""
+    if depth > 8:
+        return None
+    if obj is None or isinstance(obj, (bool, int, float, str)):
+        return obj
+    if isinstance(obj, enum.Enum):
+        return obj.name
+    if isinstance(obj, (list, tuple)):
+        return [plain(x, depth + 1) for x in obj]
+    if isinstance(obj, dict):
+        return {k: plain(v, depth + 1) for k, v in obj.items()}
+    if hasattr(obj, "isoformat"):
+        return obj.isoformat()
+    fields = getattr(obj, "_fields", None)
+    if fields:
+        out = {}
+        for f in fields:
+            name = getattr(f, "field_name", None) or getattr(f, "name", None)
+            if not name:
+                continue
+            try:
+                out[name] = plain(getattr(obj, name), depth + 1)
+            except Exception:  # noqa: BLE001 - a broken optional field is recorded as None
+                out[name] = None
+        return out
+    return str(obj)
+
+
+def safe_join(root: Path, name: str) -> Path:
+    """Resolve a server-supplied file name under root, refusing any escape."""
+    if (not name or "\x00" in name or "\\" in name or Path(name).is_absolute()
+            or ".." in Path(name).parts):
+        raise ValueError("unsafe output file name")
+    root_r = root.resolve()
+    p = (root_r / name).resolve()
+    if root_r not in p.parents:
+        raise ValueError("unsafe output file name")
+    return p
+
+
+def _http_status(exc) -> int | None:
+    resp = getattr(exc, "response", None)
+    code = getattr(resp, "status_code", None)
+    return code if isinstance(code, int) else None
+
+
+class KaggleAdapter:
+    """Real adapter. Construct cheaply; ``load()`` happens on first use."""
+
+    def __init__(self, timeout: float = 60):
+        self.timeout = timeout
+        self._api = None
+        self.username: str | None = None
+
+    # -- loading ---------------------------------------------------------- #
+    def load(self):
+        if self._api is not None:
+            return self._api
+        try:
+            with quiet(), deadline(self.timeout):
+                from kaggle.api.kaggle_api_extended import KaggleApi  # noqa: PLC0415
+
+                api = KaggleApi()
+                api.authenticate()
+        except SystemExit as exc:
+            raise CredentialUnavailable("no_valid_credential") from exc
+        except KxTimeout as exc:
+            raise KxError("error", "timed out loading the Kaggle SDK",
+                          errors=["kaggle_timeout:authenticate"]) from exc
+        except Exception as exc:  # noqa: BLE001 - token introspection failure etc.
+            raise CredentialUnavailable(type(exc).__name__) from exc
+        self._api = api
+        self.username = api.get_config_value("username")
+        return api
+
+    def _call(self, op: str, fn, timeout: float | None = None):
+        api = self.load()
+        try:
+            with quiet(), deadline(timeout or self.timeout):
+                return fn(api)
+        except KxTimeout as exc:
+            raise KxError("error", f"Kaggle call timed out ({op})",
+                          errors=[f"kaggle_timeout:{op}"]) from exc
+        except KxError:
+            raise
+        except Exception as exc:  # noqa: BLE001 - mapped, never echoed
+            code = _http_status(exc)
+            if code in (401, 403):
+                raise KxError("needs_user", f"Kaggle refused {op} (HTTP {code})",
+                              errors=[f"http_{code}:{op}"], data={"http_status": code}) from exc
+            if code == 404:
+                raise KxError("invalid", f"Kaggle has no such resource ({op}, HTTP 404)",
+                              errors=[f"http_404:{op}"], data={"http_status": 404}) from exc
+            label = f"http_{code}" if code else type(exc).__name__
+            raise KxError("error", f"Kaggle call failed ({op}: {label})",
+                          errors=[f"{label}:{op}"]) from exc
+
+    # -- account ---------------------------------------------------------- #
+    def validate(self) -> str:
+        """One authenticated live call (a legacy key is not checked by authenticate)."""
+        self._call("competitions_list",
+                   lambda api: api.competitions_list(search="titanic", page_size=1))
+        return self.username or ""
+
+    # -- competitions ----------------------------------------------------- #
+    def competition(self, slug: str) -> dict:
+        from kagglesdk.competitions.types.competition_api_service import ApiGetCompetitionRequest
+
+        def fn(api):
+            with api.build_kaggle_client() as client:
+                r = ApiGetCompetitionRequest()
+                r.competition_name = slug
+                return plain(client.competitions.competition_api_client.get_competition(r))
+
+        return self._call("get_competition", fn)
+
+    def files_summary(self, slug: str) -> dict:
+        from kagglesdk.competitions.types.competition_api_service import (
+            ApiGetCompetitionDataFilesSummaryRequest,
+        )
+
+        def fn(api):
+            with api.build_kaggle_client() as client:
+                r = ApiGetCompetitionDataFilesSummaryRequest()
+                r.competition_name = slug
+                cc = client.competitions.competition_api_client
+                return plain(cc.get_competition_data_files_summary(r))
+
+        return self._call("get_competition_data_files_summary", fn)
+
+    def list_tree(self, slug: str, path: str | None = None, max_pages: int = 20) -> dict:
+        """Files and directories at one level (root, or ``path`` after joining)."""
+        from kagglesdk.competitions.types.competition_api_service import ApiListDataTreeFilesRequest
+
+        def fn(api):
+            files, dirs, token = [], [], None
+            with api.build_kaggle_client() as client:
+                cc = client.competitions.competition_api_client
+                for _ in range(max_pages):
+                    r = ApiListDataTreeFilesRequest()
+                    r.competition_name = slug
+                    r.page_size = 200
+                    if path:
+                        r.path = path
+                    if token:
+                        r.page_token = token
+                    resp = plain(cc.list_data_tree_files(r)) or {}
+                    files += resp.get("files") or []
+                    dirs += resp.get("directories") or []
+                    token = resp.get("next_page_token")
+                    if not token:
+                        break
+            return {"files": files, "directories": dirs, "truncated": bool(token)}
+
+        return self._call("list_data_tree_files", fn)
+
+    # -- kernels ---------------------------------------------------------- #
+    def push(self, metadata: dict, code_text: str, timeout_s: int | None = None) -> dict:
+        from kagglesdk.kernels.types.kernels_api_service import ApiSaveKernelRequest
+
+        def fn(api):
+            with api.build_kaggle_client() as client:
+                r = ApiSaveKernelRequest()
+                r.slug = metadata["id"]
+                r.new_title = metadata["title"]
+                r.text = code_text
+                r.language = metadata["language"]
+                r.kernel_type = metadata["kernel_type"]
+                r.is_private = bool(metadata["is_private"])
+                r.enable_gpu = bool(metadata["enable_gpu"])
+                r.enable_tpu = bool(metadata["enable_tpu"])
+                r.enable_internet = bool(metadata["enable_internet"])
+                r.dataset_data_sources = list(metadata.get("dataset_sources") or [])
+                r.competition_data_sources = list(metadata.get("competition_sources") or [])
+                r.kernel_data_sources = list(metadata.get("kernel_sources") or [])
+                r.model_data_sources = list(metadata.get("model_sources") or [])
+                r.category_ids = []
+                if metadata.get("machine_shape"):
+                    r.machine_shape = metadata["machine_shape"]
+                if timeout_s:
+                    r.session_timeout_seconds = int(timeout_s)
+                return plain(client.kernels.kernels_api_client.save_kernel(r))
+
+        return self._call("save_kernel", fn, timeout=180)
+
+    def kernel_status(self, owner: str, slug: str) -> dict:
+        from kagglesdk.kernels.types.kernels_api_service import ApiGetKernelSessionStatusRequest
+
+        def fn(api):
+            with api.build_kaggle_client() as client:
+                r = ApiGetKernelSessionStatusRequest()
+                r.user_name = owner
+                r.kernel_slug = slug
+                return plain(client.kernels.kernels_api_client.get_kernel_session_status(r))
+
+        return self._call("get_kernel_session_status", fn)
+
+    def get_kernel(self, owner: str, slug: str) -> dict:
+        from kagglesdk.kernels.types.kernels_api_service import ApiGetKernelRequest
+
+        def fn(api):
+            with api.build_kaggle_client() as client:
+                r = ApiGetKernelRequest()
+                r.user_name = owner
+                r.kernel_slug = slug
+                resp = plain(client.kernels.kernels_api_client.get_kernel(r)) or {}
+                return resp.get("metadata") or {}
+
+        return self._call("get_kernel", fn)
+
+    def list_output(self, owner: str, slug: str) -> dict:
+        from kagglesdk.kernels.types.kernels_api_service import ApiListKernelSessionOutputRequest
+
+        def fn(api):
+            files, log, token = [], None, None
+            with api.build_kaggle_client() as client:
+                kc = client.kernels.kernels_api_client
+                for _ in range(50):
+                    r = ApiListKernelSessionOutputRequest()
+                    r.user_name = owner
+                    r.kernel_slug = slug
+                    r.page_size = 100
+                    if token:
+                        r.page_token = token
+                    resp = plain(kc.list_kernel_session_output(r)) or {}
+                    if log is None:
+                        log = resp.get("log")
+                    files += [{"file_name": f.get("file_name"), "url": f.get("url")}
+                              for f in resp.get("files") or []]
+                    token = resp.get("next_page_token")
+                    if not token:
+                        break
+            return {"files": files, "log": log}
+
+        return self._call("list_kernel_session_output", fn)
+
+    def download(self, url: str, dest: Path, timeout: float = 600) -> int:
+        """Stream one output file to dest. The URL is signed: never logged."""
+        import requests
+
+        def fn(_api):
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            n = 0
+            with requests.get(url, stream=True, timeout=(15, 120)) as r:
+                r.raise_for_status()
+                with open(dest, "wb") as fh:
+                    for chunk in r.iter_content(1 << 20):
+                        fh.write(chunk)
+                        n += len(chunk)
+            return n
+
+        return self._call("download_output", fn, timeout=timeout)

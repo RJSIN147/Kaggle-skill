@@ -1,0 +1,134 @@
+{
+ "slug": "connectx",
+ "competition": {
+  "id": 17592,
+  "ref": "https://www.kaggle.com/competitions/connectx",
+  "title": "Connect X",
+  "organization_name": "Kaggle",
+  "organization_ref": "",
+  "category": "Getting Started",
+  "reward": "Knowledge",
+  "tags": [
+   {
+    "ref": "simulations",
+    "name": "simulations",
+    "full_path": "subject > culture and humanities > games > video games > simulations",
+    "competition_count": 96,
+    "dataset_count": 920,
+    "script_count": 333,
+    "total_count": 1349
+   },
+   {
+    "ref": "custom metric",
+    "name": "custom metric",
+    "full_path": "",
+    "competition_count": 0,
+    "dataset_count": 0,
+    "script_count": 0,
+    "total_count": 0
+   }
+  ],
+  "deadline": "2030-01-01T00:00:00",
+  "kernel_count": 0,
+  "team_count": 186,
+  "user_has_entered": false,
+  "user_rank": 0,
+  "merger_deadline": null,
+  "new_entrant_deadline": null,
+  "enabled_date": "2020-01-03T21:25:59",
+  "max_daily_submissions": 2,
+  "max_team_size": 5,
+  "evaluation_metric": "Connect X",
+  "awards_points": false,
+  "is_kernels_submissions_only": false,
+  "submissions_disabled": false,
+  "host_name": "Kaggle",
+  "date_created": "2019-11-25T19:05:56.292000"
+ },
+ "files_summary": {
+  "file_summary_info": {
+   "total_file_count": 28,
+   "file_types": [
+    {
+     "extension": ".ipynb",
+     "file_count": 2,
+     "total_size": 126245
+    },
+    {
+     "extension": ".py",
+     "file_count": 11,
+     "total_size": 64005
+    },
+    {
+     "extension": ".html",
+     "file_count": 1,
+     "total_size": 16313
+    },
+    {
+     "extension": ".js",
+     "file_count": 2,
+     "total_size": 14960
+    },
+    {
+     "extension": "",
+     "file_count": 1,
+     "total_size": 11357
+    },
+    {
+     "extension": ".json",
+     "file_count": 5,
+     "total_size": 6311
+    },
+    {
+     "extension": ".md",
+     "file_count": 2,
+     "total_size": 1867
+    },
+    {
+     "extension": ".gitignore",
+     "file_count": 1,
+     "total_size": 1819
+    },
+    {
+     "extension": ".gcloudignore",
+     "file_count": 1,
+     "total_size": 534
+    },
+    {
+     "extension": ".in",
+     "file_count": 1,
+     "total_size": 195
+    },
+    {
+     "extension": ".txt",
+     "file_count": 1,
+     "total_size": 26
+    }
+   ]
+  },
+  "column_summary_info": {
+   "total_column_count": 0,
+   "column_types": []
+  }
+ },
+ "tree_root": {
+  "directories": [
+   {
+    "name": "kaggle-environments-0.1.4",
+    "total_directories": 1,
+    "total_files": 9,
+    "total_children": 1
+   }
+  ],
+  "files": [],
+  "total_children": 1,
+  "total_directories": 1,
+  "total_files": 0,
+  "next_page_token": ""
+ },
+ "tree_depth1": {
+  "kaggle-environments-0.1.4": {
+   "error": "HTTPError: 403 Client Error: Forbidden for url: https://api.kaggle.com/v1/competitions.Comp"
+  }
+ }
+}

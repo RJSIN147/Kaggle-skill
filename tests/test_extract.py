@@ -23,7 +23,7 @@ import pytest
 
 def _se():
     """Import scripts/safe_extract.py (on sys.path via conftest). Absent at RED."""
-    return importlib.import_module("safe_extract")
+    return importlib.import_module("kx.safe_extract")
 
 
 # --------------------------------------------------------------------------- #

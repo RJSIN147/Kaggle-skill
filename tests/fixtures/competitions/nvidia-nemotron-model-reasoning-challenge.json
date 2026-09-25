@@ -1,0 +1,107 @@
+{
+ "slug": "nvidia-nemotron-model-reasoning-challenge",
+ "competition": {
+  "id": 129716,
+  "ref": "https://www.kaggle.com/competitions/nvidia-nemotron-model-reasoning-challenge",
+  "title": "NVIDIA Nemotron Model Reasoning Challenge",
+  "organization_name": "NVIDIA",
+  "organization_ref": "",
+  "category": "Featured",
+  "reward": "106,388 Usd",
+  "tags": [
+   {
+    "ref": "general knowledge and reasoning",
+    "name": "general knowledge and reasoning",
+    "full_path": "task > evaluation > general-knowledge-and-reasoning",
+    "competition_count": 4,
+    "dataset_count": 135,
+    "script_count": 77,
+    "total_count": 216
+   },
+   {
+    "ref": "deep learning",
+    "name": "deep learning",
+    "full_path": "technique > deep learning",
+    "competition_count": 102,
+    "dataset_count": 6721,
+    "script_count": 19334,
+    "total_count": 26157
+   },
+   {
+    "ref": "pre-trained model",
+    "name": "pre-trained model",
+    "full_path": "admin > pre-trained model",
+    "competition_count": 2,
+    "dataset_count": 544529,
+    "script_count": 301,
+    "total_count": 544832
+   },
+   {
+    "ref": "custom metric",
+    "name": "custom metric",
+    "full_path": "",
+    "competition_count": 0,
+    "dataset_count": 0,
+    "script_count": 0,
+    "total_count": 0
+   }
+  ],
+  "deadline": "2026-06-15T23:59:00",
+  "kernel_count": 0,
+  "team_count": 4185,
+  "user_has_entered": true,
+  "user_rank": 0,
+  "merger_deadline": null,
+  "new_entrant_deadline": "2026-06-08T23:59:00",
+  "enabled_date": "2026-03-16T22:51:41.757000",
+  "max_daily_submissions": 5,
+  "max_team_size": 5,
+  "evaluation_metric": "NVIDIA Nemotron Metric",
+  "awards_points": true,
+  "is_kernels_submissions_only": false,
+  "submissions_disabled": false,
+  "host_name": "NVIDIA",
+  "date_created": "2026-02-02T23:46:53.779000"
+ },
+ "files_summary": {
+  "file_summary_info": {
+   "total_file_count": 2,
+   "file_types": [
+    {
+     "extension": ".csv",
+     "file_count": 2,
+     "total_size": 3070765
+    }
+   ]
+  },
+  "column_summary_info": {
+   "total_column_count": 5,
+   "column_types": [
+    {
+     "column_type": "String",
+     "column_count": 5
+    }
+   ]
+  }
+ },
+ "tree_root": {
+  "directories": [],
+  "files": [
+   {
+    "name": "test.csv",
+    "creation_date": "2026-03-14T17:56:53.428000",
+    "total_bytes": 1461
+   },
+   {
+    "name": "train.csv",
+    "creation_date": "2026-03-14T17:56:53.428000",
+    "total_bytes": 3069304
+   }
+  ],
+  "total_children": 2,
+  "total_directories": 0,
+  "total_files": 2,
+  "next_page_token": ""
+ },
+ "tree_depth1": {}
+}

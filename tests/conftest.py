@@ -1,19 +1,11 @@
-"""Shared pytest fixtures for the kaggle-exp Wave 0 (RED) suite.
+"""Shared fixtures: a hermetic environment, a fake Kaggle adapter, workspaces.
 
-These tests pin the behavioral contract that plans 01-02/03/04 turn GREEN. The
-loop scripts (``init_workspace.py``, ``check_credentials.py``, ``leak_scan.py``)
-do NOT exist yet, so every test here is expected to FAIL (RED) now.
-
-Design notes:
-- Scripts are exercised as SUBPROCESSES via ``run_script`` (the documented
-  ``python3 scripts/<name>.py --workspace <dir>`` invocation contract), never
-  imported at module top level — so collection never crashes on a missing
-  module (clean assertion/exit-code failures instead of collection aborts).
-- ``scripts/`` is inserted on ``sys.path`` so a test MAY import a script module
-  directly once it exists; today that path is empty and unused.
-- Credential subprocesses run with ``KAGGLE_*`` stripped from the inherited
-  environment (hermetic) unless a test injects them via ``extra_env``.
+Unit tests never reach Kaggle: every command takes the adapter as an argument,
+and ``FakeAdapter`` answers from recorded fixtures (the spike-001 competition
+facts, stripped of prose) and scripted kernel behaviour.
 """
+
+from __future__ import annotations
 
 import json
 import os
@@ -24,136 +16,177 @@ from pathlib import Path
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-SCRIPTS_DIR = REPO_ROOT / "scripts"
-
-# Allow a test to `import init_workspace` etc. once the module exists.
-if str(SCRIPTS_DIR) not in sys.path:
-    sys.path.insert(0, str(SCRIPTS_DIR))
-
-# Credential env vars that must never leak from the developer's shell into a
-# unit-test subprocess. Tests inject their own values via `extra_env`.
-_KAGGLE_ENV_KEYS = ("KAGGLE_USERNAME", "KAGGLE_KEY", "KAGGLE_API_TOKEN")
+KX_DIR = REPO_ROOT / "src" / "kx"
+FIXTURES = Path(__file__).resolve().parent / "fixtures"
 
 
-def _base_env(extra_env=None):
-    """A hermetic subprocess environment: real PATH + git identity, no creds."""
-    env = dict(os.environ)
-    for k in _KAGGLE_ENV_KEYS:
-        env.pop(k, None)
-    env.update(
-        {
-            "GIT_AUTHOR_NAME": "Test User",
-            "GIT_AUTHOR_EMAIL": "test@example.com",
-            "GIT_COMMITTER_NAME": "Test User",
-            "GIT_COMMITTER_EMAIL": "test@example.com",
-            # keep git from reading the developer's ~/.gitconfig
-            "GIT_CONFIG_GLOBAL": os.devnull,
-            "GIT_CONFIG_SYSTEM": os.devnull,
-        }
-    )
+def _base_env(extra_env=None, home: Path | None = None):
+    env = {k: v for k, v in os.environ.items() if not k.startswith("KAGGLE")}
+    env.update({
+        "GIT_AUTHOR_NAME": "Test User", "GIT_AUTHOR_EMAIL": "test@example.com",
+        "GIT_COMMITTER_NAME": "Test User", "GIT_COMMITTER_EMAIL": "test@example.com",
+        "GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_SYSTEM": os.devnull,
+    })
+    if home is not None:
+        env["HOME"] = str(home)
+        env["XDG_CONFIG_HOME"] = str(home / ".config")
     if extra_env:
         env.update({k: str(v) for k, v in extra_env.items()})
     return env
 
 
+@pytest.fixture(autouse=True)
+def hermetic(tmp_path_factory, monkeypatch):
+    """No test may see the developer's real Kaggle credential or git identity."""
+    home = tmp_path_factory.mktemp("home")
+    for k in list(os.environ):
+        if k.startswith("KAGGLE"):
+            monkeypatch.delenv(k)
+    for k, v in _base_env(home=home).items():
+        monkeypatch.setenv(k, v)
+    return home
+
+
 @pytest.fixture
 def run_script():
-    """Run a loop script as a subprocess and return the CompletedProcess.
-
-    Usage: ``run_script("init_workspace.py", "--workspace", ws, "--slug", "x", cwd=ws)``
-    Scripts self-locate, so the absolute script path is used; the venv Python
-    (``sys.executable``) runs them (they are stdlib-only, D-14).
-    """
+    """Run a standalone module from src/kx as a subprocess (e.g. the leak hook)."""
 
     def _run(script_name, *args, cwd=None, extra_env=None):
-        cmd = [sys.executable, str(SCRIPTS_DIR / script_name), *[str(a) for a in args]]
-        return subprocess.run(
-            cmd,
-            cwd=str(cwd) if cwd else None,
-            capture_output=True,
-            text=True,
-            env=_base_env(extra_env),
-        )
+        cmd = [sys.executable, str(KX_DIR / script_name), *[str(a) for a in args]]
+        return subprocess.run(cmd, cwd=str(cwd) if cwd else None, capture_output=True,
+                              text=True, env=_base_env(extra_env))
 
     return _run
 
 
-@pytest.fixture
-def tmp_workspace(tmp_path):
-    """A fresh, empty workspace directory."""
-    return tmp_path
-
-
-@pytest.fixture
-def seeded_workspace(tmp_path):
-    """A minimal, already-scaffolded workspace control-plane.
-
-    Lets credential tests exercise ``check_credentials.py`` in isolation without
-    depending on ``init_workspace.py`` (built in a different plan). Schema matches
-    the D-10 control-plane contract in 01-01-PLAN.md.
-    """
-    ws = tmp_path
-    ctrl = ws / "control"
-    ctrl.mkdir()
-    (ctrl / "config.json").write_text(
-        json.dumps(
-            {
-                "workspace_version": 1,
-                "competition_slug": "titanic",
-                "execution_target": "local",
-                "cv": {"scheme": None},
-                # Phase-2 reserved-null machine fields (matches init_workspace.py
-                # output after Phase 2). They exist as `null` BEFORE capture runs —
-                # the exact shape that exposes the write_control_json merge-skip
-                # blocker: a value can only LAND via the direct set_config_field
-                # setter, never via the add-missing-only deep merge. Additive, so
-                # the Phase 1 credential tests are unaffected.
-                "submission": {"daily_limit": None, "limit_provenance": None},
-                "competition": {"type": None},
-                "created": "2026-01-01T00:00:00Z",
-            }
-        )
-    )
-    (ctrl / "state.json").write_text(
-        json.dumps({"credentials": "UNVALIDATED", "next_exp_id": 1})
-    )
-    (ctrl / "ledger.jsonl").write_text("")
-    (ws / ".env").write_text("KAGGLE_USERNAME=\nKAGGLE_KEY=\n")
-    return ws
-
-
 class GitRepo:
-    """A throwaway git repo for leak-scan / commit-scope tests."""
-
     def __init__(self, path):
         self.path = Path(path)
-        subprocess.run(
-            ["git", "init", "-q"], cwd=self.path, check=True, env=_base_env()
-        )
+        subprocess.run(["git", "init", "-q"], cwd=self.path, check=True, env=_base_env())
 
     def stage(self, filename, content):
-        """Write ``content`` to ``filename`` and ``git add`` it. Returns the path."""
         p = self.path / filename
         p.parent.mkdir(parents=True, exist_ok=True)
-        if isinstance(content, bytes):
-            p.write_bytes(content)
-        else:
-            p.write_text(content)
-        subprocess.run(
-            ["git", "add", filename], cwd=self.path, check=True, env=_base_env()
-        )
+        p.write_bytes(content) if isinstance(content, bytes) else p.write_text(content)
+        subprocess.run(["git", "add", filename], cwd=self.path, check=True, env=_base_env())
         return p
 
 
 @pytest.fixture
 def git_repo(tmp_path):
-    """A fresh, initialized git repo rooted at ``tmp_path``."""
     return GitRepo(tmp_path)
 
 
+# --------------------------------------------------------------------------- #
+# Fake Kaggle
+# --------------------------------------------------------------------------- #
+def competition_fixture(slug: str) -> dict:
+    return json.loads((FIXTURES / "competitions" / f"{slug}.json").read_text())
+
+
+class FakeAdapter:
+    """Same method names as KaggleAdapter; records every call."""
+
+    def __init__(self, username="tester", comp_slug="titanic"):
+        self.username = username
+        self.calls: list[tuple] = []
+        self.raw = competition_fixture(comp_slug)
+        self.push_response = {"version_number": 1, "error": None}
+        self.kernel_meta = {"current_version_number": 1, "is_private": True,
+                            "enable_internet": False,
+                            "docker_image": "gcr.io/kaggle-images/python@sha256:abc",
+                            "machine_shape": None}
+        self.statuses = ["RUNNING", "COMPLETE"]
+        self.outputs: dict[str, bytes] = {}
+        self.log = json.dumps([{"stream_name": "stdout", "time": 1.0, "data": "ok\n"}])
+        self.valid = True
+
+    def load(self):
+        return self
+
+    def validate(self):
+        self.calls.append(("validate",))
+        if not self.valid:
+            from kx.adapter import CredentialUnavailable
+            raise CredentialUnavailable("bad")
+        return self.username
+
+    def competition(self, slug):
+        self.calls.append(("competition", slug))
+        return self.raw["competition"]
+
+    def files_summary(self, slug):
+        self.calls.append(("files_summary", slug))
+        return self.raw["files_summary"]
+
+    def list_tree(self, slug, path=None):
+        self.calls.append(("list_tree", slug, path))
+        if path is None:
+            return {"files": self.raw["tree_root"].get("files", []),
+                    "directories": self.raw["tree_root"].get("directories", [])}
+        listing = (self.raw.get("tree_depth1") or {}).get(path, {"files": []})
+        if "error" in listing:
+            from kx.util import KxError
+            raise KxError("needs_user", "403", errors=["http_403:list_data_tree_files"])
+        return {"files": [{"name": n} for n in listing.get("files", [])], "directories": []}
+
+    def push(self, meta, code_text, timeout_s=None):
+        self.calls.append(("push", meta, timeout_s))
+        return dict(self.push_response)
+
+    def get_kernel(self, owner, slug):
+        self.calls.append(("get_kernel", owner, slug))
+        return dict(self.kernel_meta)
+
+    def kernel_status(self, owner, slug):
+        self.calls.append(("kernel_status", owner, slug))
+        s = self.statuses.pop(0) if len(self.statuses) > 1 else self.statuses[0]
+        return {"status": s, "failure_message": None}
+
+    def list_output(self, owner, slug):
+        self.calls.append(("list_output", owner, slug))
+        return {"files": [{"file_name": n, "url": f"fake://{n}"} for n in self.outputs],
+                "log": self.log}
+
+    def download(self, url, dest, timeout=600):
+        name = url.split("fake://", 1)[1]
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(self.outputs[name])
+        return len(self.outputs[name])
+
+    def pushed(self):
+        return [c for c in self.calls if c[0] == "push"]
+
+
 @pytest.fixture
-def clean_kaggle_env(monkeypatch):
-    """Strip KAGGLE_* from the in-process env (defense for import-based tests)."""
-    for k in _KAGGLE_ENV_KEYS:
-        monkeypatch.delenv(k, raising=False)
-    return monkeypatch
+def fake():
+    return FakeAdapter()
+
+
+def kx(ws: Path, adapter, *argv) -> dict:
+    """Dispatch one kx command in-process and return its envelope."""
+    from kx.cli import dispatch
+
+    return dispatch([str(a) for a in argv], ws, adapter)
+
+
+@pytest.fixture
+def token_home(hermetic):
+    """A HOME holding a fabricated access_token (mode 600)."""
+    d = hermetic / ".kaggle"
+    d.mkdir(exist_ok=True)
+    tok = d / "access_token"
+    tok.write_text("KGAT_" + "f" * 28 + "9z9z")
+    tok.chmod(0o600)
+    return hermetic
+
+
+@pytest.fixture
+def ready_ws(tmp_path, token_home, fake):
+    """A workspace that is initialised, synced (titanic), confirmed, with a metric."""
+    ws = tmp_path / "ws"
+    assert kx(ws, fake, "init", "titanic")["status"] == "ok"
+    assert kx(ws, fake, "sync")["status"] == "ok"
+    assert kx(ws, fake, "confirm", "--note", "test")["status"] == "ok"
+    assert kx(ws, fake, "metric", "accuracy")["status"] == "ok"
+    return ws

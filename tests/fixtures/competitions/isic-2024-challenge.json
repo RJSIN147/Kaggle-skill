@@ -1,0 +1,173 @@
+{
+ "slug": "isic-2024-challenge",
+ "competition": {
+  "id": 63056,
+  "ref": "https://www.kaggle.com/competitions/isic-2024-challenge",
+  "title": "ISIC 2024 - Skin Cancer Detection with 3D-TBP",
+  "organization_name": "International Skin Imaging Collaboration (ISIC)",
+  "organization_ref": "",
+  "category": "Research",
+  "reward": "80,000 Usd",
+  "tags": [
+   {
+    "ref": "image",
+    "name": "image",
+    "full_path": "data type > image",
+    "competition_count": 705,
+    "dataset_count": 63263,
+    "script_count": 7126,
+    "total_count": 71094
+   },
+   {
+    "ref": "binary classification",
+    "name": "binary classification",
+    "full_path": "task > binary-classification",
+    "competition_count": 11847,
+    "dataset_count": 2150,
+    "script_count": 8373,
+    "total_count": 22370
+   },
+   {
+    "ref": "cancer",
+    "name": "cancer",
+    "full_path": "subject > health and fitness > health > health conditions > cancer",
+    "competition_count": 21,
+    "dataset_count": 67570,
+    "script_count": 3556,
+    "total_count": 71147
+   },
+   {
+    "ref": "global",
+    "name": "global",
+    "full_path": "geography and places > global",
+    "competition_count": 8,
+    "dataset_count": 2252,
+    "script_count": 739,
+    "total_count": 2999
+   },
+   {
+    "ref": "neural networks",
+    "name": "neural networks",
+    "full_path": "technique > neural networks",
+    "competition_count": 12,
+    "dataset_count": 1035,
+    "script_count": 6442,
+    "total_count": 7489
+   },
+   {
+    "ref": "custom metric",
+    "name": "custom metric",
+    "full_path": "",
+    "competition_count": 0,
+    "dataset_count": 0,
+    "script_count": 0,
+    "total_count": 0
+   }
+  ],
+  "deadline": "2024-09-06T23:59:00",
+  "kernel_count": 0,
+  "team_count": 2739,
+  "user_has_entered": false,
+  "user_rank": 0,
+  "merger_deadline": null,
+  "new_entrant_deadline": "2024-08-30T23:59:00",
+  "enabled_date": "2024-06-27T13:30:09.527000",
+  "max_daily_submissions": 5,
+  "max_team_size": 5,
+  "evaluation_metric": "ISIC pAUC-aboveTPR",
+  "awards_points": true,
+  "is_kernels_submissions_only": true,
+  "submissions_disabled": false,
+  "host_name": "International Skin Imaging Collaboration (ISIC)",
+  "date_created": "2023-10-24T19:19:50.186000"
+ },
+ "files_summary": {
+  "file_summary_info": {
+   "total_file_count": 401064,
+   "file_types": [
+    {
+     "extension": ".hdf5",
+     "file_count": 2,
+     "total_size": 1297320583
+    },
+    {
+     "extension": ".jpg",
+     "file_count": 401059,
+     "total_size": 1136624663
+    },
+    {
+     "extension": ".csv",
+     "file_count": 3,
+     "total_size": 257545433
+    }
+   ]
+  },
+  "column_summary_info": {
+   "total_column_count": 101,
+   "column_types": [
+    {
+     "column_type": "Decimal",
+     "column_count": 67
+    },
+    {
+     "column_type": "String",
+     "column_count": 29
+    },
+    {
+     "column_type": "Integer",
+     "column_count": 3
+    },
+    {
+     "column_type": "Uuid",
+     "column_count": 2
+    }
+   ]
+  }
+ },
+ "tree_root": {
+  "directories": [
+   {
+    "name": "train-image",
+    "total_directories": 1,
+    "total_files": 0,
+    "total_children": 1
+   }
+  ],
+  "files": [
+   {
+    "name": "sample_submission.csv",
+    "creation_date": "2024-07-11T16:31:15.674000",
+    "total_bytes": 66
+   },
+   {
+    "name": "test-metadata.csv",
+    "creation_date": "2024-07-11T16:31:15.674000",
+    "total_bytes": 2206
+   },
+   {
+    "name": "test-image.hdf5",
+    "creation_date": "2024-07-11T16:31:15.674000",
+    "total_bytes": 10639
+   },
+   {
+    "name": "train-metadata.csv",
+    "creation_date": "2024-07-11T16:31:15.674000",
+    "total_bytes": 257543161
+   },
+   {
+    "name": "train-image.hdf5",
+    "creation_date": "2024-07-11T16:31:15.674000",
+    "total_bytes": 1297309944
+   }
+  ],
+  "total_children": 6,
+  "total_directories": 1,
+  "total_files": 5,
+  "next_page_token": ""
+ },
+ "tree_depth1": {
+  "train-image": {
+   "error": "HTTPError: 403 Client Error: Forbidden for url: https://api.kaggle.com/v1/competitions.Comp"
+  }
+ }
+}

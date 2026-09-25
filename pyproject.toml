@@ -1,45 +1,42 @@
-# SKILL PACKAGE pyproject.toml (repo root).
-#
-# This is the kaggle-exp SKILL's OWN package metadata + test config. It is
-# DISTINCT from scripts/templates/pyproject.toml.tmpl — the minimal WORKSPACE
-# stub that `init_workspace.py` scaffolds into a competition folder (D-14).
-# Do not confuse the two: this file configures the skill's dev/test tooling;
-# the .tmpl file configures a scaffolded competition workspace.
-#
-# The skill's own runtime scripts are stdlib-only (D-14); pytest and kaggle are
-# dev/test dependencies only, never runtime dependencies. `kaggle` is required by
-# the `-m live` credential test (tests/test_credentials_live.py) which shells out
-# to the real CLI — declaring it here keeps that test reproducible from a clean
-# checkout (per CLAUDE.md: "Declare deps; let uv/the user install"; no bare
-# runtime pip installs). check_credentials.py itself never imports kaggle — it
-# only invokes the CLI via subprocess when present (D-07 degrades gracefully if
-# absent), so this is purely a dev/live-test dependency.
+# The kaggle-exp skill package. `uv sync --project <skill dir>` installs the `kx`
+# CLI and the pinned `kaggle` package (CLI + kagglesdk) into the skill's own
+# locked environment; the AI then runs `uv run --project <skill dir> kx ...`
+# from the competition workspace.
 
 [project]
 name = "kaggle-exp"
-version = "0.1.0"
-description = "Kaggle competition experimentation skill — guided workspace init, credential validation, egress guardrails, and a git-backed experiment ledger."
+version = "0.2.0"
+description = "Kaggle competition experiment loop for Claude Code: one kx CLI, kernel-first runs, a git-backed ledger."
 requires-python = ">=3.11"
-
-[dependency-groups]
-dev = [
-    "pytest>=8.0",
-    "kaggle>=2.2",  # dev/live-only: exercised by tests/test_credentials_live.py -m live
+dependencies = [
+    # Exact pin: every Kaggle call kx makes was verified live against 2.2.3.
+    "kaggle==2.2.3",
 ]
 
-# This project is a skill package, not an installable Python distribution:
-# there is no build backend and no importable top-level package. Tell uv not to
-# try to build/install the project itself — only manage the (dev) environment.
-[tool.uv]
-package = false
+[project.optional-dependencies]
+# Local runs (`kx new --local`): the ML stack the tabular/time-series templates import.
+local = [
+    "pandas>=2.2",
+    "numpy>=1.26",
+    "scikit-learn>=1.5",
+    "lightgbm>=4.5",
+    "pyarrow>=15",
+]
+
+[project.scripts]
+kx = "kx.cli:main"
+
+[build-system]
+requires = ["uv_build>=0.11,<0.12"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "kx"
+
+[dependency-groups]
+dev = ["pytest>=8.0"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-# Exclude the live suite (real-Kaggle integration) from the DEFAULT run so the
-# mock suite is green offline / credential-free and live conditions can never
-# redden it. Run the live suite explicitly: `uv run pytest -m live tests/...`
-# (a command-line `-m live` overrides this default selection).
 addopts = "-m 'not live'"
-markers = [
-    "live: requires a real Kaggle API token (excluded from default runs)",
-]
+markers = ["live: real Kaggle calls (excluded by default; run with -m live)"]

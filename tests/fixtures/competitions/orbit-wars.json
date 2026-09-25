@@ -1,0 +1,112 @@
+{
+ "slug": "orbit-wars",
+ "competition": {
+  "id": 138420,
+  "ref": "https://www.kaggle.com/competitions/orbit-wars",
+  "title": "Orbit Wars",
+  "organization_name": "Kaggle",
+  "organization_ref": "",
+  "category": "Featured",
+  "reward": "50,000 Usd",
+  "tags": [
+   {
+    "ref": "games",
+    "name": "games",
+    "full_path": "subject > culture and humanities > games",
+    "competition_count": 33,
+    "dataset_count": 10963,
+    "script_count": 34465,
+    "total_count": 45461
+   },
+   {
+    "ref": "artificial intelligence",
+    "name": "artificial intelligence",
+    "full_path": "subject > science and technology > computer science > artificial intelligence",
+    "competition_count": 114,
+    "dataset_count": 5487,
+    "script_count": 4286,
+    "total_count": 9887
+   },
+   {
+    "ref": "reinforcement learning",
+    "name": "reinforcement learning",
+    "full_path": "task > reinforcement-learning",
+    "competition_count": 30,
+    "dataset_count": 257,
+    "script_count": 850,
+    "total_count": 1137
+   },
+   {
+    "ref": "custom metric",
+    "name": "custom metric",
+    "full_path": "",
+    "competition_count": 0,
+    "dataset_count": 0,
+    "script_count": 0,
+    "total_count": 0
+   }
+  ],
+  "deadline": "2026-07-07T23:59:00",
+  "kernel_count": 0,
+  "team_count": 4729,
+  "user_has_entered": true,
+  "user_rank": 0,
+  "merger_deadline": null,
+  "new_entrant_deadline": "2026-06-16T23:59:00",
+  "enabled_date": "2026-04-16T19:01:30.503000",
+  "max_daily_submissions": 5,
+  "max_team_size": 5,
+  "evaluation_metric": "orbit_wars",
+  "awards_points": true,
+  "is_kernels_submissions_only": false,
+  "submissions_disabled": true,
+  "host_name": "Kaggle",
+  "date_created": "2026-04-15T20:54:14.398000"
+ },
+ "files_summary": {
+  "file_summary_info": {
+   "total_file_count": 3,
+   "file_types": [
+    {
+     "extension": ".md",
+     "file_count": 2,
+     "total_size": 14727
+    },
+    {
+     "extension": ".py",
+     "file_count": 1,
+     "total_size": 2079
+    }
+   ]
+  },
+  "column_summary_info": {
+   "total_column_count": 0,
+   "column_types": []
+  }
+ },
+ "tree_root": {
+  "directories": [],
+  "files": [
+   {
+    "name": "README.md",
+    "creation_date": "2026-05-01T20:46:38.553000",
+    "total_bytes": 8241
+   },
+   {
+    "name": "agents.md",
+    "creation_date": "2026-05-01T20:46:38.553000",
+    "total_bytes": 6486
+   },
+   {
+    "name": "main.py",
+    "creation_date": "2026-05-01T20:46:38.553000",
+    "total_bytes": 2079
+   }
+  ],
+  "total_children": 3,
+  "total_directories": 0,
+  "total_files": 3,
+  "next_page_token": ""
+ },
+ "tree_depth1": {}
+}
