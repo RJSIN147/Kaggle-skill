@@ -264,7 +264,8 @@ def cmd_lb(ws: Path, args, adapter) -> dict:
 
     ledger = read_ledger(ws)
     gib = bool((workspace.load_config(ws).get("metric") or {}).get("greater_is_better", True))
-    joined = lb_gap.join_cv_lb(rows, ledger)
+    # Agent ratings are not on the CV scale (win rate): they get their own trend line.
+    joined = lb_gap.join_cv_lb([r for r in rows if r.get("mode") != "agent"], ledger)
     table = [f"{r['exp_id']}: CV {r['cv_mean']:g} | LB {r['lb_score']:g} | gap {r['gap']:+g}"
              for r in joined]
     for r in rows:
