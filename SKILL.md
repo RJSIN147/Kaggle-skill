@@ -4,7 +4,7 @@ description: >-
   Run a Kaggle competition as a CV-first experiment loop from any folder: validate the
   Kaggle credential, profile the competition from Kaggle's API, scaffold an experiment,
   run it on a Kaggle kernel (or locally), record a machine-checked CV score and a written
-  verdict in a git-backed ledger, regenerate the strategy, prepare submissions, pull
+  verdict in a git-backed ledger, regenerate the strategy, submit once the user confirms, pull
   research from discussions and public notebooks, and blend experiments. Keywords:
   Kaggle, competition, experiment, kernel, CV, cross-validation, OOF, submit,
   leaderboard, ensemble, research.

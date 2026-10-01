@@ -45,21 +45,21 @@ def main(argv=None) -> int:
     for opp in opponents:
         first = evaluate(a.env, [agent, opp], num_episodes=a.episodes)
         second = evaluate(a.env, [opp, agent], num_episodes=a.episodes)
-        w = d = l = 0
+        w = d = lost = 0
         for mine, theirs in [(r[0], r[1]) for r in first] + [(r[1], r[0]) for r in second]:
             if mine is None or theirs is None:
-                l += 1  # an error/timeout on our side counts as a loss
+                lost += 1  # an error/timeout on our side counts as a loss
             elif mine > theirs:
                 w += 1
             elif mine < theirs:
-                l += 1
+                lost += 1
             else:
                 d += 1
-        rate = (w + 0.5 * d) / max(1, w + d + l)
+        rate = (w + 0.5 * d) / max(1, w + d + lost)
         name = opp if opp in a.baselines else Path(opp).parent.name or Path(opp).name
-        per.append({"opponent": name, "wins": w, "draws": d, "losses": l, "win_rate": rate})
+        per.append({"opponent": name, "wins": w, "draws": d, "losses": lost, "win_rate": rate})
         scores.append(rate)
-        print(f"vs {name}: W{w} D{d} L{l} -> {rate:.3f}", flush=True)
+        print(f"vs {name}: W{w} D{d} L{lost} -> {rate:.3f}", flush=True)
     out = Path(a.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps({

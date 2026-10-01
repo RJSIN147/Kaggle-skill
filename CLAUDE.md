@@ -35,7 +35,7 @@ uv sync --extra local                      # dev env (kx + local ML stack)
 uv run pytest -q                           # offline suite (~1 min); live tests excluded
 uv run --with torch pytest tests/test_deep_template.py   # deep template (needs torch)
 uv run pytest -q -m live                   # real Kaggle profile checks (needs a credential)
-uv run ruff check --select E,F,I,W src tests
+uvx ruff check src tests                   # lint (config in pyproject.toml)
 uv run kx <command>                        # run kx from the repo
 ```
 

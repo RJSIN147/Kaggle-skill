@@ -20,9 +20,9 @@ Tests pass a fake with the same method names; nothing here is a module global.
 from __future__ import annotations
 
 import contextlib
-import json
 import enum
 import io
+import json
 import signal
 from pathlib import Path
 
