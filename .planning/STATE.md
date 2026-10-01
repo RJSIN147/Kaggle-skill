@@ -2,15 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Kaggle-general
-status: planning
-last_updated: "2026-09-25T02:09:13.000Z"
-last_activity: 2026-09-25
+status: verified
+stopped_at: v2.0 built and live-verified outside GSD (user request); awaiting merge decision
+last_updated: "2026-10-02T00:00:00.000Z"
+last_activity: "2026-10-02 — all v2.0 phases live-verified; kx 0.3.0 (confirm-then-submit)"
 progress:
   total_phases: 5
-  completed_phases: 0
+  completed_phases: 5
   total_plans: 0
   completed_plans: 0
-  percent: 0
+  percent: 100
 ---
 
 # Project State
@@ -20,16 +21,18 @@ progress:
 See: .planning/PROJECT.md (updated 2026-09-25)
 
 **Core value:** One clean end-to-end experiment cycle — empty folder to an idea run, its result and reasoning logged to the ledger, and the strategy doc updated.
-**Current focus:** Phase 6 — kx Core & Live Kernel Loop (milestone v2.0 Kaggle-general, Phases 6-10)
+**Current focus:** milestone v2.0 Kaggle-general done (Phases 6-10); awaiting the merge decision
 
 ## Current Position
 
-Phase: 6 of 10 (kx Core & Live Kernel Loop), the first of the 5 v2.0 phases
-Plan: Not planned yet
-Status: Ready to plan (the v2.0 roadmap is created and awaiting user approval)
-Last activity: 2026-09-25 — v2.0 roadmap created: Phases 6-10, 38/38 requirements mapped
+Phase: 10 of 10 — all five v2.0 phases verified
+Plan: none — on 2026-09-26 the user asked to build v2.0 without GSD (token cost), so there
+are no PLAN/SUMMARY files; per-phase evidence is in `.planning/phases/0{6..10}-*/*-VERIFICATION.md`
+Status: verified live (every phase `status: passed`); branch `v2-direction`, kx 0.3.0
+Last activity: 2026-10-02 — ISIC vision pipeline + text run closed Phase 8's gaps; confirm-then-submit
+(kx submits after the user's yes) live on Titanic; post-audit cleanup
 
-Progress: [░░░░░░░░░░] 0% (v2.0)
+Progress: [██████████] 100% (v2.0)
 
 ## Performance Metrics
 
@@ -133,11 +136,10 @@ Items acknowledged at the v1.0 milestone close on 2026-09-25:
 
 ## Session Continuity
 
-Last session: 2026-09-25
-Stopped at: v2.0 roadmap created (Phases 6-10, 38/38 requirements mapped); awaiting user approval
+Last session: 2026-10-02
+Stopped at: v2.0 complete and live-verified
 Resume file: None
 
 ## Operator Next Steps
 
-- Review and approve the v2.0 roadmap in `.planning/ROADMAP.md` (the orchestrator commits after approval).
-- Then start Phase 6 with `/gsd-discuss-phase 6`, or go straight to `/gsd-plan-phase 6`.
+- Decide whether to merge `v2-direction` into `main` (v2.0 milestone close).

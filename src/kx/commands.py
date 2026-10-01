@@ -384,6 +384,14 @@ def cmd_new(ws: Path, args, adapter) -> dict:
             spec["cv"] = {"n_folds": up["cv"]["n_folds"],
                           "reasoning": f"inherits {args.after[0]}'s CV (its OOF predictions)"}
             spec["sources"]["models"] = list(up["sources"].get("models") or [])
+    for key, vals, rx in (("models", args.model, experiment._MODEL_RE),
+                          ("datasets", args.dataset, experiment._DATASET_RE)):
+        for v in vals or []:
+            if not rx.match(v):
+                raise KxError("invalid", f"--{key[:-1]} {v!r} is not a Kaggle {key[:-1]} handle",
+                              errors=[f"bad_{key[:-1]}_handle"])
+            if v not in spec["sources"][key]:
+                spec["sources"][key].append(v)
     code = templates_registry.render(name, spec, profile | {"effective": eff, "_ws": ws}, metric_cfg)
     if name in ("deep-infer", "inference"):
         # The inference stage must rebuild the upstream's exact model: carry its AI block over.

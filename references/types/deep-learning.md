@@ -13,10 +13,14 @@ short: the 30 h/week quota is shared with the user's other work.
   from `DATA_DIR`.
 - `make_transform(split)` → numpy → tensor (augment only on `"train"`).
 - `make_model(n_outputs)` → a fresh `nn.Module`. **Internet is off by default**: prefer
-  pretrained weights from Kaggle Models attached in `experiment.json` → `sources.models`
-  (e.g. `timm/tf-efficientnet/pyTorch/tf-efficientnet-b0/1`), mounted at
-  `/kaggle/input/models/<owner>/<model>/<framework>/<variation>/<version>/`.
-  Datasets mount at `/kaggle/input/datasets/<owner>/<slug>/`. If the weights are not on
+  pretrained weights from Kaggle Models, attached with `kx new … --model <handle>` (→
+  `sources.models`; e.g. `timm/tf-mobilenet-v3/pyTorch/tf-mobilenetv3-small-100/1`, found
+  with `kaggle models get timm/<model>`). Live-verified mount (framework lower-cased):
+  `/kaggle/input/models/timm/tf-mobilenet-v3/pytorch/tf-mobilenetv3-small-100/1/tf_mobilenetv3_small_100-37f49e2b.pth`.
+  Glob for the weights file, then `timm.create_model(<arch>, pretrained=False)` +
+  `load_state_dict(torch.load(f, weights_only=True))` (print missing/unexpected keys) and
+  `reset_classifier(n_outputs)`. Datasets (`--dataset owner/slug`) mount at
+  `/kaggle/input/datasets/<owner>/<slug>/`. If the weights are not on
   Kaggle, set `runtime.internet: true` and download them (kx warns and records it). That
   is fine for csv_upload competitions and for a code competition's **training** stage
   (save the weights into the output for the inference stage); a code competition's

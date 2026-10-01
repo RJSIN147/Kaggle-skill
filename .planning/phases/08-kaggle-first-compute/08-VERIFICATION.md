@@ -28,3 +28,13 @@ Verified mount paths (live probe): datasets `/kaggle/input/datasets/<owner>/<slu
 
 Note for the text contract: the harness probes `collate(None)` to decide whether a collate_fn
 exists, so a text AI block must return something non-None for `None`.
+
+## Pretrained weights from Kaggle Models (2026-10-02)
+
+`~/kaggle-live/digits` exp-001: `deep` on T4 with `sources.models =
+[timm/tf-mobilenet-v3/pyTorch/tf-mobilenetv3-small-100/1]`, internet off. Log:
+`KX_MODEL_FILES ['/kaggle/input/models/timm/tf-mobilenet-v3/pytorch/tf-mobilenetv3-small-100/1/tf_mobilenetv3_small_100-37f49e2b.pth']`
+(framework segment lower-cased), `KX_PRETRAINED …: 244 tensors, missing=0, unexpected=0` →
+SUCCESS accuracy 0.7988 ± 0.0105 (1 epoch, 6k subsample, ~75 s of kernel time: a mount/load
+check, below the 0.90 guess). Follow-up: `kx new --model/--dataset` now attach sources (they
+previously needed a hand edit of experiment.json, which left the rendered MODEL_SOURCES empty).
