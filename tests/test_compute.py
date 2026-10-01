@@ -154,3 +154,15 @@ def test_push_is_never_retried_but_reads_are(monkeypatch):
     with pytest.raises(KxError):
         a._call("save_kernel", lambda api: None, retries=0)
     assert calls["n"] == 1
+
+
+def test_new_attaches_models_and_datasets(ready_ws, fake):
+    handle = "timm/tf-mobilenet-v3/pyTorch/tf-mobilenetv3-small-100/1"
+    env = kx(ready_ws, fake, "new", "--idea", "i", "--hypothesis", "h", "--model", handle,
+             "--dataset", "cdeotte/pip-install-lifelines")
+    spec = json.loads((ready_ws / "experiments" / env["data"]["exp_id"] /
+                       "experiment.json").read_text())
+    assert spec["sources"]["models"] == [handle]
+    assert spec["sources"]["datasets"] == ["cdeotte/pip-install-lifelines"]
+    env = kx(ready_ws, fake, "new", "--idea", "j", "--hypothesis", "h", "--model", "timm/x")
+    assert env["status"] == "invalid" and env["errors"] == ["bad_model_handle"]

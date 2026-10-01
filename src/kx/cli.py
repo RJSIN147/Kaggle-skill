@@ -85,6 +85,10 @@ def build_parser() -> KxParser:
     s.add_argument("--local", action="store_true", help="run on this machine instead of a kernel")
     s.add_argument("--subsample", type=float, help="local runs: fraction of train rows")
     s.add_argument("--from-idea", type=int, help="run research idea #N (marks it tried)")
+    s.add_argument("--model", action="append", help="attach a Kaggle Model "
+                   "(owner/model/framework/variation/version; repeatable)")
+    s.add_argument("--dataset", action="append", help="attach a Kaggle dataset "
+                   "(owner/slug; repeatable)")
     s.add_argument("--after", action="append", help="upstream experiment whose kernel output "
                                                     "this one reads (repeatable)")
 
