@@ -1,12 +1,15 @@
-"""kx submit / kx lb: prepare, hand over, read back. kx NEVER runs a submit.
+"""kx submit / kx lb: propose, submit on the user's confirmation, read back.
 
 `kx submit exp-NNN` validates the candidate against the confirmed profile (expected
 file, sample columns and rows), the daily slots left (Kaggle read-back vs
-max_daily_submissions) and its CV against the best submitted CV, then returns
-needs_user with the exact `kaggle competitions submit` command for the human to run
-with `!`. `kx lb` confirms it by read-back, polls scoring within a budget, records
-public/private scores (or the agent rating and W/L/D from replays) and shows LB next
-to CV with the gap trend and the divergence alarm.
+max_daily_submissions) and its CV against the best submitted CV, then records a
+PROPOSED row and returns needs_user with the details to show the user and a one-time
+confirm token. Only `kx submit exp-NNN --confirm <token>`, run after the user said yes,
+submits: it re-runs every check, refuses if the candidate changed (file sha256 / kernel
+version) or the proposal is over an hour old, and submits once (never retried).
+`kx lb` reads back by marker, polls scoring within a budget, records public/private
+scores (or the agent rating and W/L/D from replays) and shows LB next to CV with the
+gap trend and the divergence alarm.
 """
 
 from __future__ import annotations
@@ -17,6 +20,7 @@ import secrets
 import shlex
 import sys
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 from kx import envelope as E
@@ -66,7 +70,7 @@ def _best_submitted_cv(ws: Path, gib: bool) -> dict | None:
     ledger = {r["exp_id"]: r for r in read_ledger(ws)}
     cands = []
     for s in subs.read(ws):
-        if s.get("status") in ("PENDING", "SCORED"):
+        if s.get("status") in ("SUBMITTED", "PENDING", "SCORED"):
             row = ledger.get(s.get("exp_id"))
             if row and isinstance(row.get("cv_mean"), (int, float)):
                 cands.append(row)
@@ -167,13 +171,15 @@ def cmd_submit(ws: Path, args, adapter) -> dict:
     canonical = profile["canonical_ref"]
     marker = f"kx:{args.exp_id}:{secrets.token_hex(3)}"
     msg = f"{marker} {str(meta.get('idea') or '')[:60]}".strip()
-    row = {"marker": marker, "exp_id": args.exp_id, "mode": mode, "status": "HANDED_OVER",
-           "handed_over_at": utc_now(), "cv_mean": cand, "message": msg}
+    row = {"marker": marker, "exp_id": args.exp_id, "mode": mode, "status": "PROPOSED",
+           "proposed_at": utc_now(), "cv_mean": cand, "message": msg}
+    what: list[str] = []
 
     if mode == "code_kernel":
         run_p = exp_dir / "kernel_run.json"
         run = read_json(run_p) if run_p.exists() else {}
         expected = eff.get("expected_output") or "submission.csv"
+        cmd = None
         if run.get("backend") != "kernel" or run.get("status") != "COMPLETE":
             errors.append("code competitions submit a COMPLETE kernel version: run it on a kernel")
         else:
@@ -189,7 +195,11 @@ def cmd_submit(ws: Path, args, adapter) -> dict:
                    f"-k {run['kernel_ref']} -v {run['kernel_version']} -f {expected} "
                    f"-m {shlex.quote(msg)}")
             row.update({"kernel": {"ref": run["kernel_ref"], "version": run["kernel_version"]},
-                        "file": expected})
+                        "file": expected,
+                        "fingerprint": f"{run['kernel_ref']}@v{run['kernel_version']}"})
+            what = [(f"kernel {run['kernel_ref']} version {run['kernel_version']} "
+                     f"(internet off), output {expected}"),
+                    "Kaggle re-runs this kernel on the hidden test set to score it"]
     else:
         if mode == "agent":
             f = exp_dir / spec.get("code_file", "main.py")
@@ -201,7 +211,10 @@ def cmd_submit(ws: Path, args, adapter) -> dict:
                 exp_dir / "output" / (eff.get("expected_output") or "submission.csv")
             _check_file(f, result, errors)
         if f.is_file():
-            row.update({"file": str(f), "file_sha256": subs.file_sha256(f)})
+            sha = subs.file_sha256(f)
+            row.update({"file": str(f), "file_sha256": sha, "fingerprint": sha})
+            size = f"{f.stat().st_size / 1024:.1f} KiB"
+            what = [f"{'agent' if mode == 'agent' else 'file'} {f} ({size}, {sha[:19]}…)"]
         cmd = (f"{shlex.quote(kaggle_bin())} competitions submit {canonical} "
                f"-f {shlex.quote(str(f))} -m {shlex.quote(msg)}")
 
@@ -209,17 +222,100 @@ def cmd_submit(ws: Path, args, adapter) -> dict:
         raise KxError("invalid", f"{args.exp_id} is not submittable: " + errors[0], errors=errors,
                       data={"slots_left_today": remaining, "best_submitted": best})
     rows = subs.read(ws)
+    if args.confirm:
+        return _submit_confirmed(ws, args, adapter, profile, rows, row, remote)
+
+    row["confirm_token"] = secrets.token_hex(4)
     rows.append(row)
     subs.write(ws, rows)
+    metric = (workspace.load_config(ws).get("metric") or {}).get("name") or "CV"
+    confirmation = [
+        f"competition: {canonical}, mode {mode}"
+        + (" — LATE submission (not ranked)" if eff.get("closed") else ""),
+        f"experiment: {args.exp_id} — {meta.get('idea') or ''}",
+        *[f"submits: {w}" for w in what],
+        f"CV: {metric} {cand:g}" if isinstance(cand, (int, float)) else "CV: none (agent)"
+        if mode == "agent" else "CV: none",
+        f"best submitted CV so far: {best['cv_mean']:g} ({best['exp_id']})" if best
+        else "best submitted CV so far: none",
+        f"daily slots: {remaining} of {limit} left today (UTC); this uses one"
+        if remaining is not None else "daily slots: limit unknown",
+        f"message: {msg}",
+    ]
+    confirm_cmd = f"kx submit {args.exp_id} --confirm {row['confirm_token']}" + \
+        (" --force-cv" if args.force_cv else "") + \
+        (f" --file {shlex.quote(args.file)}" if args.file else "")
     return E.make("submit", "needs_user",
-                  f"{args.exp_id} is ready; the user must run the submit command themselves",
-                  data={"command": cmd, "marker": marker, "slots_left_today": remaining,
-                        "daily_limit": limit, "cv_mean": cand,
-                        "best_submitted_cv": best["cv_mean"] if best else None},
+                  f"{args.exp_id} is ready to submit; waiting for the user's confirmation",
+                  data={"confirmation": confirmation, "confirm_command": confirm_cmd,
+                        "marker": marker, "slots_left_today": remaining, "daily_limit": limit,
+                        "cv_mean": cand, "best_submitted_cv": best["cv_mean"] if best else None,
+                        "manual_command": cmd},
                   next_action=E.ask_user(
-                      "Show the user this exact command and ask them to run it themselves by "
-                      f"typing it after `!` in the prompt (never run it yourself): ! {cmd}",
-                      then="kx lb"))
+                      "Show the user every line of data.confirmation and ask whether to submit "
+                      "(yes/no). Only on an explicit yes, run the `then` command; on anything "
+                      "else, do not submit. Never confirm on the user's behalf.",
+                      then=confirm_cmd))
+
+
+PROPOSAL_TTL_S = 3600
+
+
+def _submit_confirmed(ws: Path, args, adapter, profile: dict, rows: list[dict], fresh: dict,
+                      remote: list[dict]) -> dict:
+    """Submit the proposal the user confirmed: same token, same candidate, still valid."""
+    prop = next((r for r in rows if r.get("exp_id") == args.exp_id
+                 and r.get("status") == "PROPOSED" and r.get("confirm_token") == args.confirm),
+                None)
+    again = E.run(f"kx submit {args.exp_id}", "Propose again and ask the user to confirm.")
+    if prop is None:
+        raise KxError("invalid", f"no pending proposal for {args.exp_id} with that token "
+                      "(already submitted, or never proposed)", errors=["no_proposal"],
+                      next_action=again)
+    age = (datetime.now(timezone.utc) - subs.parse_utc(prop["proposed_at"])).total_seconds()
+    if age > PROPOSAL_TTL_S:
+        raise KxError("invalid", "the confirmed proposal is older than an hour",
+                      errors=["proposal_expired"], next_action=again)
+    if prop.get("fingerprint") != fresh.get("fingerprint"):
+        raise KxError("invalid", f"{args.exp_id} changed since the user confirmed it "
+                      f"({prop.get('fingerprint')} -> {fresh.get('fingerprint')})",
+                      errors=["candidate_changed"], next_action=again)
+    if any(prop["marker"] in str(s.get("description") or "") for s in remote):
+        subs.reconcile(rows, remote)  # already on Kaggle (e.g. run by hand): never twice
+        subs.write(ws, rows)
+        return E.make("submit", "ok", f"{args.exp_id} is already on Kaggle; not submitted again",
+                      data={"marker": prop["marker"]}, next_action=E.run("kx lb"))
+    prop.pop("confirm_token", None)
+    prop.update({"status": "SUBMITTING", "confirmed_at": utc_now()})
+    subs.write(ws, rows)  # a crash mid-call leaves SUBMITTING: `kx lb` finds it by marker
+    try:
+        if prop.get("kernel"):
+            resp = adapter.submit(profile["canonical_ref"], prop["message"],
+                                  kernel=prop["kernel"]["ref"], version=prop["kernel"]["version"],
+                                  file_name=prop["file"])
+        else:
+            resp = adapter.submit(profile["canonical_ref"], prop["message"], file=prop["file"])
+    except KxError as exc:
+        prop.update({"status": "SUBMIT_ERROR", "error": exc.summary})
+        subs.write(ws, rows)
+        exc.next_action = E.run("kx lb", "The request may still have reached Kaggle: read back "
+                                         "before proposing again, never resubmit blind.")
+        raise
+    if not resp.get("ref"):
+        prop.update({"status": "SUBMIT_ERROR", "error": "Kaggle returned no submission ref"})
+        subs.write(ws, rows)
+        raise KxError("error", "Kaggle did not accept the submission (no ref returned)",
+                      errors=["submit_rejected"], quarantine=str(resp.get("message") or ""),
+                      next_action=E.run("kx lb", "Read back before proposing again."))
+    prop.update({"status": "SUBMITTED", "kaggle_ref": resp["ref"], "submitted_by": "kx",
+                 "submitted_at": utc_now()})
+    subs.write(ws, rows)
+    return E.make("submit", "ok", f"{args.exp_id} submitted (Kaggle ref {resp['ref']})",
+                  data={"marker": prop["marker"], "kaggle_ref": resp["ref"],
+                        "message": resp.get("message")},
+                  next_action=E.run("kx lb", "Read the score back (scoring can take minutes; "
+                                             "code competitions re-run the kernel)."))
+
 
 
 def _episodes(ws: Path, adapter, row: dict) -> None:
@@ -240,19 +336,24 @@ def _episodes(ws: Path, adapter, row: dict) -> None:
 def cmd_lb(ws: Path, args, adapter) -> dict:
     workspace.require_workspace(ws)
     profile = workspace.load_profile(ws)
-    rows = subs.read(ws)
-    if not rows:
-        return E.make("lb", "ok", "no submissions yet", data={"submissions": []},
+    all_rows = subs.read(ws)
+    none_yet = E.make("lb", "ok", "no submissions yet", data={"submissions": []},
                       next_action=E.run("kx submit exp-NNN", "Submit your best CV when it is "
                                                             "clearly better."))
+    if not all_rows:
+        return none_yet
     start = time.monotonic()
     while True:
         remote = adapter.submissions(profile["slug"])
-        subs.reconcile(rows, remote)
-        pending = [r for r in rows if r.get("status") == "PENDING"]
+        subs.reconcile(all_rows, remote)  # a proposal run by hand is found by its marker
+        pending = [r for r in all_rows if r.get("status") == "PENDING"]
         if not pending or time.monotonic() - start >= args.wait:
             break
         time.sleep(min(LB_POLL_S, max(0.0, args.wait - (time.monotonic() - start))))
+    rows = [r for r in all_rows if r.get("status") != "PROPOSED"]  # never confirmed
+    if not rows:
+        subs.write(ws, all_rows)
+        return none_yet
     for r in rows:
         if r.get("mode") == "agent" and r.get("kaggle_ref") and r.get("status") in ("PENDING",
                                                                                    "SCORED"):
@@ -260,7 +361,7 @@ def cmd_lb(ws: Path, args, adapter) -> dict:
             if r.get("public_score") is not None and (not hist or hist[-1][1] != r["public_score"]):
                 hist.append([utc_now(), r["public_score"]])
             _episodes(ws, adapter, r)
-    subs.write(ws, rows)
+    subs.write(ws, all_rows)
 
     ledger = read_ledger(ws)
     gib = bool((workspace.load_config(ws).get("metric") or {}).get("greater_is_better", True))
@@ -276,7 +377,8 @@ def cmd_lb(ws: Path, args, adapter) -> dict:
                          f"(+{e.get('self', 0)} self-play) | trend "
                          f"{[h[1] for h in r.get('rating_history') or []]}")
     alarm = lb_gap.alarm_body(lb_gap.to_pairs(joined), gib)
-    not_found = [r["exp_id"] for r in rows if r.get("status") == "HANDED_OVER"]
+    not_found = [r["exp_id"] for r in rows
+                 if r.get("status") in ("HANDED_OVER", "SUBMITTING", "SUBMITTED", "SUBMIT_ERROR")]
     pending = [r["exp_id"] for r in rows if r.get("status") == "PENDING"]
     data = {"submissions": [{k: r.get(k) for k in ("exp_id", "status", "public_score",
                                                   "private_score", "kaggle_ref", "file_sha256",
@@ -288,8 +390,9 @@ def cmd_lb(ws: Path, args, adapter) -> dict:
                                                           "API-served competitions; re-run later."))
     if not_found:
         return E.make("lb", "ok", f"not in Kaggle's list yet: {', '.join(not_found)}", data=data,
-                      next_action=E.ask_user("If the user has not run the submit command yet, "
-                                             "remind them; then re-run.", then="kx lb"))
+                      next_action=E.run("kx lb", "Kaggle lists a new submission within a minute "
+                                                 "or two; re-run. A SUBMIT_ERROR row that never "
+                                                 "appears did not reach Kaggle."))
     return E.make("lb", "ok", f"{len(rows)} submission(s) read back", data=data,
                   next_action=E.run("kx status", "CV stays the decision metric; read the alarm "
                                                  "before trusting CV improvements."))

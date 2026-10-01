@@ -42,7 +42,7 @@ Every kx command prints **one JSON object**: `status`, `summary`, `data`, `warni
 |---|---|
 | `ok` | Done (a run recorded FAILED is still `ok`: read `data.result`). |
 | `running` | A kernel is in flight. Re-run the same command; it resumes and never re-pushes. |
-| `needs_user` | A human step (credential, joining a competition, running a submit). |
+| `needs_user` | A human step (credential, joining a competition, confirming a submit). |
 | `invalid` | Refused; nothing was pushed or changed. Fix what `errors` lists. |
 | `error` | Transient or unexpected. Retry once; details are in `control/raw/last-error.txt`. |
 
@@ -84,14 +84,20 @@ When unsure where you are: `kx status`.
 | writeup | `writeup.md` |
 | artifact_upload / anything without a template | `other.md` |
 
-## Submitting (the user runs it)
+## Submitting (only after the user says yes)
 
 `kx submit exp-NNN` validates the candidate (file, columns, rows, daily slots left, CV vs
-the best submitted CV) and returns `status: needs_user` with the exact command in
-`next_action.instruction`. **Never run `kaggle competitions submit` yourself.** Show the
-user the command and ask them to run it with `!` in the prompt. Afterwards run `kx lb`: it
-confirms the submission by reading it back, waits for the score, and records it next to CV.
-`kx lb` also trends the CV→LB gap and raises a divergence alarm.
+the best submitted CV) and returns `status: needs_user` with `data.confirmation` (what
+will be submitted, CV, slots left, the message) and a one-time `next_action.then`
+(`kx submit exp-NNN --confirm <token>`). Ask the user with every confirmation line shown,
+yes or no (AskUserQuestion when available). **Run the `then` command only on an explicit
+yes in reply to that question**; never confirm on the user's behalf, never reuse a yes for
+another candidate, and never run `kaggle competitions submit` directly. `--confirm`
+re-checks everything and refuses if the file or kernel version changed or the proposal is
+over an hour old (re-propose and ask again). Then run `kx lb`: it reads the submission
+back, waits for the score, records it next to CV, trends the CV→LB gap and raises a
+divergence alarm. On a submit error, run `kx lb` before anything else: the request may
+have reached Kaggle.
 
 ## Research and blending
 

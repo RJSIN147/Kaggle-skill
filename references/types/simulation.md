@@ -12,7 +12,7 @@ Template: `agent` — one file (`main.py`) whose **last top-level function** is
   the competition slug.
 - Built-in baselines are weak: a 20–0 local record once meant a falling ladder rating.
   Treat the ladder rating as ground truth and keep earlier agents in the pool.
-- `kx submit exp-NNN` hands over `… competitions submit <comp> -f main.py -m …` (the user
-  runs it; ConnectX allows 2/day). `kx lb` reads back the rating (starts at 600, moves for
+- `kx submit exp-NNN` proposes uploading `main.py`; after the user confirms,
+  `--confirm <token>` submits it (ConnectX allows 2/day). `kx lb` reads back the rating (starts at 600, moves for
   hours), counts W/L/D from episode replays (replays go to `cache/`, never committed: they
   name other players), and trends the rating. Don't block on convergence: re-run later.

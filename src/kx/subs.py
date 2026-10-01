@@ -1,8 +1,10 @@
-"""control/submissions.jsonl: the leaderboard record (kx never submits; it reads back).
+"""control/submissions.jsonl: the leaderboard record.
 
-One row per handed-over submission. `kx submit` writes a HANDED_OVER row carrying a
-marker (`kx:<exp_id>:<nonce>`) that is also the submit message, so `kx lb` can match
-Kaggle's read-back to it. Statuses: HANDED_OVER -> PENDING -> SCORED | FAILED.
+One row per proposed submission. `kx submit` writes a PROPOSED row carrying a marker
+(`kx:<exp_id>:<nonce>`) that is also the submit message, so `kx lb` can match Kaggle's
+read-back to it. Statuses: PROPOSED -> (user confirms) SUBMITTING -> SUBMITTED |
+SUBMIT_ERROR -> PENDING -> SCORED | FAILED. A PROPOSED row nobody confirmed stays out
+of the leaderboard view. HANDED_OVER is the pre-0.3 equivalent of SUBMITTED.
 Provenance: file sha256 (file uploads) or kernel ref + version (code competitions).
 """
 

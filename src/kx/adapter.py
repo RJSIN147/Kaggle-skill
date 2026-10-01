@@ -370,6 +370,23 @@ class KaggleAdapter:
 
         return self._call("save_kernel", fn, timeout=180, retries=0)
 
+    def submit(self, slug: str, message: str, *, file: str | None = None,
+               kernel: str | None = None, version: int | None = None,
+               file_name: str | None = None) -> dict:
+        """One competition submission: a file upload, or a code-competition kernel
+        version (`kernel` + `version` + the output `file_name`). Never retried: a
+        failure after the request reached Kaggle may still have created it."""
+
+        def fn(api):
+            if kernel:
+                r = api.competition_submit_code(file_name, message, slug, kernel, int(version),
+                                                quiet=True)
+            else:
+                r = api.competition_submit(file, message, slug, quiet=True)
+            return {"ref": getattr(r, "ref", None), "message": getattr(r, "message", None)}
+
+        return self._call("create_submission", fn, timeout=600, retries=0)
+
     def kernel_status(self, owner: str, slug: str) -> dict:
         from kagglesdk.kernels.types.kernels_api_service import ApiGetKernelSessionStatusRequest
 

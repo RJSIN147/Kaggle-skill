@@ -18,8 +18,9 @@ empty folder → kx init → kx sync <comp> → kx confirm → kx metric → kx 
 - **Fail-closed records.** A kernel that throws, times out, or writes an invalid result
   is recorded FAILED with no score. `experiments/*/meta.json` is canonical;
   `control/ledger.jsonl` is rebuilt from it; `strategy.md` is regenerated each cycle.
-- **Submissions stay human.** `kx submit` validates a candidate and hands over the exact
-  `kaggle competitions submit` command; the user runs it; `kx lb` confirms by read-back.
+- **Submissions need a human yes.** `kx submit` validates a candidate and shows what will
+  be submitted; only after the user confirms does `kx submit … --confirm <token>` submit
+  it (re-checked, once, never retried); `kx lb` confirms by read-back.
 - **Research and blending.** `kx research` ingests discussions, public notebooks and the
   host's metric kernel as untrusted, summarized notes; `kx ensemble` blends OOF
   predictions (the shared `kx-preds/1` format) into a new experiment.
