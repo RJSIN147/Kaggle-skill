@@ -131,10 +131,6 @@ TEMPLATES["agent"] = {
 TABULAR_EXTS = (".csv", ".parquet")
 
 
-def register(name: str, info: dict) -> None:
-    TEMPLATES[name] = info
-
-
 def select(effective: dict) -> tuple[str | None, str]:
     """(template name or None, reason) for a confirmed profile's effective facts."""
     mode, modality = effective.get("submission_mode"), effective.get("modality")

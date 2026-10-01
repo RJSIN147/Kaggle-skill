@@ -114,20 +114,3 @@ def _check_file(path: Path, header: list[str], n_expected, n_folds, errs: list[s
     if not (isinstance(n_expected, int) and not isinstance(n_expected, bool)) or n != n_expected:
         errs.append(f"{label}: {n} rows, but result.json declares {n_expected}")
     return seen, folds
-
-
-def read_columns(path: Path, id_col: str = "row_id") -> tuple[list[str], dict[str, list[float]]]:
-    """(row ids in file order, {column: values}) for blending; ints/labels stay as floats."""
-    with path.open(newline="") as fh:
-        reader = csv.DictReader(fh)
-        ids: list[str] = []
-        cols: dict[str, list] = {c: [] for c in reader.fieldnames or [] if c != id_col}
-        for row in reader:
-            ids.append(row[id_col])
-            for c in cols:
-                v = row[c]
-                try:
-                    cols[c].append(float(v))
-                except ValueError:
-                    cols[c].append(v)
-    return ids, cols

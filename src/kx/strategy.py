@@ -84,9 +84,10 @@ def lb_gap_body(sub_rows: list[dict], rows: list[dict], greater_is_better: bool)
         for r in joined:
             lines.append(f"| {r['exp_id']} | {r['cv_mean']:g} | {r['lb_score']:g} | {r['gap']:+g} |")
         blocks.append("\n".join(lines))
-    pending = sum(1 for r in sub_rows if r.get("status") == "PENDING")
+    pending = sum(1 for r in sub_rows if r.get("status") in
+                  ("HANDED_OVER", "SUBMITTING", "SUBMITTED", "PENDING"))
     if pending:
-        blocks.append(f"_{pending} submission(s) PENDING — run `kx lb` to read them back._")
+        blocks.append(f"_{pending} submission(s) awaiting read-back — run `kx lb`._")
     blocks.append(lb_gap.alarm_body(lb_gap.to_pairs(joined), greater_is_better))
     return "\n\n".join(blocks)
 

@@ -1,7 +1,7 @@
 # Code competitions (`code_kernel`, incl. API-served)
 
 You submit a **kernel version**, not a file: Kaggle reruns that version on the hidden test
-set (internet off). kx prepares and verifies it; the **user runs the submit command**.
+set (internet off). kx prepares and verifies it, the user confirms, then kx submits it.
 
 ## Two stages
 
@@ -27,9 +27,16 @@ dir; the host defaults point at the retired `/kaggle/input/<slug>/`). Scoring ta
 
 `kx submit exp-NNN` checks: the kernel version is COMPLETE and is Kaggle's latest, it ran
 with internet off, the expected file exists with the sample's columns (and rows, except
-API-served), daily slots are left, and the CV beats the best submitted CV. It returns:
+API-served), daily slots are left, and the CV beats the best submitted CV. It returns the
+proposal (`data.confirmation`: kernel ref + version, output file, CV, slots) and the
+one-time `next_action.then` (`kx submit exp-NNN --confirm <token>`): show the user every
+line, and run it only on an explicit yes (see SKILL.md). Kaggle then reruns the kernel on
+the hidden test set; `kx lb` reads the score back (minutes to ~20 min API-served).
 
-`! <skill>/.venv/bin/kaggle competitions submit <Canonical-Ref> -k <owner/slug> -v <N> -f <file> -m "kx:exp-NNN:…"`
+## Internet
 
-Show it to the user; they run it with `!`. A code submit prints nothing on success: only
-`kx lb` (read-back) proves it landed.
+The **submitted** kernel must run with internet off; `kx submit` refuses one that ran with
+it on. The **training** stage is not submitted: if pretrained weights are not on Kaggle
+(Models or a dataset), it may set `runtime.internet: true` to download them, and must save
+them into its output so the internet-off inference stage loads them through
+`kernel_sources`. A `--after` inference stage always starts with internet off.

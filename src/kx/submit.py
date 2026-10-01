@@ -15,10 +15,8 @@ gap trend and the divergence alarm.
 from __future__ import annotations
 
 import csv
-import json
 import secrets
 import shlex
-import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -31,10 +29,17 @@ from kx.strategy import tried_lines
 from kx.util import KxError, read_json, utc_now
 
 LB_POLL_S = 20
+PROPOSAL_TTL_S = 3600
+# A confirmed submit that Kaggle still does not list after this long never landed.
+NOT_LANDED_S = 600
+# Rows that occupy (or may occupy) a leaderboard slot: they set the CV bar to beat.
+SUBMITTED_STATES = ("HANDED_OVER", "SUBMITTING", "SUBMITTED", "PENDING", "SCORED")
 
 
-def kaggle_bin() -> str:
-    return str(Path(sys.executable).with_name("kaggle"))
+def _age_s(stamp) -> float:
+    """Seconds since an ISO timestamp; a missing or unreadable one counts as very old."""
+    t = subs.parse_utc(stamp)
+    return (datetime.now(timezone.utc) - t).total_seconds() if t else float("inf")
 
 
 def _csv_shape(path: Path) -> tuple[list[str], int]:
@@ -70,7 +75,7 @@ def _best_submitted_cv(ws: Path, gib: bool) -> dict | None:
     ledger = {r["exp_id"]: r for r in read_ledger(ws)}
     cands = []
     for s in subs.read(ws):
-        if s.get("status") in ("SUBMITTED", "PENDING", "SCORED"):
+        if s.get("status") in SUBMITTED_STATES:
             row = ledger.get(s.get("exp_id"))
             if row and isinstance(row.get("cv_mean"), (int, float)):
                 cands.append(row)
@@ -83,8 +88,7 @@ def writeup(ws: Path, profile: dict, adapter) -> dict:
     from kx import research
 
     research._ensure_layout(ws)
-    if not (ws / "research/cache/pages").glob("*.md") or not any(
-            (ws / "research/cache/pages").glob("*.md")):
+    if not any((ws / "research/cache/pages").glob("*.md")):
         research._pages(ws, profile["slug"], adapter)
     pages = sorted(p.name for p in (ws / "research/cache/pages").glob("*.md"))
     ev = next((p for p in pages if "evaluation" in p.lower()), None)
@@ -170,7 +174,8 @@ def cmd_submit(ws: Path, args, adapter) -> dict:
         (exp_dir / "output" / "result.json").exists() else {}
     canonical = profile["canonical_ref"]
     marker = f"kx:{args.exp_id}:{secrets.token_hex(3)}"
-    msg = f"{marker} {str(meta.get('idea') or '')[:60]}".strip()
+    text = args.message[:200] if args.message else str(meta.get("idea") or "")[:60]
+    msg = f"{marker} {text}".strip()
     row = {"marker": marker, "exp_id": args.exp_id, "mode": mode, "status": "PROPOSED",
            "proposed_at": utc_now(), "cv_mean": cand, "message": msg}
     what: list[str] = []
@@ -179,7 +184,6 @@ def cmd_submit(ws: Path, args, adapter) -> dict:
         run_p = exp_dir / "kernel_run.json"
         run = read_json(run_p) if run_p.exists() else {}
         expected = eff.get("expected_output") or "submission.csv"
-        cmd = None
         if run.get("backend") != "kernel" or run.get("status") != "COMPLETE":
             errors.append("code competitions submit a COMPLETE kernel version: run it on a kernel")
         else:
@@ -191,9 +195,6 @@ def cmd_submit(ws: Path, args, adapter) -> dict:
             if md.get("enable_internet"):
                 errors.append("the kernel ran with internet ON; code competitions need it off")
             _check_file(exp_dir / "output" / expected, result, errors)
-            cmd = (f"{shlex.quote(kaggle_bin())} competitions submit {canonical} "
-                   f"-k {run['kernel_ref']} -v {run['kernel_version']} -f {expected} "
-                   f"-m {shlex.quote(msg)}")
             row.update({"kernel": {"ref": run["kernel_ref"], "version": run["kernel_version"]},
                         "file": expected,
                         "fingerprint": f"{run['kernel_ref']}@v{run['kernel_version']}"})
@@ -215,8 +216,6 @@ def cmd_submit(ws: Path, args, adapter) -> dict:
             row.update({"file": str(f), "file_sha256": sha, "fingerprint": sha})
             size = f"{f.stat().st_size / 1024:.1f} KiB"
             what = [f"{'agent' if mode == 'agent' else 'file'} {f} ({size}, {sha[:19]}…)"]
-        cmd = (f"{shlex.quote(kaggle_bin())} competitions submit {canonical} "
-               f"-f {shlex.quote(str(f))} -m {shlex.quote(msg)}")
 
     if errors:
         raise KxError("invalid", f"{args.exp_id} is not submittable: " + errors[0], errors=errors,
@@ -225,6 +224,8 @@ def cmd_submit(ws: Path, args, adapter) -> dict:
     if args.confirm:
         return _submit_confirmed(ws, args, adapter, profile, rows, row, remote)
 
+    rows = [r for r in rows if r.get("status") != "PROPOSED" or  # drop expired proposals
+            _age_s(r.get("proposed_at")) <= PROPOSAL_TTL_S]
     row["confirm_token"] = secrets.token_hex(4)
     rows.append(row)
     subs.write(ws, rows)
@@ -249,16 +250,12 @@ def cmd_submit(ws: Path, args, adapter) -> dict:
                   f"{args.exp_id} is ready to submit; waiting for the user's confirmation",
                   data={"confirmation": confirmation, "confirm_command": confirm_cmd,
                         "marker": marker, "slots_left_today": remaining, "daily_limit": limit,
-                        "cv_mean": cand, "best_submitted_cv": best["cv_mean"] if best else None,
-                        "manual_command": cmd},
+                        "cv_mean": cand, "best_submitted_cv": best["cv_mean"] if best else None},
                   next_action=E.ask_user(
                       "Show the user every line of data.confirmation and ask whether to submit "
                       "(yes/no). Only on an explicit yes, run the `then` command; on anything "
                       "else, do not submit. Never confirm on the user's behalf.",
                       then=confirm_cmd))
-
-
-PROPOSAL_TTL_S = 3600
 
 
 def _submit_confirmed(ws: Path, args, adapter, profile: dict, rows: list[dict], fresh: dict,
@@ -272,8 +269,7 @@ def _submit_confirmed(ws: Path, args, adapter, profile: dict, rows: list[dict], 
         raise KxError("invalid", f"no pending proposal for {args.exp_id} with that token "
                       "(already submitted, or never proposed)", errors=["no_proposal"],
                       next_action=again)
-    age = (datetime.now(timezone.utc) - subs.parse_utc(prop["proposed_at"])).total_seconds()
-    if age > PROPOSAL_TTL_S:
+    if _age_s(prop.get("proposed_at")) > PROPOSAL_TTL_S:
         raise KxError("invalid", "the confirmed proposal is older than an hour",
                       errors=["proposal_expired"], next_action=again)
     if prop.get("fingerprint") != fresh.get("fingerprint"):
@@ -317,7 +313,6 @@ def _submit_confirmed(ws: Path, args, adapter, profile: dict, rows: list[dict], 
                                              "code competitions re-run the kernel)."))
 
 
-
 def _episodes(ws: Path, adapter, row: dict) -> None:
     """Agent rows: count W/L/D from replays of completed episodes (once each)."""
     seen = row.setdefault("episodes", {"counted": [], "W": 0, "L": 0, "D": 0, "self": 0,
@@ -350,6 +345,10 @@ def cmd_lb(ws: Path, args, adapter) -> dict:
         if not pending or time.monotonic() - start >= args.wait:
             break
         time.sleep(min(LB_POLL_S, max(0.0, args.wait - (time.monotonic() - start))))
+    for r in all_rows:  # confirmed, but Kaggle never listed it: it did not land
+        if r.get("status") in ("SUBMITTING", "SUBMIT_ERROR") and \
+                _age_s(r.get("confirmed_at")) > NOT_LANDED_S:
+            r["status"] = "NOT_SUBMITTED"
     rows = [r for r in all_rows if r.get("status") != "PROPOSED"]  # never confirmed
     if not rows:
         subs.write(ws, all_rows)
@@ -391,8 +390,9 @@ def cmd_lb(ws: Path, args, adapter) -> dict:
     if not_found:
         return E.make("lb", "ok", f"not in Kaggle's list yet: {', '.join(not_found)}", data=data,
                       next_action=E.run("kx lb", "Kaggle lists a new submission within a minute "
-                                                 "or two; re-run. A SUBMIT_ERROR row that never "
-                                                 "appears did not reach Kaggle."))
+                                                 "or two; re-run. A confirmed submit still "
+                                                 "unlisted after 10 min becomes NOT_SUBMITTED "
+                                                 "(it did not land; propose it again)."))
     return E.make("lb", "ok", f"{len(rows)} submission(s) read back", data=data,
                   next_action=E.run("kx status", "CV stays the decision metric; read the alarm "
                                                  "before trusting CV improvements."))

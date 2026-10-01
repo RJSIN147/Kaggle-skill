@@ -277,7 +277,7 @@ class KaggleAdapter:
 
         return self._call("download_data_file", fn, timeout=timeout)
 
-    # -- submissions (read-back only: kx never submits) --------------------- #
+    # -- submissions (submit: the user-confirmed path only; read-back) ------ #
     def submissions(self, slug: str, page_size: int = 50) -> list[dict]:
         return self._call("list_submissions", lambda api: plain(
             api.competition_submissions(slug, page_size=page_size)) or [])
