@@ -1,7 +1,7 @@
 # Skill-package hygiene (repo root).
 # NOTE: this is the kaggle-exp SKILL repo's .gitignore — distinct from the
-# workspace .gitignore that scripts/init_workspace.py scaffolds into a
-# competition folder. uv.lock IS tracked (reproducible dev/test env).
+# workspace .gitignore that `kx init` writes into a competition folder
+# (src/kx/templates/gitignore.tmpl). uv.lock IS tracked (reproducible env).
 
 # Python
 __pycache__/

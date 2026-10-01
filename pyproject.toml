@@ -36,6 +36,14 @@ module-name = "kx"
 [dependency-groups]
 dev = ["pytest>=8.0"]
 
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
+# Envelope strings and test assertions run long on purpose; E501 is not enforced.
+ignore = ["E501"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-m 'not live'"
