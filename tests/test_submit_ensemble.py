@@ -1,4 +1,4 @@
-"""SUB-01..07 (prepare, hand over, read back; never submit), ENS-02 (blending)."""
+"""SUB-01..07 (propose, submit on confirmation, read back), ENS-02 (blending)."""
 
 import json
 from datetime import datetime, timezone
@@ -25,25 +25,104 @@ def _recorded(ws, fake, idea="base", scores=(0.8, 0.9)):
     return exp, d
 
 
-def test_kx_has_no_code_path_that_submits():
+def test_only_the_adapter_calls_the_submit_api():
     from conftest import KX_DIR
     for p in KX_DIR.rglob("*.py"):
         text = p.read_text()
-        for api in ("competition_submit", "competition_submit_code", "create_submission",
-                    "CreateSubmission", "create_code_submission", "submit_cli"):
-            assert api not in text, (p.name, api)
+        for api in ("competition_submit", "create_submission", "create_code_submission",
+                    "submit_cli"):
+            if api in text:
+                assert p.name == "adapter.py", (p.name, api)
+    src = (KX_DIR / "submit.py").read_text()
+    # the one call site is the confirmed path
+    assert src.count("adapter.submit(") == 2 and src.index("adapter.submit(") > \
+        src.index("def _submit_confirmed")
 
 
-def test_submit_hands_over_the_command(ready_ws, fake):
+def _propose(ws, fake, *extra):
+    env = kx(ws, fake, "submit", *extra)
+    assert env["status"] == "needs_user", env
+    return env, env["next_action"]["then"].split("--confirm ")[1].split()[0]
+
+
+def test_submit_proposes_then_submits_only_on_confirm(ready_ws, fake):
     fake.submissions = lambda slug, page_size=50: []
     exp, d = _recorded(ready_ws, fake)
-    env = kx(ready_ws, fake, "submit", exp)
-    assert env["status"] == "needs_user", env
-    cmd = env["data"]["command"]
-    assert " competitions submit titanic -f " in cmd and "kx:exp-001:" in cmd
-    assert env["next_action"]["kind"] == "ask_user" and "! " in env["next_action"]["instruction"]
+    env, token = _propose(ready_ws, fake, exp)
+    assert not fake.submitted()
+    lines = env["data"]["confirmation"]
+    assert any(line.startswith("competition: titanic") for line in lines)
+    assert any("submits: file " in line and "sha256:" in line for line in lines)
+    assert any(line.startswith("CV: ") for line in lines)
+    assert env["next_action"]["kind"] == "ask_user"
+    assert env["next_action"]["then"] == f"kx submit {exp} --confirm {token}"
+    assert " competitions submit titanic -f " in env["data"]["manual_command"]
     (row,) = subs.read(ready_ws)
-    assert row["status"] == "HANDED_OVER" and row["file_sha256"].startswith("sha256:")
+    assert row["status"] == "PROPOSED" and row["file_sha256"].startswith("sha256:")
+    assert kx(ready_ws, fake, "lb", "--wait", "0")["summary"] == "no submissions yet"
+
+    env = kx(ready_ws, fake, "submit", exp, "--confirm", token)
+    assert env["status"] == "ok" and env["data"]["kaggle_ref"] == 9001, env
+    (call,) = fake.submitted()
+    assert call[1] == "titanic" and call[2] == row["message"] and call[3] == row["file"]
+    (row,) = subs.read(ready_ws)
+    assert row["status"] == "SUBMITTED" and "confirm_token" not in row
+    # single use: the same token cannot submit twice
+    env = kx(ready_ws, fake, "submit", exp, "--confirm", token, "--force-cv")
+    assert env["status"] == "invalid" and env["errors"] == ["no_proposal"]
+    assert len(fake.submitted()) == 1
+
+
+def test_confirm_refusals(ready_ws, fake):
+    fake.submissions = lambda slug, page_size=50: []
+    exp, d = _recorded(ready_ws, fake)
+    _, token = _propose(ready_ws, fake, exp)
+    assert kx(ready_ws, fake, "submit", exp, "--confirm", "deadbeef")["errors"] == ["no_proposal"]
+    sub = d / "output" / "submission.csv"
+    original = sub.read_text()
+    lines = original.splitlines()  # same shape, last value changed
+    sub.write_text("\n".join(lines[:-1] + [lines[-1][:-1] + "9"]) + "\n")
+    env = kx(ready_ws, fake, "submit", exp, "--confirm", token)
+    assert env["errors"] == ["candidate_changed"], env
+    sub.write_text(original)
+    rows = subs.read(ready_ws)
+    rows[0]["proposed_at"] = "2020-01-01T00:00:00Z"
+    subs.write(ready_ws, rows)
+    assert kx(ready_ws, fake, "submit", exp, "--confirm", token)["errors"] == ["proposal_expired"]
+    assert not fake.submitted()
+
+
+def test_confirm_reruns_the_checks(ready_ws, fake):
+    fake.submissions = lambda slug, page_size=50: []
+    exp, _ = _recorded(ready_ws, fake)
+    _, token = _propose(ready_ws, fake, exp)
+    fake.submissions = lambda slug, page_size=50: [
+        {"date": _now(), "status": "COMPLETE"} for _ in range(10)]
+    env = kx(ready_ws, fake, "submit", exp, "--confirm", token)
+    assert env["status"] == "invalid" and "no submission slots" in env["errors"][0]
+    assert not fake.submitted()
+
+
+def test_confirm_never_submits_twice_and_maps_errors(ready_ws, fake):
+    from kx.util import KxError
+    fake.submissions = lambda slug, page_size=50: []
+    exp, _ = _recorded(ready_ws, fake)
+    _, token = _propose(ready_ws, fake, exp)
+    marker = subs.read(ready_ws)[0]["marker"]
+    fake.submissions = lambda slug, page_size=50: [
+        {"ref": 7, "date": _now(), "description": marker, "status": "PENDING"}]
+    env = kx(ready_ws, fake, "submit", exp, "--confirm", token)
+    assert env["status"] == "ok" and "already on Kaggle" in env["summary"]
+    assert not fake.submitted()
+
+    fake.submissions = lambda slug, page_size=50: []
+    _, token = _propose(ready_ws, fake, exp, "--force-cv")
+    fake.submit_response = KxError("error", "Kaggle call timed out (create_submission)",
+                                   errors=["kaggle_timeout:create_submission"])
+    env = kx(ready_ws, fake, "submit", exp, "--confirm", token, "--force-cv")
+    assert env["status"] == "error" and env["next_action"]["command"] == "kx lb"
+    assert subs.read(ready_ws)[-1]["status"] == "SUBMIT_ERROR"
+    assert len(fake.submitted()) == 1
 
 
 def test_submit_refusals(ready_ws, fake):
@@ -105,9 +184,16 @@ def test_code_kernel_command_and_internet_check(tmp_path, token_home):
     fake.statuses = ["COMPLETE"]
     assert kx(ws, fake, "run", exp, "--wait", "5")["data"]["result"] == "SUCCESS"
     env = kx(ws, fake, "submit", exp)
-    cmd = env["data"]["command"]
+    cmd = env["data"]["manual_command"]
     assert "competitions submit equity-post-HCT-survival-predictions -k tester/" in cmd
     assert " -v 1 -f submission.csv " in cmd
+    assert any("version 1 (internet off), output submission.csv" in line
+               for line in env["data"]["confirmation"])
+    token = env["next_action"]["then"].split("--confirm ")[1]
+    assert kx(ws, fake, "submit", exp, "--confirm", token)["status"] == "ok"
+    (call,) = fake.submitted()
+    assert call[1] == "equity-post-HCT-survival-predictions" and call[4].startswith("tester/")
+    assert call[5] == 1 and call[6] == "submission.csv"
     fake.kernel_meta["enable_internet"] = True
     assert any("internet ON" in e for e in kx(ws, fake, "submit", exp)["errors"])
 

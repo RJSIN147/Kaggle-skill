@@ -26,7 +26,8 @@ appear in an envelope; they go to `control/raw/last-error.txt` (gitignored).
 | `kx new --idea … --hypothesis … [--template T --template-reason …] [--folds N] [--accelerator cpu/NvidiaTeslaT4] [--limit S] [--local [--subsample F]] [--after exp-NNN]` | Scaffold `experiments/exp-NNN/`. `--after` chains this kernel after an upstream experiment's kernel. |
 | `kx run exp-NNN [--wait S] [--rerun]` | Validate, push, poll (bounded), pull, record. Re-running resumes. |
 | `kx strategy --reasoning-file F` | Regenerate `strategy.md` and commit the cycle. Refuses while a verdict has `_TODO`. |
-| `kx submit exp-NNN` / `kx submit --writeup` | Validate a candidate and hand over the submit command / write the writeup checklist. |
+| `kx submit exp-NNN` / `kx submit --writeup` | Validate a candidate and propose it (confirmation details + one-time token) / write the writeup checklist. |
+| `kx submit exp-NNN --confirm TOKEN [--force-cv] [--file F]` | After the user's explicit yes: re-check and submit the proposed candidate once (refuses a changed file/kernel version or a proposal over 1 h old). |
 | `kx lb [--wait S]` | Read back submissions, record scores next to CV, trend the gap. |
 | `kx research [discussions/notebooks/metric/idea]` | Research ingestion (see SKILL.md). |
 | `kx ensemble exp-A exp-B … [--method hill/weights]` | Blend OOF predictions into a new experiment. |

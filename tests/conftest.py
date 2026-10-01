@@ -137,6 +137,17 @@ class FakeAdapter:
         self.calls.append(("push", meta, timeout_s))
         return dict(self.push_response)
 
+    submit_response = {"ref": 9001, "message": "Successfully submitted"}
+
+    def submit(self, slug, message, *, file=None, kernel=None, version=None, file_name=None):
+        self.calls.append(("submit", slug, message, file, kernel, version, file_name))
+        if isinstance(self.submit_response, Exception):
+            raise self.submit_response
+        return dict(self.submit_response)
+
+    def submitted(self):
+        return [c for c in self.calls if c[0] == "submit"]
+
     def get_kernel(self, owner, slug):
         self.calls.append(("get_kernel", owner, slug))
         return dict(self.kernel_meta)

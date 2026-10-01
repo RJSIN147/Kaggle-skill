@@ -101,13 +101,15 @@ def build_parser() -> KxParser:
     s = sub.add_parser("strategy", help="regenerate strategy.md from the ledger + reasoning")
     s.add_argument("--reasoning-file", required=True)
 
-    s = sub.add_parser("submit", help="validate a candidate and hand over the submit command")
+    s = sub.add_parser("submit", help="validate a candidate; submit it after the user confirms")
     s.add_argument("exp_id", nargs="?")
     s.add_argument("--writeup", action="store_true")
     s.add_argument("--file", help="csv_upload: the file to submit (default: the experiment's)")
     s.add_argument("--message")
     s.add_argument("--force-cv", action="store_true",
                    help="allow a candidate whose CV is not better than the best submitted")
+    s.add_argument("--confirm", metavar="TOKEN",
+                   help="submit the proposal the user just confirmed (token from `kx submit`)")
 
     s = sub.add_parser("lb", help="read back submissions and show LB next to CV")
     s.add_argument("--wait", type=float, default=90.0)
