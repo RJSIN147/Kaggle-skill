@@ -16,7 +16,6 @@ module top" rule. GREEN target: Task 2 (untrusted.py) + Task 3 (capture_competit
 
 import json
 import re
-import subprocess
 from pathlib import Path
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures"

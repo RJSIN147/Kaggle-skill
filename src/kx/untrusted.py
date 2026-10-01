@@ -1,8 +1,7 @@
-#!/usr/bin/env python3
 """untrusted.py — the untrusted-content fence writer (D-01 / D-02).
 
 Kaggle competition prose is INGESTED into ``competition.md`` (via
-``capture_competition.py``) and re-read into agent context on every experiment
+``kx sync`` / ``kx research``) and re-read into agent context on every experiment
 cycle from Phase 3 onward (D-01). A payload embedded there is not read once — it
 is re-read forever, as trusted project doc. So verbatim Kaggle text kept in the
 doc is quarantined inside ``<untrusted-content …>`` fences, and — because a fence
@@ -20,7 +19,7 @@ is only a convention — the ONE mechanical, unit-testable guarantee lives here:
 What this HONESTLY does NOT claim (state it plainly, do not oversell): it cannot
 stop the model from *reading* an instruction. It stops that instruction from
 breaking the fence — and the no-derived-execution invariant in
-``capture_competition.py`` stops it reaching an executor. Wrapping is a signal,
+``kx sync`` / ``kx research`` stops it reaching an executor. Wrapping is a signal,
 not a sandbox.
 
 Portability: stdlib-only, importable, no side effects on import.

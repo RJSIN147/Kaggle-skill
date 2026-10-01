@@ -1,9 +1,8 @@
-#!/usr/bin/env python3
 """lb_gap.py — the CV→LB gap trend and the D-10 rank-inversion divergence alarm (SCORE-02).
 
 A PURE, DERIVED view (D-11). `control/submissions.jsonl` (the canonical leaderboard record,
-owned by `submissions_log`) is joined against `control/ledger.jsonl` (the canonical CV record,
-owned by `experiment_meta`) on `exp_id`. The leaderboard score is NEVER written back into the
+owned by `kx.subs`) is joined against `control/ledger.jsonl` (the canonical CV record,
+owned by `kx.ledger`) on `exp_id`. The leaderboard score is NEVER written back into the
 experiment folder's recorded metadata — that folder is IMMUTABLE after record, and a copy of the
 LB score there would be a second source of truth to keep in sync. Deriving the view instead also
 handles MANY SUBMISSIONS PER EXPERIMENT for free, which a single per-experiment field cannot.
@@ -27,12 +26,12 @@ HONESTY BELOW TWO POINTS:
 
 NO FABRICATED ZEROS:
     Only SCORED submissions carrying a NON-None `public_score` enter the view.
-    `submissions_log.parse_score` maps Kaggle's `""` to None (never 0.0), so an unscored row can
+    `subs.parse_score` maps Kaggle's `""` to None (never 0.0), so an unscored row can
     never sneak in as a catastrophic 0.0 and fire a bogus alarm.
 
-Portability (CLAUDE.md §Stack Patterns): stdlib-only, importable, NO side effects on import, no
-`main()`, and NO I/O of any kind — every function takes ALREADY-LOADED row lists. The caller
-(`regen_strategy.py`) owns the reading; this module owns the arithmetic. That is what lets the
+No side effects on import and NO I/O of any kind — every function takes ALREADY-LOADED row
+lists. The callers (`kx lb`, `strategy.lb_gap_body`) own the reading; this module owns the
+arithmetic. That is what lets the
 whole contract be tested without a filesystem and without touching Kaggle.
 """
 
@@ -78,8 +77,7 @@ def join_cv_lb(sub_rows, ledger_rows) -> list[dict]:
       * SCORED rows whose `public_score` is None (Kaggle's `""`) — a defensive `float(x or 0)`
         here would invent an LB score of 0.0, which is indistinguishable from a genuinely
         catastrophic result and would fire a false alarm. We never invent a number.
-      * rows whose `exp_id` is null (an out-of-band submission back-filled by
-        `fetch_lb --reconcile`) or absent from the ledger — with no CV there is nothing to
+      * rows whose `exp_id` is null (an out-of-band submission) or absent from the ledger — with no CV there is nothing to
         compare against.
       * ledger rows that are not `SUCCESS`, or that carry no numeric `cv_mean`.
 
@@ -195,7 +193,7 @@ def alarm_state(pairs, greater_is_better: bool) -> dict:
 
 
 def alarm_body(pairs, greater_is_better: bool) -> str:
-    """The markdown the strategy doc splices (via `regen_strategy._lb_gap_body`).
+    """The markdown the strategy doc splices (via `strategy.lb_gap_body`) and `kx lb` shows.
 
     Three honest states, never a fourth invented one:
       * fewer than 2 scored points → the shortfall, naming HOW MANY points there actually are;

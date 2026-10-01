@@ -88,7 +88,7 @@ def make_transform(split: str):
 
 def make_model(n_outputs: int):
     """A fresh model. With MODEL_SOURCES attached, load pretrained weights from
-    /kaggle/input/models/... (internet is off)."""
+    /kaggle/input/models/... (internet is off by default)."""
     import torch.nn as nn
 
     return nn.Sequential(

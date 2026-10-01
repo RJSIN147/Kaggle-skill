@@ -522,6 +522,15 @@ def cmd_run(ws: Path, args, adapter) -> dict:
         _validate_spec(ws, exp_dir, spec, profile)
         _require_confirmed(profile)
         _require_metric(ws)
+        if spec["runtime"].get("internet") and spec.get("template") in ("inference", "deep-infer") \
+                and effective(profile).get("submission_mode") == "code_kernel":
+            raise KxError("invalid", "this inference stage is what gets submitted, and code "
+                          "competitions rerun it with internet off",
+                          errors=["internet_on_submitted_stage"],
+                          next_action=E.edit(f"Set runtime.internet to false in experiments/"
+                                             f"{exp_dir.name}/experiment.json; download weights "
+                                             "in the training stage and save them to its output.",
+                                             then=f"kx run {exp_dir.name}"))
         upstream = None
         if spec["sources"].get("kernels"):
             from kx import pipeline
@@ -741,6 +750,13 @@ def cmd_status(ws: Path, args, adapter) -> dict:
     exps = workspace.list_experiments(ws)
     data["experiments"] = len(exps)
     data["tried"] = _tried(ws)
+    from kx import subs
+
+    sub_rows = subs.read(ws)
+    proposed = [r["exp_id"] for r in sub_rows if r.get("status") == "PROPOSED"]
+    unread = [r["exp_id"] for r in sub_rows if r.get("status") in
+              ("HANDED_OVER", "SUBMITTING", "SUBMITTED", "SUBMIT_ERROR", "PENDING")]
+    data["submissions"] = {"proposed": proposed, "awaiting_read_back": unread}
     for exp_id in reversed(exps):
         d = ws / "experiments" / exp_id
         run_path = d / "kernel_run.json"
@@ -765,6 +781,13 @@ def cmd_status(ws: Path, args, adapter) -> dict:
                        E.edit(f"Write the AI BLOCK and cv.reasoning for {exp_id}.",
                               then=f"kx run {exp_id}"))
         return out(f"{exp_id} is ready to run", E.run(f"kx run {exp_id}"))
+    if unread:
+        return out(f"submission(s) awaiting read-back: {', '.join(unread)}", E.run("kx lb"))
+    if proposed:
+        return out(f"a submission proposal for {proposed[-1]} has no answer yet",
+                   E.run(f"kx submit {proposed[-1]}", "Re-propose and ask the user to confirm "
+                                                      "(the old token may have expired), or "
+                                                      "move on if they declined."))
     if eff["submission_mode"] == "writeup":
         return out("writeup competition", E.run("kx submit --writeup"))
     return out("ready for the next idea", E.run("kx new --idea '...' --hypothesis '...'"))

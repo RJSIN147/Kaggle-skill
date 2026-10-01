@@ -9,7 +9,7 @@ empty folder → kx init → kx sync <comp> → kx confirm → kx metric → kx 
                                                      ↑__________________________________|
 ```
 
-- **Kernel-first.** `kx run` pushes a private Kaggle script kernel (internet off), polls
+- **Kernel-first.** `kx run` pushes a private Kaggle script kernel (internet off by default), polls
   with a bound, pulls the outputs and records a machine-checked CV score. Local runs are
   an option for small data (`kx new --local`).
 - **Profiles from structured API facts.** `kx sync` classifies the competition
@@ -48,5 +48,5 @@ tests/                   offline suite (`uv run pytest`); live checks: `-m live`
 
 ```
 uv run pytest -q              # offline, no Kaggle calls
-uv run pytest -q -m live      # real Kaggle: CPU kernels only, never submits
+uv run pytest -q -m live      # real Kaggle: profile checks only (no kernels, no submits)
 ```

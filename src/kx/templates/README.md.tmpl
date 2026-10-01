@@ -5,9 +5,14 @@ JSON object whose `next_action` says what to do next; `kx status` recomputes it.
 
 - `control/` — config, state, competition profile (`profile.json`) and the derived
   `ledger.jsonl` (one line per experiment, rebuilt from `experiments/*/meta.json`).
-- `experiments/exp-NNN/` — `experiment.json` (the declaration), `train.py` (the
-  kernel script), `meta.json` (the recorded result), `VERDICT.md` (the written verdict)
-  and `output/` (pulled kernel outputs; heavy files are gitignored).
+- `experiments/exp-NNN/` — `experiment.json` (the declaration), the code file
+  (`train.py`; `predict.py` for an inference stage, `main.py` for a simulation agent),
+  `meta.json` (the recorded result), `VERDICT.md` (the written verdict) and `output/`
+  (pulled kernel outputs; heavy files are gitignored).
+- `control/submissions.jsonl` — every proposed and confirmed submission with its
+  leaderboard read-back.
+- `research/` — notes on discussions, notebooks and the host metric (raw cache
+  uncommitted); `writeup/` — the checklist for writeup competitions.
 - `strategy.md` — regenerated each cycle: current best, tried-list digest, reasoning.
 
 Credentials never live here. A pre-commit hook (`.githooks/pre-commit`) blocks any

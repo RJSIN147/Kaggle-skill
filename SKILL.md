@@ -66,7 +66,7 @@ When unsure where you are: `kx status`.
    `--template <name> --template-reason "<why>"`.
 7. Write the **AI BLOCK** in the experiment's code file and `cv.reasoning` in its
    `experiment.json`. Never edit the KX HARNESS (kx refuses a modified harness).
-8. `kx run exp-NNN` — pushes a private script kernel (internet off), polls, pulls, and
+8. `kx run exp-NNN` — pushes a private script kernel (internet off by default), polls, pulls, and
    records. Long kernels: pass `--wait 540` with a 600000 ms Bash timeout, or come back
    later — re-running resumes.
 9. Write `VERDICT.md` (replace every `_TODO`; reference the recorded numbers, never type
@@ -114,8 +114,10 @@ have reached Kaggle.
 
 - The profile is evidence, not truth: the user confirms it before it drives anything.
 - CV is the decision metric. The leaderboard observes; it never overrides CV.
-- Kernels run private with internet off unless `experiment.json` says otherwise (and then
-  kx warns). GPU (`--accelerator NvidiaTeslaT4`) only for templates that need it; the
+- Kernels run private with internet off. Turn it on (`runtime.internet: true`) only to
+  fetch what is not on Kaggle, e.g. pretrained weights: fine for csv_upload competitions and
+  a code competition's training stage; a code competition's submitted stage must stay off
+  (kx refuses it). Prefer attaching Kaggle Models/datasets. GPU (`--accelerator NvidiaTeslaT4`) only for templates that need it; the
   weekly GPU quota is shared with the user's other work.
 - Joining a competition (accepting its rules) is a browser step for the user.
 - Credentials never enter the workspace; a pre-commit hook blocks them.

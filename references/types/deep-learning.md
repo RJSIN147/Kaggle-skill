@@ -12,11 +12,15 @@ short: the 30 h/week quota is shared with the user's other work.
   reads 28×28 pixel columns (digit-recognizer); real image comps read files or HDF5 by id
   from `DATA_DIR`.
 - `make_transform(split)` → numpy → tensor (augment only on `"train"`).
-- `make_model(n_outputs)` → a fresh `nn.Module`. **Internet is off**: pretrained weights
-  come from Kaggle Models attached in `experiment.json` → `sources.models`
+- `make_model(n_outputs)` → a fresh `nn.Module`. **Internet is off by default**: prefer
+  pretrained weights from Kaggle Models attached in `experiment.json` → `sources.models`
   (e.g. `timm/tf-efficientnet/pyTorch/tf-efficientnet-b0/1`), mounted at
   `/kaggle/input/models/<owner>/<model>/<framework>/<variation>/<version>/`.
-  Datasets mount at `/kaggle/input/datasets/<owner>/<slug>/`.
+  Datasets mount at `/kaggle/input/datasets/<owner>/<slug>/`. If the weights are not on
+  Kaggle, set `runtime.internet: true` and download them (kx warns and records it). That
+  is fine for csv_upload competitions and for a code competition's **training** stage
+  (save the weights into the output for the inference stage); a code competition's
+  submitted kernel must have internet off (see `code-competition.md`).
 - Text: implement `collate(batch)` to tokenize and return `(x, targets)` with `x` a
   tensor; the harness calls `collate(None)` to detect it, so return a non-None value for
   `None`. A hashing bag-of-words model needs no weights (hash with `zlib.crc32`, not the

@@ -3,7 +3,7 @@
 import json
 
 import pytest
-from conftest import FakeAdapter, kx
+from conftest import kx
 from test_run_record import make_outputs, scaffold
 
 from kx.adapter import KaggleAdapter, _is_network_error

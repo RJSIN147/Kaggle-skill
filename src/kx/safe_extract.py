@@ -1,9 +1,8 @@
-#!/usr/bin/env python3
 """safe_extract.py — zip-slip-protected extraction (reject-and-raise) for COMP-03.
 
 CLI 2.2.3's ``competitions download`` has NO ``--unzip`` flag (VERIFIED-LIVE) — it
 pulls a single ``<slug>.zip`` whose members are attacker-controllable — so
-``download_data.py`` MUST extract manually. stdlib ``zipfile`` has NO ``filter=``
+``kx.data`` MUST extract manually. stdlib ``zipfile`` has NO ``filter=``
 parameter (only ``tarfile`` gained PEP 706's ``data_filter`` in 3.12) and its
 internal member extraction SILENTLY DROPS ``..``/absolute components; a
 silently-sanitizing extractor is therefore indistinguishable from a vulnerable one
@@ -33,7 +32,7 @@ class UnsafeArchiveMember(Exception):
     """An archive member tried to escape ``dest`` (absolute / ``..`` / symlink / out-of-tree).
 
     Raised BEFORE any member is written, so a rejection leaves the destination —
-    and every sibling directory — untouched. ``download_data.py`` translates this
+    and every sibling directory — untouched. ``kx.data`` translates this
     into a blocked download rather than a partial, poisoned ``data/``.
     """
 
