@@ -44,7 +44,7 @@ TYPE_SIGNALS_REL = "control/raw/competition-type-signals.json"
 # The primary defense is repr()-quoting every rendered literal (so ANY value is inert);
 # these gates are defense-in-depth — block a malformed slug / unknown cv scheme early
 # (block, don't guess) rather than mint a harness from a suspicious control-plane value.
-_SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
+_KAGGLE_SLUG_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9-]*$")
 _CV_SCHEMES = ("KFold", "StratifiedKFold", "GroupKFold", "TimeSeriesSplit")
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
@@ -223,10 +223,10 @@ def main(argv=None) -> int:
     slug = config.get("competition_slug") or ""
     # A non-empty slug must be a well-formed Kaggle slug. An empty slug is tolerated
     # (renders to an inert ''); a malformed non-empty slug blocks (CR-01 defense-in-depth).
-    if slug and not _SLUG_RE.match(slug):
+    if slug and not _KAGGLE_SLUG_RE.match(slug):
         print(
             f"cannot scaffold: competition_slug {slug!r} is not a valid Kaggle slug "
-            f"(expected {_SLUG_RE.pattern}).",
+            f"(expected {_KAGGLE_SLUG_RE.pattern}).",
             file=sys.stderr,
         )
         return 1
