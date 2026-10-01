@@ -32,3 +32,18 @@ submission by its `kx:exp-…:…` marker:
 
 Live fix: agent ratings are kept out of the CV→LB gap (not on the win-rate scale).
 ConnectX confirms the spike lesson: beating random/negamax locally does not predict the ladder.
+
+## Confirm-then-submit (2026-10-02, user request: no more copy-pasted commands)
+
+`kx submit exp-NNN` now proposes (confirmation lines + one-time token); only
+`kx submit exp-NNN --confirm <token>` after the user's explicit yes submits, through the SDK.
+Live on Titanic: proposal shown to the user via AskUserQuestion (file, sha256, CV, best
+submitted, 9/10 slots, message) → user chose "Yes, submit" → `--confirm bf454eee --force-cv`
+→ Kaggle ref 56759642 → `kx lb` matched the marker, SCORED 0.75358 (same file as ref
+56758423, same score). A second, unconfirmed proposal from the same session stayed PROPOSED
+and out of the LB view. Unit-tested refusals: wrong/used token, changed file, proposal > 1 h,
+checks re-run at confirm (slots), marker already on Kaggle (no double submit), submit error →
+SUBMIT_ERROR + `kx lb` first.
+
+Extra read-backs: nlp-getting-started exp-001 CV F1 0.7086 → public 0.78148 (handed over before
+this change; user ran it).
