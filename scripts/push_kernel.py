@@ -44,7 +44,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 # A non-empty slug MUST be a well-formed Kaggle slug before it enters the id (block,
 # don't guess) — mirrors scaffold_experiment._SLUG_RE. The username comes from Kaggle
 # prose (`config view`); constrain it too so nothing exotic rides into the id/push.
-_SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
+_KAGGLE_SLUG_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9-]*$")
 _USERNAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
 _USERNAME_LINE_RE = re.compile(r"^\s*-\s*username:\s*(\S+)\s*$", re.MULTILINE)
 # Provenance-only version scrape from the push output. NEVER used to build a path or
@@ -211,10 +211,10 @@ def main(argv=None) -> int:
         return 1
 
     slug = config.get("competition_slug") or ""
-    if not slug or not _SLUG_RE.match(slug):
+    if not slug or not _KAGGLE_SLUG_RE.match(slug):
         print(
             f"cannot push: competition_slug {slug!r} is missing or not a valid "
-            f"Kaggle slug (expected {_SLUG_RE.pattern}).",
+            f"Kaggle slug (expected {_KAGGLE_SLUG_RE.pattern}).",
             file=sys.stderr,
         )
         return 1
