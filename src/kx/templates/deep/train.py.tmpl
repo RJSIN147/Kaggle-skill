@@ -99,7 +99,9 @@ def make_model(n_outputs: int):
 
 
 def collate(batch):
-    """Text mode: turn a list of (text, target) into model inputs. Image mode: default."""
+    """Text mode: turn a list of (text, target) into (input tensor, targets). The harness
+    calls collate(None) to detect a collate_fn: return a non-None value for None.
+    Image mode: leave as is (returns None, so the default collate is used)."""
     return None
 # === END AI BLOCK ===============================================================
 

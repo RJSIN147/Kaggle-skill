@@ -1,9 +1,8 @@
 ---
 phase: 8
-status: passed_with_gaps
-verified: 2026-09-26
-method: live runs (/tmp/kx-live/{digits,titanic,equity,probes}) + offline suite
-gaps: ISIC closed-vision pipeline and the text run need the user to accept those competitions' rules
+status: passed
+verified: 2026-10-02
+method: live runs (/tmp/kx-live/{digits,titanic,equity,probes}, ~/kaggle-live/{isic,nlp}) + offline suite
 ---
 
 # Phase 8 verification — Kaggle-first compute
@@ -19,3 +18,13 @@ gaps: ISIC closed-vision pipeline and the text run need the user to accept those
 Verified mount paths (live probe): datasets `/kaggle/input/datasets/<owner>/<slug>/`, models
 `/kaggle/input/models/<owner>/<model>/<framework>/<variation>/…`, other kernels
 `/kaggle/input/notebooks/<owner>/<slug>/`, own previous output `/kaggle/input/<slug>/`.
+
+## Gaps closed live (2026-10-02, after the user joined both competitions)
+
+| Gap | Evidence |
+|---|---|
+| ISIC-2024 closed-vision pipeline | `~/kaggle-live/isic`: profile code_kernel/image, late submissions open, 2.7 GB / 401k files (`local_feasible: false`). Host metric `metric/isic-pauc-abovetpr` adopted, `kx metric custom --range 0 0.2`. exp-001 `deep` on T4: JPEG crops read from `train-image.hdf5` by `isic_id` (one h5py handle per DataLoader worker), all 393 positives + 20:1 sampled negatives, StratifiedGroupKFold by `patient_id` → SUCCESS host pAUC **0.1130 ± 0.0086** (random ≈ 0.02). exp-002 `kx new --after exp-001` → `deep-infer` CPU kernel loaded the 3 fold models from the upstream output, `consumed: v1`, wrote `submission.csv` (isic_id,target); `kx submit` handed over `-k …-5aba-exp-002 -v 1 -f submission.csv`. |
+| Text run | `~/kaggle-live/nlp` (nlp-getting-started): profile csv_upload/text; metric display name "F-Score (Micro)" is not in the map (no guess) → AI chose binary `f1` per the Evaluation page. exp-001 `deep` MODE "text" on a CPU kernel: custom `collate` → padded hashed unigram+bigram ids (crc32, not the salted `hash()`), EmbeddingBag-style mean pooling, folds grouped by normalised tweet text → SUCCESS F1 **0.7086 ± 0.0110** (5 folds). |
+
+Note for the text contract: the harness probes `collate(None)` to decide whether a collate_fn
+exists, so a text AI block must return something non-None for `None`.

@@ -17,8 +17,11 @@ short: the 30 h/week quota is shared with the user's other work.
   (e.g. `timm/tf-efficientnet/pyTorch/tf-efficientnet-b0/1`), mounted at
   `/kaggle/input/models/<owner>/<model>/<framework>/<variation>/<version>/`.
   Datasets mount at `/kaggle/input/datasets/<owner>/<slug>/`.
-- Text: implement `collate(batch)` to tokenize; a hashing bag-of-words model needs no
-  weights, a transformer needs its weights attached as a model source.
+- Text: implement `collate(batch)` to tokenize and return `(x, targets)` with `x` a
+  tensor; the harness calls `collate(None)` to detect it, so return a non-None value for
+  `None`. A hashing bag-of-words model needs no weights (hash with `zlib.crc32`, not the
+  per-process salted `hash()`, or an infer kernel maps words differently); a transformer
+  needs its weights attached as a model source.
 
 ## What the harness guarantees
 
