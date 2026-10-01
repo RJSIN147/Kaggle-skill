@@ -662,7 +662,8 @@ def cmd_strategy(ws: Path, args, adapter) -> dict:
                       next_action=E.edit(f"Replace every _TODO in experiments/{pending[0]}/VERDICT.md.",
                                          then=f"kx strategy --reasoning-file {args.reasoning_file}"))
     profile = workspace.load_profile(ws)
-    sub_rows = strategy.read_jsonl(ws / "control" / "submissions.jsonl")
+    sub_rows = [r for r in strategy.read_jsonl(ws / "control" / "submissions.jsonl")
+                if r.get("mode") != "agent"]
     ideas = strategy.read_jsonl(ws / "research" / "ideas.jsonl")
     strategy.write(ws, profile.get("canonical_ref") or profile.get("slug"), rows, sub_rows, ideas,
                    bool(metric_cfg["greater_is_better"]), reasoning)
