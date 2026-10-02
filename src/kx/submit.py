@@ -237,7 +237,8 @@ def cmd_submit(ws: Path, args, adapter) -> dict:
     row["confirm_token"] = secrets.token_hex(4)
     rows.append(row)
     subs.write(ws, rows)
-    metric = (workspace.load_config(ws).get("metric") or {}).get("name") or "CV"
+    mcfg = workspace.load_config(ws).get("metric") or {}
+    metric = mcfg.get("label") or mcfg.get("name") or "CV"
     confirmation = [
         f"competition: {canonical}, mode {mode}"
         + (" — LATE submission (not ranked)" if eff.get("closed") else ""),
