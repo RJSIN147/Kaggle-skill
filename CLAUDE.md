@@ -3,9 +3,12 @@
 A Claude Code skill (`SKILL.md` at the repo root) plus the `kx` Python CLI it drives. It runs a
 Kaggle competition as a CV-first experiment loop:
 - profile the competition from Kaggle's API;
-- scaffold an experiment, run it on a Kaggle kernel (or locally) and record a machine-checked CV;
+- diagnose the data (`kx diagnose`: adversarial validation, time, entities, leaks) so the CV
+  scheme mirrors how test differs from train;
+- scaffold an experiment from its parent with a pre-registered prediction, run it on a Kaggle
+  kernel (or locally), record a machine-checked CV and compare it with the parent fold by fold;
 - write a verdict to a git-backed ledger, then submit (after the user confirms) and read the
-  leaderboard back.
+  leaderboard back; a CV-vs-LB rank inversion makes the validation status suspect.
 
 This file is for working ON the skill. Users install it with
 `git clone … ~/.claude/skills/kaggle-exp && uv sync --project ~/.claude/skills/kaggle-exp`.
@@ -15,7 +18,7 @@ This file is for working ON the skill. Users install it with
 | Path | What |
 |---|---|
 | `SKILL.md` | The skill the agent loads. Keep it ≤150 lines (a test enforces this); detail goes in `references/`. |
-| `references/kx-reference.md` | Envelope, every command and flag, `experiment.json` keys, the `kx-preds/1` format. |
+| `references/kx-reference.md` | Envelope, every command and flag, `experiment.json` keys, the parent comparison, `kx-facts/1`, the validation status, the custom harness API, the `kx-preds/1` format. |
 | `references/types/*.md` | One guide per competition type: tabular, timeseries, deep-learning, code-competition, simulation, writeup, custom (bring-your-own), other (mode unknown). |
 | `src/kx/cli.py` | Argument parsing and dispatch. Stdout is guarded so the JSON envelope is the only output. |
 | `src/kx/envelope.py` | `{kx, command, status, summary, data, warnings, errors, next_action}` |
@@ -33,8 +36,9 @@ This file is for working ON the skill. Users install it with
 ## Commands
 
 ```
-uv sync --extra local                      # dev env (kx + local ML stack)
-uv run pytest -q                           # offline suite (~1 min); live tests excluded
+uv sync --extra local                      # dev env (kx + local ML stack); without it the
+                                           # template tests fail at import (numpy)
+uv run pytest -q                           # offline suite (~2 min); live tests excluded
 uv run --with torch pytest tests/test_deep_template.py   # deep template (needs torch)
 uv run pytest -q -m live                   # real Kaggle profile checks (needs a credential)
 uvx ruff check src tests                   # lint (config in pyproject.toml)

@@ -1,4 +1,4 @@
-"""kx env: each run's environment next to this machine's (RUN-07).
+"""kx env: each run's environment next to this machine's.
 
 Kernel runs record the Docker image digest (read back from Kaggle) and the key
 library versions the script saw (kx_manifest.json). Local versions come from the

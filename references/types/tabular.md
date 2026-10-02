@@ -4,7 +4,8 @@ Template: `tabular` (`train.py`, a CPU script kernel by default).
 
 ## The AI block
 
-- `assign_folds(train, y)` **is** the CV scheme. Mirror how test differs from train:
+- `assign_folds(train, y)` **is** the CV scheme. Mirror how test differs from train, as
+  `kx diagnose` measured it (`control/facts.json` findings):
   - iid rows: `StratifiedKFold` for classification, `KFold` for regression;
   - repeated entities (users, patients, stores): `GroupKFold` / `StratifiedGroupKFold` on the entity;
   - time-ordered data: use the `timeseries` template instead (`--template timeseries`) and
@@ -28,6 +29,12 @@ Python 3.13-only syntax. `kx_manifest.json` records the versions of every run.
 
 ## Discipline
 
-- One idea per experiment, so the CV delta is attributable.
-- Compare against the fold std: a gain smaller than it is noise until repeated.
-- Submit only when CV beats the best submitted CV (`kx submit` checks this).
+- One idea per experiment, so the CV delta is attributable. `kx new` starts from the
+  parent's AI block and folds: change only what the idea changes.
+- Pre-register the effect (`--expect`), then read kx's paired comparison
+  (`data.vs_parent`): `inconclusive` is not an improvement, however good the mean looks.
+  A small effect needs more folds to confirm: rerun the parent's model on more folds
+  (`kx new --cv-check --parent exp-NNN --folds 10 …`), then build the child from that run
+  (children inherit its folds), rather than repeating a run.
+- Submit only when CV beats the best submitted CV on the same folds (`kx submit` checks
+  this).

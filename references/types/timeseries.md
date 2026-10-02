@@ -6,6 +6,9 @@ Template: `timeseries` — pick it with
 
 ## Walk-forward CV
 
+`kx diagnose` reports `test_after_train` when the test period follows train: that is the
+signal to use this template (and the reason to cite: `--evidence facts:time.0.relation`).
+
 - `assign_folds(train, y, test)` returns N consecutive validation windows at the end of
   train, in time order; earlier rows are `-1` (train-only). The harness trains fold k on
   every row **before** window k (expanding window) and asserts it, so the CV never sees
@@ -25,5 +28,7 @@ Template: `timeseries` — pick it with
 For RMSLE fit `log1p(y)` (the default wraps the model in `TransformedTargetRegressor`) and
 clip predictions at 0 in `postprocess_submission`.
 
-Live reference: store-sales-time-series-forecasting, calendar-only LightGBM, 3 × 16-day
-windows → RMSLE 0.837 ± 0.018 (no lags yet: the obvious next idea).
+Live reference (store-sales-time-series-forecasting, 3 × 16-day windows): calendar-only
+LightGBM → RMSLE 0.837 ± 0.018; adding 16/21/28-day sales lags per store and family →
+0.446 ± 0.033, better on 3/3 paired folds. A shuffled-KFold run on the same data was
+"not comparable: CV scheme changed", as it should be.

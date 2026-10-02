@@ -2,12 +2,14 @@
 name: kaggle-exp
 description: >-
   Run a Kaggle competition as a CV-first experiment loop from any folder: validate the
-  Kaggle credential, profile the competition from Kaggle's API, scaffold an experiment,
-  run it on a Kaggle kernel (or locally), record a machine-checked CV score and a written
-  verdict in a git-backed ledger, regenerate the strategy, submit once the user confirms, pull
-  research from discussions and public notebooks, and blend experiments. Keywords:
-  Kaggle, competition, experiment, kernel, CV, cross-validation, OOF, submit,
-  leaderboard, ensemble, research.
+  Kaggle credential, profile the competition from Kaggle's API, diagnose how test differs
+  from train (adversarial validation, time, entities, leaks), scaffold an experiment from its
+  parent with a pre-registered prediction, run it on a Kaggle kernel (or locally), record a
+  machine-checked CV score compared fold by fold with the parent and a written verdict in a
+  git-backed ledger, regenerate the strategy, submit once the user confirms, pull research
+  from discussions and public notebooks, and blend experiments. Keywords: Kaggle,
+  competition, experiment, kernel, CV, cross-validation, validation, adversarial validation,
+  OOF, submit, leaderboard, ensemble, research.
 when_to_use: >-
   The user wants to work on a Kaggle competition: start a workspace, run or compare
   experiments, check CV vs leaderboard, submit, research what works, or blend models.
@@ -101,7 +103,7 @@ record the decision: `kx validation ok --note "…" [--scheme exp-NNN]`.
 ## Submitting (only after the user says yes)
 
 `kx submit exp-NNN` validates the candidate (file, columns, rows, daily slots left, CV vs
-the best submitted CV) and returns `status: needs_user` with `data.confirmation` (what
+the best submitted CV on the same folds) and returns `status: needs_user` with `data.confirmation` (what
 will be submitted, CV, slots left, the message) and a one-time `next_action.then`
 (`kx submit exp-NNN --confirm <token>`). Ask the user with every confirmation line shown,
 yes or no (AskUserQuestion when available). **Run the `then` command only on an explicit
@@ -122,12 +124,13 @@ have reached Kaggle.
 - `kx research metric` — finds the host's metric kernel; after the user confirms it
   matches, `kx research metric --use-metric owner/slug` makes CV use its `score()`.
 - `kx ensemble exp-A exp-B …` — blends saved OOF predictions (hill climbing or optimized
-  weights) into a new recorded experiment with its own CV.
+  weights) into a new recorded experiment with its own CV, compared with its best member.
 
 ## Guardrails
 
 - The profile is evidence, not truth: the user confirms it before it drives anything.
-- CV is the decision metric. The leaderboard observes; it never overrides CV.
+- CV is the decision metric. The leaderboard observes; it never overrides CV, but a CV-vs-LB
+  rank inversion makes validation suspect: diagnose before trusting CV comparisons again.
 - Kernels run private with internet off. Turn it on (`runtime.internet: true`) only to
   fetch what is not on Kaggle, e.g. pretrained weights: fine for csv_upload competitions and
   a code competition's training stage; a code competition's submitted stage must stay off

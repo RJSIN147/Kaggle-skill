@@ -6,7 +6,7 @@
 [project]
 name = "kaggle-exp"
 version = "0.4.0"
-description = "Kaggle competition experiment loop for Claude Code: one kx CLI, kernel-first runs, a git-backed ledger."
+description = "Kaggle competition research loop for Claude Code: one kx CLI, kernel-first runs, validation diagnosis, fold-paired comparisons, a git-backed ledger."
 requires-python = ">=3.11"
 dependencies = [
     # Exact pin: every Kaggle call kx makes was verified live against 2.2.3.

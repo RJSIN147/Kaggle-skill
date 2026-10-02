@@ -3,10 +3,11 @@
 A Claude Code skill that runs a Kaggle competition as a CV-first experiment loop. Point
 Claude at an empty folder and a competition. It:
 1. profiles the competition from Kaggle's API;
-2. runs each idea on a Kaggle kernel (or locally) and records a machine-checked CV score with
-   a written verdict;
-3. keeps a git-backed ledger and a living strategy;
-4. submits only when you say yes.
+2. diagnoses the data (how test differs from train) so the CV split mirrors it;
+3. runs each idea on a Kaggle kernel (or locally) and records a machine-checked CV score,
+   compared fold by fold with the experiment it builds on, plus a written verdict;
+4. keeps a git-backed ledger and a living strategy;
+5. submits only when you say yes.
 
 Everything goes through one CLI, `kx`. Each command prints one JSON object whose
 `next_action` tells the AI what to do next.
@@ -46,12 +47,13 @@ kx init → kx sync <comp> → kx confirm → kx metric → kx diagnose → kx n
     kx compares it with its parent fold by fold (a corrected paired t-test) and records
     whether the prediction held, so `strategy.md` shows how well-calibrated the agent is.
   - A validation status turns suspect on a strong train/test shift or when CV and the
-    leaderboard rank submissions differently. kx warns and steers to a diagnosis or a
-    CV-scheme check; you record the decision.
+    leaderboard rank submissions differently. kx warns (it never blocks) and steers to a
+    diagnosis or a CV-scheme check; the decision is recorded with a note, and adopting a CV
+    scheme makes kx rank experiments only against others on the same folds.
 - **Submissions need your yes.** `kx submit` checks a candidate:
   - the file or kernel version, and its shape;
   - the daily slots left;
-  - whether its CV beats your best submission.
+  - whether its CV beats your best submission on the same CV folds.
 
   It then shows you exactly what would be submitted. Only after you confirm does it submit,
   once, and `kx lb` reads the score back next to CV with a divergence alarm.
@@ -59,7 +61,7 @@ kx init → kx sync <comp> → kx confirm → kx metric → kx diagnose → kx n
   weights only where the rules allow it.
 - **Research and blending.** `kx research` turns top discussions, public notebooks and the
   host's metric into untrusted, summarized notes. `kx ensemble` blends out-of-fold
-  predictions into a new experiment.
+  predictions into a new experiment and compares it with its best member.
 
 ## Install
 
@@ -89,6 +91,7 @@ titanic", or run `/kaggle-exp`. Claude handles the rest. A few steps are yours:
 ## Development
 
 ```
+uv sync --extra local                                     # once: kx + the local ML stack
 uv run pytest -q                                          # offline suite, no Kaggle calls
 uv run --with torch pytest tests/test_deep_template.py    # deep template (needs torch)
 uv run pytest -q -m live                                  # real Kaggle profile checks only

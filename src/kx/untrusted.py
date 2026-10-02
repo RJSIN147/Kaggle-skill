@@ -1,11 +1,10 @@
-"""untrusted.py — the untrusted-content fence writer (D-01 / D-02).
+"""untrusted.py — the untrusted-content fence writer.
 
-Kaggle competition prose is INGESTED into ``competition.md`` (via
-``kx sync`` / ``kx research``) and re-read into agent context on every experiment
-cycle from Phase 3 onward (D-01). A payload embedded there is not read once — it
-is re-read forever, as trusted project doc. So verbatim Kaggle text kept in the
-doc is quarantined inside ``<untrusted-content …>`` fences, and — because a fence
-is only a convention — the ONE mechanical, unit-testable guarantee lives here:
+``kx research`` (and ``kx submit --writeup``) write Kaggle pages, discussions and
+notebook code into ``research/cache/`` for the agent to read and summarize. Any of
+that text can carry instructions, so verbatim Kaggle text is quarantined inside
+``<untrusted-content …>`` fences, and — because a fence is only a convention — the
+ONE mechanical, unit-testable guarantee lives here:
 
   ``escape_markers(text)`` neutralises ANY ``untrusted-content`` fence lookalike in
   the ingested text (case / tag / whitespace / attribute variants), so the fence
@@ -13,14 +12,14 @@ is only a convention — the ONE mechanical, unit-testable guarantee lives here:
   the ``<`` that opens a lookalike with an inert fullwidth sentinel; every other
   byte — real URLs, an RMSLE code fence, imperative prose — is left intact.
   Aggressive sanitization (stripping URLs / code fences / imperative lines) was
-  considered and REJECTED (D-02): it mangles legitimate content and creates a
-  redaction ruleset to maintain.
+  considered and rejected: it mangles legitimate content and creates a redaction
+  ruleset to maintain.
 
 What this HONESTLY does NOT claim (state it plainly, do not oversell): it cannot
 stop the model from *reading* an instruction. It stops that instruction from
-breaking the fence — and the no-derived-execution invariant in
-``kx sync`` / ``kx research`` stops it reaching an executor. Wrapping is a signal,
-not a sandbox.
+breaking the fence — and kx never executes fetched content (the one exception is a
+host metric kernel the user explicitly adopted, sha256-pinned), so it cannot reach an
+executor. Wrapping is a signal, not a sandbox.
 
 Portability: stdlib-only, importable, no side effects on import.
 """
@@ -30,8 +29,8 @@ from __future__ import annotations
 import re
 
 # Case-insensitive open OR close fence lookalike: a '<', an optional '/', optional
-# whitespace, then the literal marker word. ``content`` is HTML (VERIFIED-LIVE,
-# RESEARCH §Pitfall 5), so tag-adjacent and whitespace variants must all match.
+# whitespace, then the literal marker word. Kaggle ``content`` is HTML (verified live),
+# so tag-adjacent and whitespace variants must all match.
 _FENCE = re.compile(r"</?\s*untrusted-content", re.IGNORECASE)
 
 # Inert fullwidth '<' (U+FF1C). Visible to a human reader, but NOT a real '<', so a
@@ -49,13 +48,13 @@ def escape_markers(text: str) -> str:
     Replaces only the leading ``<`` of each real/partial ``<untrusted-content …>``
     or ``</untrusted-content>`` (any case / whitespace) with the inert fullwidth
     sentinel, so no interior lookalike can open or close the fence. All other
-    content is returned byte-for-byte (no aggressive sanitization — D-02).
+    content is returned byte-for-byte (no aggressive sanitization).
     """
     return _FENCE.sub(lambda m: m.group(0).replace("<", _SENTINEL, 1), text)
 
 
 def wrap_untrusted(source: str, retrieved: str, text: str) -> str:
-    """Fence ``text`` as untrusted content with source attribution (D-01).
+    """Fence ``text`` as untrusted content with source attribution.
 
     Escapes fence lookalikes FIRST (:func:`escape_markers`), then wraps the result
     in ``<untrusted-content source="…" retrieved="…">`` … ``</untrusted-content>``

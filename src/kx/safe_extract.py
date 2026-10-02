@@ -1,6 +1,6 @@
-"""safe_extract.py — zip-slip-protected extraction (reject-and-raise) for COMP-03.
+"""safe_extract.py — zip-slip-protected extraction (reject-and-raise) for competition data.
 
-CLI 2.2.3's ``competitions download`` has NO ``--unzip`` flag (VERIFIED-LIVE) — it
+CLI 2.2.3's ``competitions download`` has NO ``--unzip`` flag (verified live) — it
 pulls a single ``<slug>.zip`` whose members are attacker-controllable — so
 ``kx.data`` MUST extract manually. stdlib ``zipfile`` has NO ``filter=``
 parameter (only ``tarfile`` gained PEP 706's ``data_filter`` in 3.12) and its
@@ -11,7 +11,7 @@ and impossible to assert refusal against.
 This module instead REJECTS every zip-slip vector with a raised
 :class:`UnsafeArchiveMember`, and validates EVERY member BEFORE extracting
 anything — so a malicious archive leaves the filesystem untouched (nothing is
-written outside ``dest``; T-02-PATH-01). ``shutil.unpack_archive`` is deliberately
+written outside ``dest``). ``shutil.unpack_archive`` is deliberately
 NOT used: it has no per-member reject hook, so it cannot make refusal observable.
 
 Portability + safety: stdlib-only (``os``, ``stat``, ``zipfile``), self-locating,
