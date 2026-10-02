@@ -112,7 +112,7 @@ def body(ws: Path) -> str:
                      "this scheme only).")
     notes = [h for h in v["history"] if h.get("note")]
     if notes:
-        lines += ["", "Decisions:"] + [f"- {h['at']}: {h['note']}" for h in notes[-5:]]
+        lines += ["", "History:"] + [f"- {h['at']}: {h['note']}" for h in notes[-5:]]
     if v["status"] == "unchecked":
         lines.append("_Not checked yet: run `kx diagnose`._")
     return "\n".join(lines)

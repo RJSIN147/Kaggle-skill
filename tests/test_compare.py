@@ -134,3 +134,20 @@ def test_strategy_shows_lineage_and_calibration(ready_ws, fake):
     text = (ready_ws / "strategy.md").read_text()
     assert f"(from {exp1})" in text and "vs parent: worse" in text
     assert "Pre-registered predictions: 0 of 1 matched." in text
+
+
+def test_a_rerun_refreshes_only_the_kx_section_of_the_verdict(ready_ws, fake):
+    _record(ready_ws, fake, "base", (0.80, 0.81))
+    exp2, d2, _ = _record(ready_ws, fake, "better", (0.84, 0.85))
+    v = d2 / "VERDICT.md"
+    v.write_text(v.read_text().replace("_TODO: what was tried this cycle._", "my prose")
+                 .replace("prediction matched", "prediction STALE"))
+    fake.outputs = make_outputs(scores=(0.70, 0.71))
+    fake.statuses = ["COMPLETE"]
+    fake.kernel_meta["current_version_number"] = 2
+    fake.push_response = {"version_number": 2, "error": None}
+    env = kx(ready_ws, fake, "run", exp2, "--rerun", "--wait", "5")
+    assert env["data"]["prediction"] == "missed"
+    text = v.read_text()
+    assert "my prose" in text and "prediction missed" in text and "STALE" not in text
+    assert text.count("## Recorded by kx") == 1
