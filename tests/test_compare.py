@@ -155,7 +155,8 @@ def test_a_rerun_refreshes_only_the_kx_section_of_the_verdict(ready_ws, fake):
 
 def test_a_child_starts_from_its_parents_template_and_ai_block(ready_ws, fake):
     exp1, d1, _ = _record(ready_ws, fake, "walk-forward", (0.80, 0.81), "--template",
-                          "timeseries", "--template-reason", "time-ordered", "--parent", "none")
+                          "timeseries", "--template-reason", "time-ordered", "--parent", "none",
+                          "--folds", "3", "--limit", "999", "--dataset", "alice/extra")
     code = (d1 / "train.py").read_text().replace("def make_model(seed: int):",
                                                  "# parent marker\ndef make_model(seed: int):")
     (d1 / "train.py").write_text(code)
@@ -166,6 +167,14 @@ def test_a_child_starts_from_its_parents_template_and_ai_block(ready_ws, fake):
     d2 = ready_ws / "experiments" / env["data"]["exp_id"]
     assert "# parent marker" in (d2 / "train.py").read_text()
     assert "change only what this idea changes" in env["next_action"]["instruction"]
+    spec = json.loads((d2 / "experiment.json").read_text())
+    assert spec["cv"]["n_folds"] == 3 and spec["runtime"]["limit_s"] == 999
+    assert spec["sources"]["datasets"] == ["alice/extra"]
+    env = kx(ready_ws, fake, "new", "--idea", "more folds", "--hypothesis", "h", "--expect",
+             "same", "--folds", "4")
+    spec = json.loads((ready_ws / "experiments" / env["data"]["exp_id"] / "experiment.json")
+                      .read_text())
+    assert spec["cv"]["n_folds"] == 4
     env = kx(ready_ws, fake, "new", "--idea", "fresh", "--hypothesis", "h", "--parent", "none")
     assert env["data"]["template"] == "tabular" and env["data"]["ai_block_from"] is None
 

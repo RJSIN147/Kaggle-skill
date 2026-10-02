@@ -80,7 +80,7 @@ def build_parser() -> KxParser:
     s.add_argument("--hypothesis")
     s.add_argument("--template")
     s.add_argument("--template-reason")
-    s.add_argument("--folds", type=int, default=5)
+    s.add_argument("--folds", type=int, help="CV folds (default: the parent's, else 5)")
     s.add_argument("--accelerator")
     s.add_argument("--limit", type=int, help="kernel runtime limit in seconds")
     s.add_argument("--local", action="store_true", help="run on this machine instead of a kernel")
