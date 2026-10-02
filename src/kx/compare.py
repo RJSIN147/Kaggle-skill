@@ -133,14 +133,17 @@ def versus_parent(ws: Path, meta: dict) -> dict | None:
 def prediction_outcome(expected: dict | None, vs: dict | None) -> str | None:
     """The pre-registered direction against the paired comparison:
     matched     the comparison shows the predicted direction (or no change, for "same");
-    missed      it shows a change the prediction ruled out;
+    missed      it shows a change the prediction ruled out, or exactly no change (identical
+                folds) when a change was predicted;
     unresolved  a change was predicted but the comparison is inconclusive;
     None        nothing to judge (no prediction, or not comparable)."""
     if not expected or not vs or not vs.get("comparable"):
         return None
     want, label = expected.get("direction"), vs["label"]
-    if label in ("inconclusive", "identical"):
+    if label == "inconclusive":
         return "matched" if want == "same" else "unresolved"
+    if label == "identical":
+        return "matched" if want == "same" else "missed"
     return "matched" if want == label else "missed"
 
 
