@@ -71,7 +71,8 @@ When unsure where you are: `kx status`.
 6. `kx new --idea "…" --hypothesis "…" --expect better|worse|same` — kx picks the parent
    (the current best; `--parent exp-NNN|none` to change it) and starts from its template and
    AI block, so you change one thing and keep its folds. `--expect` is
-   your **pre-registered prediction** vs the parent, committed before the run. Cite facts
+   your **pre-registered prediction** vs the parent, committed before the run (the first
+   model has no parent: leave `--expect` out). Cite facts
    with `--evidence facts:<path>` / `exp-NNN:<key>` (kx reads the value; never type it).
    Read `data.tried` first and **never repeat an idea** already in it. To override the
    template: `--template <name> --template-reason "<why>"`.
