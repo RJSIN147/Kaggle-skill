@@ -84,6 +84,54 @@ def _scorer(metric_cfg: dict, classes):
     return score
 
 
+def _class_order(values) -> list[str]:
+    """Distinct target values in the harness's class order (numeric when they all are)."""
+    vals = sorted(set(values))
+    try:
+        return sorted(vals, key=float)
+    except ValueError:
+        return vals
+
+
+def _write_submission(src: Path, out_dir: Path, test, n_test: int, classes, targets,
+                      ptype: str | None) -> str | None:
+    """The blend's submission in the source member's shape. Returns a warning when the
+    shape cannot be mapped (nothing is written then), else None."""
+    import numpy as np
+
+    none = "no submission file written for the blend: "
+    if src.suffix != ".csv" or not src.exists():
+        return none + f"the member's submission {src.name} is not a CSV kx can reshape"
+    with src.open(newline="") as fh:
+        rows = list(csv.reader(fh))
+    header, body = rows[0], rows[1:]
+    if len(body) != n_test:
+        return none + f"{src.name} has {len(body)} rows, the test predictions {n_test}"
+    k = test.shape[1]
+    labels = [str(c) for c in classes] if classes else _class_order(targets)
+    if len(header) == 2:
+        def value(p):
+            if k == 1 and ptype == "label":
+                return labels[-1] if p[0] >= 0.5 else labels[0]
+            if k > 1:  # one target column: the most likely class
+                return labels[int(np.argmax(p))]
+            return repr(float(p[0]))
+    elif k > 1 and sorted(header[1:]) == sorted(labels):
+        order = [labels.index(c) for c in header[1:]]
+
+        def value(p):
+            return [repr(float(p[i])) for i in order]
+    else:
+        return none + f"cannot map {k} prediction column(s) onto the header {header}"
+    with (out_dir / src.name).open("w", newline="") as fh:
+        w = csv.writer(fh)
+        w.writerow(header)
+        for r, p in zip(body, test):
+            v = value(p)
+            w.writerow([r[0], *(v if isinstance(v, list) else [v])])
+    return None
+
+
 def cmd_ensemble(ws: Path, args, adapter) -> dict:
     import numpy as np
 
@@ -178,24 +226,9 @@ def cmd_ensemble(ws: Path, args, adapter) -> dict:
             w.writerow([rid, *[repr(float(v)) for v in test[i]]])
     sub_src = ws / "experiments" / args.exp_ids[0] / "output" / \
         (base["res"].get("submission_file") or "submission.csv")
-    if sub_src.suffix == ".csv" and sub_src.exists():
-        with sub_src.open(newline="") as fh:
-            src = list(csv.reader(fh))
-        header, body = src[0], src[1:]
-        ptype = metric_cfg.get("prediction_type") or REGISTRY[metric_cfg["name"]]["prediction_type"]
-        if len(body) == len(base["test_ids"]) and len(header) == 2:
-            labels = sorted({r[1] for r in body})
-            with (d / "output" / sub_src.name).open("w", newline="") as fh:
-                w = csv.writer(fh)
-                w.writerow(header)
-                for r, p in zip(body, test):
-                    if ptype == "label" and len(p) == 1:
-                        val = labels[-1] if p[0] >= 0.5 else labels[0]
-                    elif ptype == "label":
-                        val = classes[int(np.argmax(p))]
-                    else:
-                        val = repr(float(p[0]))
-                    w.writerow([r[0], val])
+    ptype = metric_cfg.get("prediction_type") or REGISTRY[metric_cfg["name"]]["prediction_type"]
+    sub_warning = _write_submission(sub_src, d / "output", test, len(base["test_ids"]), classes,
+                                    base["target"], ptype)
     blend = {"method": args.method, "members": dict(zip(args.exp_ids, map(float, weights)))}
     (d / "blend.json").write_text(json.dumps(blend, indent=2) + "\n")
     result = {"exp_id": exp_id, "metric": metric_cfg["name"], "n_folds": len(fold_scores),
@@ -204,6 +237,7 @@ def cmd_ensemble(ws: Path, args, adapter) -> dict:
               "predictions": dict(base["res"]["predictions"], oof="oof.csv", test="test_preds.csv",
                                   n_oof=len(base["ids"]), n_test=len(base["test_ids"])),
               "blend": blend,
+              "submission_file": None if sub_warning else sub_src.name,
               "sample_columns": base["res"].get("sample_columns"),
               "sample_rows": base["res"].get("sample_rows")}
     (d / "output" / "result.json").write_text(json.dumps(result, indent=2))
@@ -229,7 +263,7 @@ def cmd_ensemble(ws: Path, args, adapter) -> dict:
                   data={"exp_id": exp_id, "result": meta["status"], "cv_mean": meta["cv_mean"],
                         "weights": blend["members"], "fold_scores": meta["fold_scores"],
                         "vs_parent": meta.get("vs_parent"), "prediction": meta.get("prediction")},
-                  warnings=warns,
+                  warnings=warns + ([sub_warning] if sub_warning else []),
                   next_action=E.edit(f"Write experiments/{exp_id}/VERDICT.md (kx compared the "
                                      f"blend with its best member {best_member} fold by fold: "
                                      "read data.vs_parent) and a reasoning.md.",

@@ -371,3 +371,50 @@ def test_ensemble_blends_into_a_recorded_experiment(tmp_path, token_home):
     assert env2["data"]["result"] == "SUCCESS"
     row = json.loads((ws / "control/ledger.jsonl").read_text().splitlines()[-1])
     assert row["idea"].startswith("weights blend of")
+
+
+@pytest.mark.parametrize("metric,display", [("logloss", "Multiclass Loss"),
+                                            ("accuracy", "Categorization Accuracy")])
+def test_multiclass_blend_writes_the_members_submission_shape(tmp_path, token_home, metric,
+                                                              display):
+    pytest.importorskip("lightgbm")
+    import numpy as np
+    import pandas as pd
+    from test_templates_local import _fill, _raw, _ws
+    rng = np.random.default_rng(1)
+    n, m = 300, 50
+    tr = pd.DataFrame({"id": range(n), "a": rng.normal(size=n), "b": rng.normal(size=n)})
+    tr["label"] = np.where(tr.a > 0.5, "x", np.where(tr.b > 0, "y", "z"))
+    te = pd.DataFrame({"id": range(n, n + m), "a": rng.normal(size=m), "b": rng.normal(size=m)})
+    frames = {"train.csv": tr, "test.csv": te,
+              "sample_submission.csv": pd.DataFrame({"id": te.id, "label": "x"})}
+    raw = _raw("multi", display, ["sample_submission.csv", "train.csv", "test.csv"])
+    ws, fake = _ws(tmp_path, token_home, raw, metric, frames)
+    exps = []
+    for i in range(2):
+        exp = kx(ws, fake, "new", "--idea", f"m{i}", "--hypothesis", "h", "--local",
+                 "--expect", "better")["data"]["exp_id"]
+        _fill(ws, exp)
+        p = ws / "experiments" / exp / "train.py"
+        p.write_text(p.read_text().replace("n_estimators=400", f"n_estimators={30 + 200 * i}"))
+        assert kx(ws, fake, "run", exp)["data"]["result"] == "SUCCESS"
+        exps.append(exp)
+    member = pd.read_csv(ws / "experiments" / exps[0] / "output/submission.csv")
+    env = kx(ws, fake, "ensemble", *exps)
+    assert env["data"]["result"] == "SUCCESS" and not env["warnings"], env
+    d = ws / "experiments" / env["data"]["exp_id"]
+    sub = pd.read_csv(d / "output/submission.csv")
+    assert list(sub.columns) == list(member.columns) and len(sub) == m
+    if metric == "logloss":
+        assert list(sub.columns) == ["id", "x", "y", "z"]
+        assert np.allclose(sub[["x", "y", "z"]].sum(axis=1), 1, atol=1e-6)
+    else:
+        assert set(sub["label"]) <= {"x", "y", "z"}
+    assert json.loads((d / "output/result.json").read_text())["submission_file"] == "submission.csv"
+    # a shape kx cannot map: warn, write nothing
+    member.rename(columns={"x": "other"}).to_csv(
+        ws / "experiments" / exps[0] / "output/submission.csv", index=False)
+    if metric == "logloss":
+        env = kx(ws, fake, "ensemble", *exps)
+        assert any("no submission file written" in w for w in env["warnings"])
+        assert not (ws / "experiments" / env["data"]["exp_id"] / "output/submission.csv").exists()
