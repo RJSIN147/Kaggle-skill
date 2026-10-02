@@ -63,8 +63,9 @@ When unsure where you are: `kx status`.
 5. `kx metric <key>` — confirm the suggested metric key matches the evaluation metric.
    Then `kx diagnose` + `kx run exp-NNN`: data facts, adversarial validation, time, entity
    and leak checks. Its `findings` decide the CV scheme; they land in `control/facts.json`.
-6. `kx new --idea "…" --hypothesis "…" --expect better|worse|same` — kx picks the template
-   and the parent (the current best; `--parent exp-NNN|none` to change it). `--expect` is
+6. `kx new --idea "…" --hypothesis "…" --expect better|worse|same` — kx picks the parent
+   (the current best; `--parent exp-NNN|none` to change it) and starts from its template and
+   AI block, so you change one thing and keep its folds. `--expect` is
    your **pre-registered prediction** vs the parent, committed before the run. Cite facts
    with `--evidence facts:<path>` / `exp-NNN:<key>` (kx reads the value; never type it).
    Read `data.tried` first and **never repeat an idea** already in it. To override the

@@ -328,13 +328,20 @@ def cmd_metric(ws: Path, args, adapter) -> dict:
 # --------------------------------------------------------------------------- #
 # new
 # --------------------------------------------------------------------------- #
+# Templates whose AI block a child can start from (they carry AI BLOCK markers).
+INHERITABLE = ("tabular", "timeseries", "deep", "custom")
+
+
 def _pick_parent(ws: Path, args, metric_cfg: dict | None) -> tuple[str | None, str]:
     """(parent exp id or None, why): --parent, else the --after upstream, else the best run."""
     want = getattr(args, "parent", None)
     if want:
         if want.lower() == "none":
             return None, "--parent none: a fresh baseline"
-        workspace.exp_dir(ws, want)  # refuses a bad or missing id
+        d = workspace.exp_dir(ws, want)  # refuses a bad or missing id
+        if read_json(d / "experiment.json").get("kind") == "diagnostic":
+            raise KxError("invalid", f"{want} is a diagnostic, not a model to build on",
+                          errors=["bad_parent"])
         return want, "--parent"
     if args.after:
         return args.after[0], "the --after upstream"
@@ -405,6 +412,15 @@ def cmd_new(ws: Path, args, adapter) -> dict:
             raise KxError("invalid", f"{cv_check_of} ({up.get('template')}) has no CV scheme "
                           "to re-check", errors=["bad_cv_check"])
         picked, why = up["template"], f"CV-scheme check of {cv_check_of}"
+    inherit_from = None
+    if not (args.after or cv_check_of or args.template):
+        parent_id, _ = _pick_parent(ws, args, _metric_cfg(ws))
+        if parent_id:
+            p_t = read_json(ws / "experiments" / parent_id / "experiment.json").get("template")
+            if p_t in INHERITABLE and effective(profile).get("submission_mode") in \
+                    templates_registry.TEMPLATES[p_t]["modes"]:
+                picked, why = p_t, f"the template of parent {parent_id}"
+                inherit_from = parent_id
     name = args.template or picked
     reason = why
     if args.template and args.template != picked:
@@ -487,6 +503,10 @@ def cmd_new(ws: Path, args, adapter) -> dict:
                 spec["sources"][key].append(v)
     code = templates_registry.render(name, spec, profile | {"effective": eff, "_ws": ws}, metric_cfg)
     carry = args.after[0] if _is_stage(name, spec) else cv_check_of
+    if carry is None and parent and name in INHERITABLE:
+        p_spec = read_json(ws / "experiments" / parent / "experiment.json")
+        if p_spec.get("template") == name:
+            carry = inherit_from = parent  # start from the parent's code: change one thing
     if carry:
         # An inference stage must rebuild the upstream's exact model, and a CV-scheme check
         # must rerun the parent's exact model: carry its AI block over.
@@ -512,6 +532,12 @@ def cmd_new(ws: Path, args, adapter) -> dict:
                    f"idea and replace <TODO> in experiments/{exp_id}/experiment.json "
                    "cv.reasoning with why this CV scheme mirrors the train/test split. Do not "
                    "repeat an idea in data.tried.")
+    if inherit_from and not cv_check_of:
+        instruction = (f"The AI BLOCK of experiments/{exp_id}/{spec['code_file']} starts as "
+                       f"{inherit_from}'s: change only what this idea changes, and replace <TODO> "
+                       f"in experiments/{exp_id}/experiment.json cv.reasoning (keep "
+                       f"{inherit_from}'s folds to get a paired comparison). Do not repeat an "
+                       "idea in data.tried.")
     if cv_check_of:
         instruction = (f"The AI BLOCK of experiments/{exp_id}/{spec['code_file']} is "
                        f"{cv_check_of}'s. Change ONLY assign_folds to the CV scheme under test "
@@ -520,7 +546,7 @@ def cmd_new(ws: Path, args, adapter) -> dict:
         "new", "ok", f"scaffolded {exp_id} from the {name} template",
         data={"exp_id": exp_id, "template": name, "template_reason": reason,
               "parent": parent, "parent_reason": parent_reason, "expected_effect": expected,
-              "evidence": evidence,
+              "evidence": evidence, "ai_block_from": carry,
               "files": [f"experiments/{exp_id}/experiment.json",
                         f"experiments/{exp_id}/{spec['code_file']}"],
               "tried": tried},
