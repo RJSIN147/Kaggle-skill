@@ -221,10 +221,11 @@ def cmd_sync(ws: Path, args, adapter) -> dict:
     else:
         na = E.run("kx status")
     if not comp.get("user_has_entered"):
-        warnings.append(f"not joined: the nested file listing, kernel data mounts, downloads and "
-                        f"submissions need the user to accept the rules at "
+        warnings.append(f"not joined: the nested file listing, downloads and submissions need "
+                        f"the user to accept the rules at "
                         f"https://www.kaggle.com/competitions/{profile['slug']}/rules, then "
-                        f"re-run kx sync")
+                        f"re-run kx sync. Kernel data mounts may need it too (kx run says so "
+                        f"if Kaggle refuses)")
     return E.make("sync", "ok",
                   f"profiled {profile['canonical_ref']}: {eff['submission_mode']}, {eff['modality']}",
                   data={"profile": _profile_summary(profile), "download": download},
