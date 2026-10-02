@@ -12,9 +12,9 @@ Everything goes through one CLI, `kx`. Each command prints one JSON object whose
 `next_action` tells the AI what to do next.
 
 ```
-kx init → kx sync <comp> → kx confirm → kx metric → kx new → kx run → kx strategy ─┐
-                                                     ↑___________________________│
-                              kx submit (you confirm) → kx lb (score read back)  ←┘
+kx init → kx sync <comp> → kx confirm → kx metric → kx diagnose → kx new → kx run → kx strategy ─┐
+                                                                    ↑___________________________│
+                                             kx submit (you confirm) → kx lb (score read back)  ←┘
 ```
 
 ## What it handles
@@ -26,6 +26,7 @@ kx init → kx sync <comp> → kx confirm → kx metric → kx new → kx run �
 | Code competitions (incl. API-served `kaggle_evaluation`) | Train on a GPU, then an internet-off inference stage that Kaggle reruns on the hidden test set |
 | Simulations (e.g. ConnectX) | A single-file agent, self-play validated locally; the ladder rating and W/L/D are read back from replays |
 | Writeups | A checklist from the evaluation criteria; you submit it on the website |
+| Anything else (segmentation, detection, LLMs, audio, ARC-style tasks, artifacts) | A bring-your-own-pipeline template whose harness only enforces the output contract |
 
 ## Design choices
 
@@ -37,6 +38,16 @@ kx init → kx sync <comp> → kx confirm → kx metric → kx new → kx run �
   - `experiments/*/meta.json` is the source of truth;
   - `control/ledger.jsonl` is rebuilt from it;
   - `strategy.md` is regenerated each cycle.
+- **A research loop, not just a run loop.**
+  - `kx diagnose` checks the data before any model: adversarial validation (can a model tell
+    train from test?), time order, repeating entities and single-feature leaks. Its findings
+    set the CV scheme, and hypotheses cite its facts with values kx reads, never typed ones.
+  - Every experiment has a parent and a pre-registered prediction (better / worse / same).
+    kx compares it with its parent fold by fold (a corrected paired t-test) and records
+    whether the prediction held, so `strategy.md` shows how well-calibrated the agent is.
+  - A validation status turns suspect on a strong train/test shift or when CV and the
+    leaderboard rank submissions differently. kx warns and steers to a diagnosis or a
+    CV-scheme check; you record the decision.
 - **Submissions need your yes.** `kx submit` checks a candidate:
   - the file or kernel version, and its shape;
   - the daily slots left;

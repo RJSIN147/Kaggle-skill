@@ -22,8 +22,9 @@ import re
 import statistics
 import uuid
 from pathlib import Path
+from string import Template
 
-from kx import preds
+from kx import compare, preds
 from kx.ledger import rebuild_ledger_file
 from kx.metrics import REGISTRY
 from kx.util import utc_now, write_json
@@ -43,6 +44,8 @@ KERNEL_ERROR_MARKERS = (
 REQUIRED_RESULT_KEYS = ("metric", "n_folds", "fold_scores", "cv_mean", "cv_std")
 DEFAULT_SEED = 42
 TRACEBACK_TAIL_LINES = 40
+# The kx-written section of VERDICT.md, up to the next heading.
+_KX_SECTION = re.compile(r"(## Recorded by kx\n\n).*?\n\n(?=## )", re.S)
 
 
 def _is_number(v) -> bool:
@@ -133,8 +136,9 @@ def _read_json(path: Path):
 
 
 def classify(run: dict, output_dir: Path, log_text: str | None, metric_cfg: dict,
-             require_predictions: bool = True):
-    """(status, failure_reason, valid_result) by the ladder above."""
+             require_predictions: bool = True, kind: str = "experiment"):
+    """(status, failure_reason, valid_result) by the ladder above. A diagnostic's result
+    rung is its facts.json (diagnose.read_facts) instead of result.json."""
     backend = run.get("backend", "kernel")
     st = run.get("status")
     if backend == "kernel":
@@ -151,6 +155,11 @@ def classify(run: dict, output_dir: Path, log_text: str | None, metric_cfg: dict
             return "FAILED", "kernel_error", None
         if log_text is not None and scan_log(log_text):
             return "FAILED", "kernel_error", None
+    if kind == "diagnostic":
+        from kx import diagnose
+
+        _, reason, result = diagnose.read_facts(output_dir)
+        return ("FAILED", reason, None) if reason else ("SUCCESS", None, result)
     result, err = _read_json(output_dir / "result.json")
     if err:
         return "FAILED", err, None
@@ -173,7 +182,7 @@ def record(ws: Path, exp_dir: Path, spec: dict, run: dict, metric_cfg: dict,
     rel = f"experiments/{exp_dir.name}"
     output_dir = exp_dir / "output"
     status, reason, result = classify(run, output_dir, log_text, metric_cfg,
-                                      require_predictions)
+                                      require_predictions, spec.get("kind") or "experiment")
 
     code = exp_dir / spec.get("code_file", "train.py")
     artifact_hash = "sha256:" + hashlib.sha256(code.read_bytes()).hexdigest() if code.is_file() \
@@ -187,8 +196,12 @@ def record(ws: Path, exp_dir: Path, spec: dict, run: dict, metric_cfg: dict,
         "exp_id": spec.get("exp_id") or exp_dir.name,
         "created": spec.get("created"),
         "recorded": utc_now(),
+        "kind": spec.get("kind") or "experiment",
+        "parent": spec.get("parent"),
         "idea": spec.get("idea"),
         "hypothesis": spec.get("hypothesis"),
+        "expected_effect": spec.get("expected_effect"),
+        "evidence": spec.get("evidence"),
         "template": spec.get("template"),
         "cv_reasoning": (spec.get("cv") or {}).get("reasoning"),
         "runtime": spec.get("runtime"),
@@ -222,8 +235,9 @@ def record(ws: Path, exp_dir: Path, spec: dict, run: dict, metric_cfg: dict,
     raw, _ = _read_json(output_dir / "result.json")
     if reason == "runtime_limit" and isinstance(raw, dict) and raw.get("incomplete") is True \
             and run.get("status") == "COMPLETE":
-        meta["resumable"] = True
         meta["stopped_at"] = raw.get("stopped_at")
+        # --resume mounts the kernel's own previous output; a local run has none
+        meta["resumable"] = run.get("backend", "kernel") == "kernel"
     if run.get("backend", "kernel") == "kernel":
         meta["kernel"] = {k: run.get(k) for k in (
             "kernel_ref", "kernel_version", "accelerator", "enable_internet", "is_private",
@@ -238,6 +252,13 @@ def record(ws: Path, exp_dir: Path, spec: dict, run: dict, metric_cfg: dict,
             "agent_eval": {k: result[k] for k in ("validation", "opponents") if k in result}
             or None,
         })
+        oof = (result.get("predictions") or {}).get("oof")
+        meta["fold_hash"] = compare.fold_hash(output_dir / oof) if oof else None
+        if meta["kind"] == "diagnostic":
+            from kx import diagnose
+
+            facts, _, _ = diagnose.read_facts(output_dir)
+            meta["findings"] = diagnose.findings(facts)
     else:
         partial = sorted(p.name for p in output_dir.iterdir()) if output_dir.is_dir() else []
         detail = {"partial_outputs": partial}
@@ -251,9 +272,18 @@ def record(ws: Path, exp_dir: Path, spec: dict, run: dict, metric_cfg: dict,
             detail["log"] = run["log_file"]
         meta["failure_detail"] = detail
 
+    meta["vs_parent"] = compare.versus_parent(ws, meta)
+    meta["prediction"] = compare.prediction_outcome(meta.get("expected_effect"),
+                                                    meta["vs_parent"])
     write_json(exp_dir / "meta.json", meta)
     verdict = exp_dir / "VERDICT.md"
+    block = compare.verdict_block(meta)
     if not verdict.exists():
-        verdict.write_text(verdict_stub)
+        verdict.write_text(Template(verdict_stub).safe_substitute(comparison=block))
+    else:  # a rerun: refresh only the kx-owned section, keep the AI's prose
+        text = verdict.read_text()
+        fresh = _KX_SECTION.sub(lambda m: m.group(1) + block + "\n\n", text, count=1)
+        if fresh != text:
+            verdict.write_text(fresh)
     _, warnings = rebuild_ledger_file(ws)
     return meta, warnings

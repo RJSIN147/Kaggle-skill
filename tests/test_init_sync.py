@@ -166,11 +166,13 @@ def test_confirm_requires_note_and_a_known_mode(tmp_path, token_home):
     assert env["status"] == "invalid" and env["errors"] == ["mode_unknown"]
     assert kx(ws, fake, "confirm", "--mode", "artifact_upload")["errors"] == ["note_required"]
     env = kx(ws, fake, "confirm", "--mode", "artifact_upload", "--note", "Evaluation page: LoRA")
-    assert env["status"] == "ok" and env["data"]["template"] is None
+    assert env["status"] == "ok" and env["data"]["template"] == "custom"
+    assert env["data"]["type_guides"] == ["references/types/custom.md"]
     prof = json.loads((ws / "control/profile.json").read_text())
     assert prof["confirmed"]["overrides"] == {"submission_mode": "artifact_upload"}
     env = kx(ws, fake, "new", "--idea", "x", "--hypothesis", "y")
-    assert env["status"] == "invalid" and env["errors"] == ["no_template"]
+    assert env["status"] == "invalid" and env["errors"] == ["metric_unset"]  # unknown metric
+    assert kx(ws, fake, "submit", "exp-001")["errors"] == ["no_submission_path"]
 
 
 def test_resync_keeps_confirmation_when_facts_unchanged(ready_ws, fake):
@@ -189,7 +191,9 @@ def test_status_walks_the_loop(tmp_path, token_home, fake):
     kx(ws, fake, "confirm", "--note", "ok")
     assert kx(ws, fake, "status")["next_action"]["command"] == "kx metric accuracy"
     kx(ws, fake, "metric", "accuracy")
-    assert kx(ws, fake, "status")["next_action"]["command"].startswith("kx new")
+    env = kx(ws, fake, "status")
+    assert env["next_action"]["command"] == "kx diagnose"  # validation unchecked
+    assert env["data"]["validation"] == "unchecked"
 
 
 def test_fixture_competitions_carry_no_prose():
