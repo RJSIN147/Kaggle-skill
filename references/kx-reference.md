@@ -67,9 +67,13 @@ No `<TODO>` anywhere (and no `KX_TODO` stub left in the code file); unknown keys
 When a run and its parent assign every row to the same fold (`fold_hash`: sha256 of the
 sorted `(row_id, fold)` pairs of `oof.csv`), kx compares them per fold: deltas oriented so
 + = better, a paired t with the Nadeau-Bengio correction (se = sd·√(1/k + 1/(k−1))) against
-the two-sided 95 % t value → `better` / `worse` / `inconclusive` (`identical` when every
-delta is equal). Otherwise `vs_parent` says why not (CV scheme changed, parent FAILED,
-another metric or subsample, no predictions). The prediction is then `matched`, `missed` (a change it ruled out, or identical folds when a change was predicted) or `unresolved` (a change was predicted, the comparison is inconclusive).
+the two-sided 95 % t value → `better` / `worse` / `inconclusive`. When every delta is the
+same, there is no spread to test: all zero is `identical`, otherwise the sign decides.
+Otherwise `vs_parent` says why there is no comparison (CV scheme changed, parent not
+recorded or FAILED, another metric or subsample, no out-of-fold predictions, or an
+inference stage that carries its upstream's CV). The prediction is then `matched`, `missed`
+(a change it ruled out, or identical folds when a change was predicted) or `unresolved` (a
+change was predicted, the comparison is inconclusive).
 All of it is in `meta.json`, the ledger row, the `kx run` envelope, the VERDICT stub and
 `strategy.md` (with a calibration line). It is informational: it gates nothing.
 
@@ -82,18 +86,22 @@ overlap), `duplicates`, `single_feature` (one-feature target AUC or |Spearman|) 
 `adversarial` (LightGBM train-vs-test: `fold_aucs`, `auc_mean`, `top_features`; `skipped`
 with a reason when test has < 200 rows). The recorder fails it closed like a result.json;
 the recorded CV is the adversarial AUC (`adv_auc`, lower is better). kx derives `findings`
-(high: adversarial AUC ≥ 0.70, test after train, unseen entities, a single-feature leak ≥
-0.98; medium: AUC ≥ 0.60, ≥ 1 % test rows in train) and publishes `control/facts.json`.
+(high: adversarial AUC ≥ 0.70, test after train, an entity column whose values cover
+< 50 % of test rows, a single-feature leak ≥ 0.98; medium: AUC ≥ 0.60, ≥ 1 % of test rows
+duplicated in train) and publishes `control/facts.json`.
 A diagnostic is never a parent, a blend member or a submission candidate.
 
 ## Validation status
 
 `control/state.json → validation`: `unchecked` → `ok` / `suspect`. Suspect after a diagnose
-with a high finding or a CV-vs-LB rank inversion (`kx lb`); ok after a clean diagnose or
-`kx validation ok`. Warn-only: `kx new` / `run` / `strategy` / `lb` warn, `kx submit` adds a
-WARNING confirmation line, `kx status` steers to a diagnosis or a `--cv-check`. With a
-reference scheme, the current best is ranked within it and the submit CV bar compares only
-runs on the same folds.
+with a high finding or a CV-vs-LB rank inversion (`kx lb`, once per inverted set). A clean
+diagnose makes it `ok` unless the suspicion came from the leaderboard; `kx validation ok
+--note` always does, and the event it acknowledges never re-opens it. Warn-only: `kx new` /
+`run` / `strategy` / `lb` warn, `kx submit` adds a WARNING confirmation line, `kx status`
+steers to a diagnosis or a `--cv-check`. With a reference scheme (`--scheme`), the current
+best and the default parent are ranked within it. The submit CV bar always compares only
+runs on the candidate's folds (runs recorded before 0.4, without a fold hash, count as the
+same).
 
 ## custom template
 
@@ -101,7 +109,8 @@ runs on the same folds.
 `IS_RERUN`, `time_left()`, `model_dirs()`, `upstream_dir()`, `previous_output()`,
 `report(fold_scores, **extra)` (once, `N_FOLDS` finite scores; kx computes mean/std),
 `report_upstream()`, `write_preds(oof_rows, test_rows, classes)` (optional kx-preds/1),
-`stop_incomplete(stopped_at)`. The run fails unless `report()` ran (not on a rerun) and
+`stop_incomplete(stopped_at)` (resumable with `kx run --resume` on a kernel; a local run is
+recorded FAILED runtime_limit). The run fails unless `report()` ran (not on a rerun) and
 `EXPECTED_OUTPUT` exists in `OUT`. See `types/custom.md`.
 
 ## kx-preds/1
