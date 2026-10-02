@@ -104,3 +104,32 @@ def test_console_script_is_declared():
     text = (REPO_ROOT / "pyproject.toml").read_text()
     assert 'kx = "kx.cli:main"' in text
     assert '"kaggle==2.2.3"' in text
+
+
+def test_every_documented_flag_exists_on_its_parser():
+    """A `kx <command> --flag` written in a doc must be a real flag of that command."""
+    import re
+
+    from conftest import REPO_ROOT
+
+    from kx.cli import build_parser
+
+    sub = next(a for a in build_parser()._actions
+               if a.__class__.__name__ == "_SubParsersAction")
+    flags = {n: {o for a in sp._actions for o in a.option_strings} for n, sp in sub.choices.items()}
+    docs = [REPO_ROOT / "SKILL.md", REPO_ROOT / "README.md", REPO_ROOT / "CLAUDE.md",
+            *sorted((REPO_ROOT / "references").rglob("*.md"))]
+    missing, seen = [], 0
+    for doc in docs:
+        for n, line in enumerate(doc.read_text().splitlines(), 1):
+            for m in re.finditer(r"\bkx ([a-z]+)([^`|]*)", line):
+                cmd = m.group(1)
+                if cmd not in flags:  # prose ("kx refuses ..."), not a command
+                    continue
+                for f in re.findall(r"(?<![\w-])(--[a-z][a-z-]*)", m.group(2)):
+                    seen += 1
+                    if f not in flags[cmd]:
+                        missing.append(f"{doc.name}:{n}: kx {cmd} {f}")
+    assert seen > 30 and missing == [], missing
+    for f in ("--parent", "--expect", "--expect-delta", "--cv-check", "--evidence"):
+        assert f in flags["new"], f

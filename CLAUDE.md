@@ -30,6 +30,9 @@ This file is for working ON the skill. Users install it with
 | `src/kx/kernel.py`, `record.py`, `pipeline.py` | Push and read back, bounded poll, pull, the fail-closed recorder, upstream chaining. |
 | `src/kx/submit.py`, `subs.py`, `lb_gap.py` | Propose, then confirm and submit, read back, and the CV→LB gap with its divergence alarm. |
 | `src/kx/research.py`, `ensemble.py`, `local.py`, `agent_eval.py` | Research ingestion, OOF blending, local runs, the simulation-agent evaluator. |
+| `src/kx/experiment.py`, `templates_registry.py`, `workspace.py` | `experiment.json` schema and validation, template selection and rendering, the workspace layout and scaffold. |
+| `src/kx/ledger.py`, `strategy.py`, `preds.py` | The ledger rebuilt from `meta.json`, `strategy.md` rendering, the `kx-preds/1` validator. |
+| `src/kx/credentials.py`, `leak_scan.py`, `untrusted.py`, `safe_extract.py`, `data.py`, `envinfo.py`, `util.py` | Masked credential discovery, the pre-commit leak hook, untrusted-text fences, zip-slip-safe extraction, data downloads, `kx env`, shared helpers. |
 | `src/kx/templates/` | tabular, timeseries, deep (also deep-infer), inference, agent, custom (bring-your-own, stdlib harness), diagnose; `common/paths.py.tmpl` (stdlib path resolvers, used by all) + `common/harness.py.tmpl` (pandas helpers). |
 | `tests/` | Offline suite with a `FakeAdapter` (`conftest.py`); `tests/live/` holds the opt-in real-Kaggle checks. |
 
