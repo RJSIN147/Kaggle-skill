@@ -101,6 +101,16 @@ def build_parser() -> KxParser:
     s.add_argument("--evidence", action="append", help="a fact this hypothesis rests on, read "
                    "by kx: facts:<path>, exp-NNN:<key> or idea:<n> (repeatable)")
 
+    s.add_argument("--cv-check", action="store_true",
+                   help="rerun the parent's model under a different CV scheme (copies its AI "
+                        "block; change only assign_folds)")
+
+    s = sub.add_parser("validation", help="show the validation status, or record that CV can "
+                                          "be trusted (warn-only)")
+    s.add_argument("action", nargs="?", default="show", choices=("show", "ok"))
+    s.add_argument("--note", help="ok: why CV can be trusted now")
+    s.add_argument("--scheme", help="ok: adopt this experiment's folds as the reference CV scheme")
+
     s = sub.add_parser("diagnose", help="scaffold a diagnostic: data facts, adversarial "
                                         "validation, leak checks")
     s.add_argument("--limit", type=int, help="kernel runtime limit in seconds")
@@ -159,7 +169,7 @@ def dispatch(argv, ws: Path, adapter) -> dict:
     if not args.command:
         return E.make("help", "ok", "kx usage", data={"usage": parser.format_help()},
                       next_action=E.run("kx status"))
-    from kx import commands, diagnose, ensemble, envinfo, research, submit
+    from kx import commands, diagnose, ensemble, envinfo, research, submit, validation
 
     handlers = {
         "init": commands.cmd_init, "status": commands.cmd_status, "sync": commands.cmd_sync,
@@ -168,6 +178,7 @@ def dispatch(argv, ws: Path, adapter) -> dict:
         "submit": submit.cmd_submit, "lb": submit.cmd_lb,
         "research": research.cmd_research, "ensemble": ensemble.cmd_ensemble,
         "env": envinfo.cmd_env, "diagnose": diagnose.cmd_diagnose,
+        "validation": validation.cmd_validation,
     }
     try:
         return handlers[args.command](ws, args, adapter)

@@ -112,6 +112,7 @@ def test_iid_data_is_clean_and_facts_are_published(tmp_path, token_home):
     exp, env = _run_diagnose(ws, fake)
     assert env["data"]["cv_mean"] < diagnose.ADV_MEDIUM
     assert not [f for f in env["data"]["findings"] if f["severity"] == "high"]
+    assert env["data"]["validation"] == "ok"
     facts = json.loads((ws / "control" / "facts.json").read_text())
     assert facts["from"] == exp and facts["n_train"] == 3000 and facts["target"]["column"] == "y"
     assert facts["adversarial"]["status"] == "ok" and "id" not in facts["columns"]
@@ -132,6 +133,10 @@ def test_shift_leak_and_unseen_entities_are_found(tmp_path, token_home):
     _, env = _run_diagnose(ws, fake)
     codes = {f["code"] for f in env["data"]["findings"] if f["severity"] == "high"}
     assert {"adversarial_shift", "single_feature_leak", "unseen_entities"} <= codes
+    assert env["data"]["validation"] == "suspect"
+    assert any("SUSPECT" in w for w in env["warnings"])
+    env = kx(ws, fake, "new", "--idea", "x", "--hypothesis", "h", "--local")
+    assert env["status"] == "ok" and any("SUSPECT" in w for w in env["warnings"])
     facts = json.loads((ws / "control" / "facts.json").read_text())
     assert facts["adversarial"]["top_features"][0]["column"] == "a"
     assert facts["single_feature"][0]["column"] == "leak"

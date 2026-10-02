@@ -189,7 +189,9 @@ def test_status_walks_the_loop(tmp_path, token_home, fake):
     kx(ws, fake, "confirm", "--note", "ok")
     assert kx(ws, fake, "status")["next_action"]["command"] == "kx metric accuracy"
     kx(ws, fake, "metric", "accuracy")
-    assert kx(ws, fake, "status")["next_action"]["command"].startswith("kx new")
+    env = kx(ws, fake, "status")
+    assert env["next_action"]["command"] == "kx diagnose"  # validation unchecked
+    assert env["data"]["validation"] == "unchecked"
 
 
 def test_fixture_competitions_carry_no_prose():
