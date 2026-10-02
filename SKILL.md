@@ -25,8 +25,8 @@ The current folder is the user's competition workspace. Everything goes through 
 uv run --project ${CLAUDE_SKILL_DIR} kx <command> [args]
 ```
 
-(First use in a session: `uv sync --project ${CLAUDE_SKILL_DIR}` installs kx and the pinned
-`kaggle` package.) Below, `kx …` means that full command.
+(First use in a session: `uv sync --project ${CLAUDE_SKILL_DIR} --inexact` installs kx and
+the pinned `kaggle` package; `--inexact` keeps the optional local ML stack if installed.) Below, `kx …` means that full command.
 
 ## The one rule
 
