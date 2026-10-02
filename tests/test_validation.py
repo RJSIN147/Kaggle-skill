@@ -72,6 +72,12 @@ def test_cv_check_copies_the_parent_model_and_is_not_compared(ready_ws, fake):
     assert "assign_folds" in env["next_action"]["instruction"]
     assert kx(ready_ws, fake, "new", "--cv-check", "--idea", "x", "--hypothesis", "h",
               "--template", "deep", "--template-reason", "r")["errors"] == ["bad_cv_check"]
+    # the documented way to resolve a small effect: the parent's model on more folds
+    env = kx(ready_ws, fake, "new", "--cv-check", "--parent", exp1, "--folds", "10",
+             "--idea", "more folds", "--hypothesis", "h")
+    d3 = ready_ws / "experiments" / env["data"]["exp_id"]
+    assert json.loads((d3 / "experiment.json").read_text())["cv"]["n_folds"] == 10
+    assert "# parent model marker" in (d3 / "train.py").read_text()
 
 
 def test_reference_scheme_ranks_best_within_it(ready_ws, fake):

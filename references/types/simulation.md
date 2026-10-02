@@ -3,6 +3,8 @@
 Template: `agent` — one file (`main.py`) whose **last top-level function** is
 `agent(observation, configuration)`. The default is a ConnectX heuristic.
 
+- The parent comparison does not apply: each agent's opponent pool includes the earlier
+  agents, so win rates are not paired. `--expect` is still recorded with the parent.
 - `kx run exp-NNN` runs locally in a **throwaway** environment
   (`uv run --no-project --with kaggle-environments`, ~117 packages, never installed into
   the skill): one self-play episode must end with every status `DONE` (Kaggle's own

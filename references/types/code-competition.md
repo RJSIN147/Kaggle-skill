@@ -15,6 +15,10 @@ set (internet off). kx prepares and verifies it, the user confirms, then kx subm
 A tabular training kernel that itself writes the expected file is also submittable (it
 retrains on the rerun); the two-stage split keeps the rerun fast.
 
+A `custom` training stage chains the same way: `--after` a custom upstream gives another
+custom stage that reads `upstream_dir()`, writes the expected file, skips training on
+`IS_RERUN` and calls `report_upstream()` (see `custom.md`).
+
 ## API-served (`api_served: true`, output `submission.parquet`)
 
 The inference template finds the host's `kaggle_evaluation/*_inference_server.py` inside the

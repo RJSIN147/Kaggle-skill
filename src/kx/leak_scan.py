@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""leak_scan.py — pre-commit credential-leak guard (SETUP-04, D-15).
+"""leak_scan.py — pre-commit credential-leak guard.
 
 Defense-in-depth companion to ``.gitignore``: a stdlib-only, portable pre-commit
 hook that scans **staged CONTENT** for Kaggle credential patterns and blocks the
 commit on a hit. It is both:
 
   * importable/runnable by ``tests/test_leak_scan.py`` (``python3 leak_scan.py``), and
-  * the hook body itself — ``init_workspace.py`` copies this file verbatim to
-    ``<workspace>/.githooks/pre-commit`` and wires it via
+  * the hook body itself — ``kx init`` (``workspace.scaffold``) copies this file verbatim
+    to ``<workspace>/.githooks/pre-commit`` and wires it via
     ``git config core.hooksPath .githooks`` (so the copied hook already contains
     the ``git show :<path>`` scan).
 
@@ -19,7 +19,7 @@ scan the full text. ``ACMR`` includes renames (matching the "renamed file"
 rationale above); the destination path is a real index entry, so ``git show``
 reads it.
 
-FAIL CLOSED (CR-01): this is the last automated secret defense for any file not
+FAIL CLOSED: this is the last automated secret defense for any file not
 covered by ``.gitignore``, so it must never treat its OWN failure as "clean":
 
   * paths are enumerated NUL-delimited with ``core.quotePath=false`` so a

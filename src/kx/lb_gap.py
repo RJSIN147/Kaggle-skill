@@ -1,17 +1,18 @@
-"""lb_gap.py — the CV→LB gap trend and the D-10 rank-inversion divergence alarm (SCORE-02).
+"""lb_gap.py — the CV→LB gap trend and the rank-inversion divergence alarm.
 
-A PURE, DERIVED view (D-11). `control/submissions.jsonl` (the canonical leaderboard record,
+A PURE, DERIVED view. `control/submissions.jsonl` (the canonical leaderboard record,
 owned by `kx.subs`) is joined against `control/ledger.jsonl` (the canonical CV record,
 owned by `kx.ledger`) on `exp_id`. The leaderboard score is NEVER written back into the
 experiment folder's recorded metadata — that folder is IMMUTABLE after record, and a copy of the
 LB score there would be a second source of truth to keep in sync. Deriving the view instead also
 handles MANY SUBMISSIONS PER EXPERIMENT for free, which a single per-experiment field cannot.
 
-CV REMAINS THE DECISION METRIC (SCORE-02). Nothing here selects, ranks or endorses an experiment:
+CV REMAINS THE DECISION METRIC. Nothing here selects, ranks or endorses an experiment:
 the gap is OBSERVED and TRENDED, and the alarm tells the user when CV has stopped being
-trustworthy. No LB number is ever allowed to override a CV-based decision.
+trustworthy. No LB number is ever allowed to override a CV-based decision. `kx lb` hands the
+inversions to `kx.validation`, which marks the validation status suspect (warn-only).
 
-WHY RANK INVERSION AND NOT AN |CV − LB| THRESHOLD (D-10):
+WHY RANK INVERSION AND NOT AN |CV − LB| THRESHOLD:
     A large but STABLE offset between CV and LB is usually benign — different data, different
     split. What actually breaks a competition run is CV ORDERING ceasing to predict LB ordering:
     experiment B has the better CV, yet scores WORSE on the leaderboard. That is the moment CV
@@ -65,7 +66,7 @@ def _fmt(value) -> str:
 
 
 def join_cv_lb(sub_rows, ledger_rows) -> list[dict]:
-    """The DERIVED CV↔LB view: one dict per SCORED submission that has a matching CV (D-11).
+    """The DERIVED CV↔LB view: one dict per SCORED submission that has a matching CV.
 
     Emits `{exp_id, cv_mean, cv_std, lb_score, gap, kaggle_ref, scored_at}` with
     `gap = lb_score - cv_mean`, ordered by `scored_at` (falling back to `submitted_at`) ASCENDING
@@ -132,7 +133,7 @@ def to_pairs(joined) -> list[tuple]:
 
 
 def rank_inversions(pairs, greater_is_better: bool) -> list[tuple]:
-    """Every (CV-better, LB-worse) pair — the D-10 alarm. `[]` means CV still predicts LB.
+    """Every (CV-better, LB-worse) pair — the alarm. `[]` means CV still predicts LB.
 
     `pairs` is `[(exp_id, cv_mean, lb_score)]`, SCORED submissions only. For each unordered pair
     an INVERSION exists when CV says one experiment wins and the LEADERBOARD says the other does.
@@ -140,7 +141,7 @@ def rank_inversions(pairs, greater_is_better: bool) -> list[tuple]:
     (cv, lb) of the LB-winner)` so the renderer can name the actual numbers rather than assert a
     conclusion.
 
-    ⚠ THE COMPARED SCORES TRAVEL WITH THE INVERSION (WR-08). They are returned, not left to be
+    ⚠ THE COMPARED SCORES TRAVEL WITH THE INVERSION. They are returned, not left to be
     LOOKED UP AGAIN by `exp_id`, because `exp_id` IS NOT UNIQUE HERE: `join_cv_lb` emits one row
     per SCORED SUBMISSION, so a RE-SUBMITTED experiment appears more than once with different
     leaderboard scores. `alarm_body` used to rebuild a `{exp_id: (cv, lb)}` dict — last write
@@ -200,7 +201,7 @@ def alarm_body(pairs, greater_is_better: bool) -> str:
       * >= 2 points, no inversion  → CV ordering still predicts LB ordering;
       * >= 2 points, an inversion  → the alarm, naming BOTH experiments and BOTH their numbers.
 
-    Every number on a line comes from the inversion tuple itself (WR-08) — the four scores that
+    Every number on a line comes from the inversion tuple itself — the four scores that
     were actually COMPARED. It is never re-looked-up by `exp_id`, which is not a unique key over
     scored submissions: a re-submitted experiment has several, with different leaderboard scores.
     """
