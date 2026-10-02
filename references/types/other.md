@@ -1,11 +1,12 @@
-# Competitions without a kx template
+# Competitions kx cannot classify
 
-Modes `artifact_upload` (e.g. a LoRA adapter packaged as `submission.zip`), `unknown`, and
-modalities kx has no template for (`structured`, e.g. ARC's JSON tasks).
+Mode `unknown`: kx found an evaluation metric but no sample submission and no simulation
+signal. Once you and the user agree the mode, confirm it; modes and modalities without a
+specialised template then use the bring-your-own `custom` template (`custom.md`), which
+scaffolds, runs and records any pipeline.
 
 kx still gives you: the confirmed profile, `kx research` (pages, discussions, public
-notebooks, the host metric kernel), the ledger, and the strategy doc. It cannot scaffold,
-run, or submit these for you.
+notebooks, the host metric kernel), the ledger, and the strategy doc.
 
 What to do:
 1. Read the Evaluation and submission pages (`kx research pages`, untrusted text) and the

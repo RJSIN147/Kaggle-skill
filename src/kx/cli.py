@@ -73,6 +73,7 @@ def build_parser() -> KxParser:
     s.add_argument("--direction", choices=("higher", "lower"))
     s.add_argument("--range", nargs=2, type=float, metavar=("LO", "HI"))
     s.add_argument("--prediction-type", choices=("proba", "label", "raw"))
+    s.add_argument("--label", help="display name for a custom metric (e.g. dice, map@5)")
 
     s = sub.add_parser("new", help="scaffold the next experiment")
     s.add_argument("--idea")

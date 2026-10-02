@@ -45,13 +45,14 @@ def best_row(rows: list[dict], greater_is_better: bool,
 
 
 def current_best_body(rows: list[dict], greater_is_better: bool,
-                      reference_hash: str | None = None) -> str:
+                      reference_hash: str | None = None, metric_label: str | None = None) -> str:
     best = best_row(rows, greater_is_better, reference_hash)
     if best is None:
         return "None yet."
     v = best.get("verdict_path") or ""
     return (f"**{best.get('exp_id')}** — {fmt_score(best.get('cv_mean'), best.get('cv_std'))} "
-            f"({best.get('metric') or '?'}) — idea: \"{best.get('idea') or '(none)'}\" — "
+            f"({metric_label or best.get('metric') or '?'}) — idea: "
+            f"\"{best.get('idea') or '(none)'}\" — "
             + (f"[verdict]({v})" if v else "(no verdict)"))
 
 
@@ -129,9 +130,9 @@ def research_body(ideas: list[dict]) -> str:
 
 def render(title: str, rows: list[dict], sub_rows: list[dict], ideas: list[dict],
            greater_is_better: bool, reasoning: str, validation_body: str | None = None,
-           reference_hash: str | None = None) -> str:
+           reference_hash: str | None = None, metric_label: str | None = None) -> str:
     digest = "\n".join(tried_lines(rows, reference_hash)) or "_No experiments recorded yet._"
-    best = current_best_body(rows, greater_is_better, reference_hash)
+    best = current_best_body(rows, greater_is_better, reference_hash, metric_label)
     calib = calibration_line(rows)
     if calib:
         best += f"\n\n{calib}"
@@ -148,6 +149,7 @@ def render(title: str, rows: list[dict], sub_rows: list[dict], ideas: list[dict]
 
 def write(ws: Path, title: str, rows, sub_rows, ideas, greater_is_better: bool,
           reasoning: str, validation_body: str | None = None,
-          reference_hash: str | None = None) -> None:
+          reference_hash: str | None = None, metric_label: str | None = None) -> None:
     atomic_write(ws / "strategy.md", render(title, rows, sub_rows, ideas, greater_is_better,
-                                            reasoning, validation_body, reference_hash))
+                                            reasoning, validation_body, reference_hash,
+                                            metric_label))

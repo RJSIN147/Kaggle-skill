@@ -22,6 +22,7 @@ TARGETS = ("kernel", "local")
 MAX_LIMIT_S = 12 * 3600  # Kaggle's 12 h session maximum
 
 HARNESS_MARKER = "# === KX HARNESS"
+AI_STUB = "KX_TODO"  # a template's unwritten AI block (custom); kx run refuses it
 
 TOP_KEYS = {"schema_version", "exp_id", "created", "idea", "hypothesis", "template",
             "template_reason", "runtime", "sources", "cv", "code_file", "harness_sha256",
@@ -213,6 +214,8 @@ def validate(spec, *, exp_dir: Path, profile: dict | None, templates: dict,
                 ast.parse(code)
             except SyntaxError as exc:
                 errs.append(f"{code_file} has a syntax error at line {exc.lineno}")
+            if AI_STUB in code:
+                errs.append(f"{code_file} still holds the {AI_STUB} stub: write the AI block")
             want = spec.get("harness_sha256")
             if want and harness_hash(code) != want:
                 errs.append(f"the KX HARNESS section of {code_file} was modified; only the AI "
