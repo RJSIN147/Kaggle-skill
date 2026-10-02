@@ -81,11 +81,13 @@ def type_guides(eff: dict) -> list[str]:
         return [base + "simulation.md"]
     if mode == "writeup":
         return [base + "writeup.md"]
+    if mode == "artifact_upload":
+        return [base + "custom.md"]
     if mode not in ("csv_upload", "code_kernel"):
         return [base + "other.md"]
     guides = [base + ("tabular.md" if modality == "tabular" else
                       "deep-learning.md" if modality in ("image", "text", "audio") else
-                      "other.md")]
+                      "custom.md")]
     if mode == "code_kernel":
         guides.append(base + "code-competition.md")
     return guides
@@ -303,8 +305,10 @@ def cmd_metric(ws: Path, args, adapter) -> dict:
     ptype = args.prediction_type or reg["prediction_type"] or "raw"
     cfg = workspace.load_config(ws)
     host = (cfg.get("metric") or {}).get("host_metric")
+    label = (getattr(args, "label", None) or "").strip() or None
     cfg["metric"] = {"name": name, "greater_is_better": gib, "prediction_type": ptype,
                      **({"host_metric": host} if host else {}),
+                     **({"label": label} if label else {}),
                      "range": [None if lo == float("-inf") else lo,
                                None if hi == float("inf") else hi],
                      "set_at": utc_now()}
@@ -316,7 +320,8 @@ def cmd_metric(ws: Path, args, adapter) -> dict:
         na = E.run("kx diagnose", "Before the first experiment: check how test differs from "
                                   "train (adversarial validation, time, entities, leaks) so the "
                                   "CV scheme mirrors it.")
-    return E.make("metric", "ok", f"metric set to {name} ({'higher' if gib else 'lower'} is better)",
+    shown = f"{name} ({label})" if label else name
+    return E.make("metric", "ok", f"metric set to {shown} ({'higher' if gib else 'lower'} is better)",
                   data={"metric": cfg["metric"]}, next_action=na)
 
 
@@ -342,11 +347,18 @@ def _pick_parent(ws: Path, args, metric_cfg: dict | None) -> tuple[str | None, s
     return None, "no recorded run yet: a baseline"
 
 
+def _is_stage(template: str, spec: dict) -> bool:
+    """A downstream stage that reads an upstream kernel's output (and inherits its CV)."""
+    ups = any(k.startswith("@") for k in (spec.get("sources") or {}).get("kernels") or [])
+    return template in ("deep-infer", "inference") or (template == "custom" and ups)
+
+
 def _expected_effect(args, parent: str | None, template: str) -> dict | None:
     """The pre-registered prediction; required whenever there is a parent to compare with."""
     direction = getattr(args, "expect", None)
     delta = getattr(args, "expect_delta", None)
-    if direction is None and parent and template in ("deep-infer", "inference"):
+    if direction is None and parent and (template in ("deep-infer", "inference") or
+                                         (template == "custom" and args.after)):
         direction = "same"  # an inference stage inherits its upstream's CV
     if direction is None and getattr(args, "cv_check", False):
         return None  # another CV scheme: the scores are not comparable fold by fold
@@ -377,6 +389,8 @@ def cmd_new(ws: Path, args, adapter) -> dict:
             picked, why = "deep-infer", f"inference stage for {args.after[0]} (deep)"
         elif up_t in ("tabular", "timeseries"):
             picked, why = "inference", f"inference stage for {args.after[0]} ({up_t})"
+        elif up_t == "custom":
+            picked, why = "custom", f"next stage of {args.after[0]} (custom)"
     cv_check_of = None
     if getattr(args, "cv_check", False):
         if args.after or args.template:
@@ -458,7 +472,7 @@ def cmd_new(ws: Path, args, adapter) -> dict:
         spec["local"] = {"subsample": args.subsample}
     if args.after:
         spec["sources"]["kernels"] = [f"@{a}" for a in args.after]
-        if name in ("deep-infer", "inference"):
+        if _is_stage(name, spec):
             up = read_json(ws / "experiments" / args.after[0] / "experiment.json")
             spec["cv"] = {"n_folds": up["cv"]["n_folds"],
                           "reasoning": f"inherits {args.after[0]}'s CV (its OOF predictions)"}
@@ -472,7 +486,7 @@ def cmd_new(ws: Path, args, adapter) -> dict:
             if v not in spec["sources"][key]:
                 spec["sources"][key].append(v)
     code = templates_registry.render(name, spec, profile | {"effective": eff, "_ws": ws}, metric_cfg)
-    carry = args.after[0] if name in ("deep-infer", "inference") else cv_check_of
+    carry = args.after[0] if _is_stage(name, spec) else cv_check_of
     if carry:
         # An inference stage must rebuild the upstream's exact model, and a CV-scheme check
         # must rerun the parent's exact model: carry its AI block over.
@@ -560,7 +574,7 @@ def _record_and_envelope(ws: Path, exp_dir: Path, spec: dict, run: dict, log_tex
              "subsample": meta.get("subsample"), "parent": meta.get("parent"),
              "vs_parent": meta.get("vs_parent"), "prediction": meta.get("prediction")}
     if meta["status"] == "SUCCESS":
-        summary = (f"{exp_id} recorded SUCCESS: {meta['metric']} "
+        summary = (f"{exp_id} recorded SUCCESS: {metric_cfg.get('label') or meta['metric']} "
                    f"{strategy.fmt_score(meta['cv_mean'], meta['cv_std'])} ({meta['n_folds']} folds)")
         line = compare.summary(meta.get("vs_parent"))
         if line:
@@ -673,7 +687,7 @@ def cmd_run(ws: Path, args, adapter) -> dict:
         _require_confirmed(profile)
         if templates_registry.TEMPLATES.get(spec["template"], {}).get("needs_metric", True):
             _require_metric(ws)
-        if spec["runtime"].get("internet") and spec.get("template") in ("inference", "deep-infer") \
+        if spec["runtime"].get("internet") and _is_stage(spec.get("template"), spec) \
                 and effective(profile).get("submission_mode") == "code_kernel":
             raise KxError("invalid", "this inference stage is what gets submitted, and code "
                           "competitions rerun it with internet off",
@@ -829,7 +843,8 @@ def cmd_strategy(ws: Path, args, adapter) -> dict:
 
     ref = validation.reference_hash(ws)
     strategy.write(ws, profile.get("canonical_ref") or profile.get("slug"), rows, sub_rows, ideas,
-                   bool(metric_cfg["greater_is_better"]), reasoning, validation.body(ws), ref)
+                   bool(metric_cfg["greater_is_better"]), reasoning, validation.body(ws), ref,
+                   metric_cfg.get("label"))
     state = workspace.load_state(ws)
     state["last_strategy"] = {"at": utc_now(), "n_experiments": len(rows),
                               "last_exp": rows[-1]["exp_id"] if rows else None}

@@ -166,11 +166,13 @@ def test_confirm_requires_note_and_a_known_mode(tmp_path, token_home):
     assert env["status"] == "invalid" and env["errors"] == ["mode_unknown"]
     assert kx(ws, fake, "confirm", "--mode", "artifact_upload")["errors"] == ["note_required"]
     env = kx(ws, fake, "confirm", "--mode", "artifact_upload", "--note", "Evaluation page: LoRA")
-    assert env["status"] == "ok" and env["data"]["template"] is None
+    assert env["status"] == "ok" and env["data"]["template"] == "custom"
+    assert env["data"]["type_guides"] == ["references/types/custom.md"]
     prof = json.loads((ws / "control/profile.json").read_text())
     assert prof["confirmed"]["overrides"] == {"submission_mode": "artifact_upload"}
     env = kx(ws, fake, "new", "--idea", "x", "--hypothesis", "y")
-    assert env["status"] == "invalid" and env["errors"] == ["no_template"]
+    assert env["status"] == "invalid" and env["errors"] == ["metric_unset"]  # unknown metric
+    assert kx(ws, fake, "submit", "exp-001")["errors"] == ["no_submission_path"]
 
 
 def test_resync_keeps_confirmation_when_facts_unchanged(ready_ws, fake):

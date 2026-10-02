@@ -3,6 +3,10 @@
 Template: `deep` (PyTorch, `train.py`, a T4 GPU script kernel by default). Keep GPU runs
 short: the 30 h/week quota is shared with the user's other work.
 
+`deep` is a per-row classification/regression loop over images or text. Segmentation,
+detection, generation, audio pipelines and anything else it cannot express use the
+bring-your-own `custom` template (`custom.md`): `--template custom --template-reason "…"`.
+
 ## The AI block
 
 - `MODE` (`"image"` / `"text"`), `EPOCHS`, `BATCH_SIZE`, `LR`, `NUM_WORKERS`.

@@ -1,0 +1,30 @@
+def _resolve_data_dir() -> Path:
+    """One resolver for kernel and local runs: KX_DATA_DIR (local), then the
+    current competitions mount (canonical case), then the legacy mounts."""
+    env = os.environ.get("KX_DATA_DIR")
+    candidates = [Path(env)] if env else []
+    candidates += [Path("/kaggle/input/competitions") / COMPETITION_REF,
+                   Path("/kaggle/input") / COMPETITION_REF,
+                   Path("/kaggle/input") / SLUG]
+    for p in candidates:
+        if p.is_dir():
+            return p
+    root = Path("/kaggle/input")
+    if root.is_dir():  # case-insensitive fallback: canonical refs carry capitals
+        for p in root.rglob(Path(SAMPLE_SUBMISSION).name):
+            if p.parent.name.lower() == SLUG.lower():
+                return p.parent
+    raise FileNotFoundError(f"competition data for {COMPETITION_REF} not found")
+
+
+def _output_dir() -> Path:
+    if os.environ.get("KX_OUTPUT_DIR"):
+        out = Path(os.environ.get("KX_OUTPUT_DIR"))
+    elif Path("/kaggle/working").is_dir():
+        out = Path("/kaggle/working")
+    else:
+        out = Path("output")
+    out.mkdir(parents=True, exist_ok=True)
+    return out
+
+
