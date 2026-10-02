@@ -110,7 +110,10 @@ def test_ideas_feed_strategy_and_new(ready_ws, fake):
      ["tabular.md", "code-competition.md"]),
     ({"submission_mode": "agent", "modality": "none"}, ["simulation.md"]),
     ({"submission_mode": "writeup", "modality": "none"}, ["writeup.md"]),
-    ({"submission_mode": "artifact_upload", "modality": "text"}, ["other.md"]),
+    ({"submission_mode": "artifact_upload", "modality": "text"}, ["custom.md"]),
+    ({"submission_mode": "code_kernel", "modality": "structured"},
+     ["custom.md", "code-competition.md"]),
+    ({"submission_mode": "unknown", "modality": "tabular"}, ["other.md"]),
 ])
 def test_type_guides_route_to_exactly_the_matching_guides(eff, guides):
     assert [g.rsplit("/", 1)[1] for g in type_guides(eff)] == guides
@@ -120,7 +123,7 @@ def test_every_routed_guide_exists_and_skill_is_lean():
     from conftest import REPO_ROOT
 
     for name in ("tabular", "timeseries", "deep-learning", "code-competition", "simulation",
-                 "writeup", "other"):
+                 "writeup", "other", "custom"):
         assert (REPO_ROOT / "references" / "types" / f"{name}.md").exists(), name
     assert len((REPO_ROOT / "SKILL.md").read_text().splitlines()) <= 150
 

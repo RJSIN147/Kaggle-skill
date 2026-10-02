@@ -73,13 +73,14 @@ def build_parser() -> KxParser:
     s.add_argument("--direction", choices=("higher", "lower"))
     s.add_argument("--range", nargs=2, type=float, metavar=("LO", "HI"))
     s.add_argument("--prediction-type", choices=("proba", "label", "raw"))
+    s.add_argument("--label", help="display name for a custom metric (e.g. dice, map@5)")
 
     s = sub.add_parser("new", help="scaffold the next experiment")
     s.add_argument("--idea")
     s.add_argument("--hypothesis")
     s.add_argument("--template")
     s.add_argument("--template-reason")
-    s.add_argument("--folds", type=int, default=5)
+    s.add_argument("--folds", type=int, help="CV folds (default: the parent's, else 5)")
     s.add_argument("--accelerator")
     s.add_argument("--limit", type=int, help="kernel runtime limit in seconds")
     s.add_argument("--local", action="store_true", help="run on this machine instead of a kernel")
@@ -91,6 +92,30 @@ def build_parser() -> KxParser:
                    "(owner/slug; repeatable)")
     s.add_argument("--after", action="append", help="upstream experiment whose kernel output "
                                                     "this one reads (repeatable)")
+    s.add_argument("--parent", help="the experiment this one changes (exp-NNN, or none); "
+                                    "default: the current best")
+    s.add_argument("--expect", choices=("better", "worse", "same"),
+                   help="pre-registered prediction vs the parent (required with a parent)")
+    s.add_argument("--expect-delta", type=float,
+                   help="predicted size of the change in the metric (+ = better)")
+
+    s.add_argument("--evidence", action="append", help="a fact this hypothesis rests on, read "
+                   "by kx: facts:<path>, exp-NNN:<key> or idea:<n> (repeatable)")
+
+    s.add_argument("--cv-check", action="store_true",
+                   help="rerun the parent's model under a different CV scheme (copies its AI "
+                        "block; change only assign_folds)")
+
+    s = sub.add_parser("validation", help="show the validation status, or record that CV can "
+                                          "be trusted (warn-only)")
+    s.add_argument("action", nargs="?", default="show", choices=("show", "ok"))
+    s.add_argument("--note", help="ok: why CV can be trusted now")
+    s.add_argument("--scheme", help="ok: adopt this experiment's folds as the reference CV scheme")
+
+    s = sub.add_parser("diagnose", help="scaffold a diagnostic: data facts, adversarial "
+                                        "validation, leak checks")
+    s.add_argument("--limit", type=int, help="kernel runtime limit in seconds")
+    s.add_argument("--local", action="store_true", help="run on this machine instead of a kernel")
 
     s = sub.add_parser("run", help="push, poll, pull and record an experiment")
     s.add_argument("exp_id")
@@ -145,7 +170,7 @@ def dispatch(argv, ws: Path, adapter) -> dict:
     if not args.command:
         return E.make("help", "ok", "kx usage", data={"usage": parser.format_help()},
                       next_action=E.run("kx status"))
-    from kx import commands, ensemble, envinfo, research, submit
+    from kx import commands, diagnose, ensemble, envinfo, research, submit, validation
 
     handlers = {
         "init": commands.cmd_init, "status": commands.cmd_status, "sync": commands.cmd_sync,
@@ -153,7 +178,8 @@ def dispatch(argv, ws: Path, adapter) -> dict:
         "run": commands.cmd_run, "strategy": commands.cmd_strategy,
         "submit": submit.cmd_submit, "lb": submit.cmd_lb,
         "research": research.cmd_research, "ensemble": ensemble.cmd_ensemble,
-        "env": envinfo.cmd_env,
+        "env": envinfo.cmd_env, "diagnose": diagnose.cmd_diagnose,
+        "validation": validation.cmd_validation,
     }
     try:
         return handlers[args.command](ws, args, adapter)

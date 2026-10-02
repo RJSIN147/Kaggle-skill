@@ -74,7 +74,10 @@ def run_agent_eval(ws: Path, exp_dir: Path, spec: dict, profile: dict, timeout: 
 
 def run_local(ws: Path, exp_dir: Path, spec: dict, profile: dict, timeout: float = 3000):
     """Run the experiment script locally. Returns (run record, log text)."""
-    missing = missing_ml_modules()
+    from kx.templates_registry import TEMPLATES
+
+    needs_stack = TEMPLATES.get(spec.get("template"), {}).get("ml_stack", True)
+    missing = missing_ml_modules() if needs_stack else []
     if missing:
         raise KxError("invalid", f"local runs need {', '.join(missing)} in the skill environment",
                       errors=["local_deps_missing"],

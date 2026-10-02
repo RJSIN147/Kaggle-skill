@@ -9,8 +9,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from kx import compare, experiment, kernel, metrics, record, strategy, templates_registry, workspace
 from kx import envelope as E
-from kx import experiment, kernel, metrics, record, strategy, templates_registry, workspace
 from kx.adapter import CredentialUnavailable
 from kx.credentials import NO_CREDENTIAL_INSTRUCTIONS, detect_source, permission_warnings
 from kx.ledger import read_ledger
@@ -55,7 +55,9 @@ def _verdict_pending(exp_dir: Path) -> bool:
 
 
 def _tried(ws: Path) -> list[str]:
-    return strategy.tried_lines(read_ledger(ws))
+    from kx import validation
+
+    return strategy.tried_lines(read_ledger(ws), validation.reference_hash(ws))
 
 
 def _profile_summary(profile: dict) -> dict:
@@ -79,11 +81,13 @@ def type_guides(eff: dict) -> list[str]:
         return [base + "simulation.md"]
     if mode == "writeup":
         return [base + "writeup.md"]
+    if mode == "artifact_upload":
+        return [base + "custom.md"]
     if mode not in ("csv_upload", "code_kernel"):
         return [base + "other.md"]
     guides = [base + ("tabular.md" if modality == "tabular" else
                       "deep-learning.md" if modality in ("image", "text", "audio") else
-                      "other.md")]
+                      "custom.md")]
     if mode == "code_kernel":
         guides.append(base + "code-competition.md")
     return guides
@@ -217,10 +221,11 @@ def cmd_sync(ws: Path, args, adapter) -> dict:
     else:
         na = E.run("kx status")
     if not comp.get("user_has_entered"):
-        warnings.append(f"not joined: the nested file listing, kernel data mounts, downloads and "
-                        f"submissions need the user to accept the rules at "
+        warnings.append(f"not joined: the nested file listing, downloads and submissions need "
+                        f"the user to accept the rules at "
                         f"https://www.kaggle.com/competitions/{profile['slug']}/rules, then "
-                        f"re-run kx sync")
+                        f"re-run kx sync. Kernel data mounts may need it too (kx run says so "
+                        f"if Kaggle refuses)")
     return E.make("sync", "ok",
                   f"profiled {profile['canonical_ref']}: {eff['submission_mode']}, {eff['modality']}",
                   data={"profile": _profile_summary(profile), "download": download},
@@ -301,20 +306,81 @@ def cmd_metric(ws: Path, args, adapter) -> dict:
     ptype = args.prediction_type or reg["prediction_type"] or "raw"
     cfg = workspace.load_config(ws)
     host = (cfg.get("metric") or {}).get("host_metric")
+    label = (getattr(args, "label", None) or "").strip() or None
     cfg["metric"] = {"name": name, "greater_is_better": gib, "prediction_type": ptype,
                      **({"host_metric": host} if host else {}),
+                     **({"label": label} if label else {}),
                      "range": [None if lo == float("-inf") else lo,
                                None if hi == float("inf") else hi],
                      "set_at": utc_now()}
     workspace.save_config(ws, cfg)
-    return E.make("metric", "ok", f"metric set to {name} ({'higher' if gib else 'lower'} is better)",
-                  data={"metric": cfg["metric"]},
-                  next_action=E.run("kx new --idea '...' --hypothesis '...'"))
+    na = E.run("kx new --idea '...' --hypothesis '...'")
+    from kx import diagnose
+
+    if not diagnose.has_diagnostic(ws) and all(diagnose.diagnosable(workspace.load_profile(ws))):
+        na = E.run("kx diagnose", "Before the first experiment: check how test differs from "
+                                  "train (adversarial validation, time, entities, leaks) so the "
+                                  "CV scheme mirrors it.")
+    shown = f"{name} ({label})" if label else name
+    return E.make("metric", "ok", f"metric set to {shown} ({'higher' if gib else 'lower'} is better)",
+                  data={"metric": cfg["metric"]}, next_action=na)
 
 
 # --------------------------------------------------------------------------- #
 # new
 # --------------------------------------------------------------------------- #
+# Templates whose AI block a child can start from (they carry AI BLOCK markers).
+INHERITABLE = ("tabular", "timeseries", "deep", "custom")
+
+
+def _pick_parent(ws: Path, args, metric_cfg: dict | None) -> tuple[str | None, str]:
+    """(parent exp id or None, why): --parent, else the --after upstream, else the best run."""
+    want = getattr(args, "parent", None)
+    if want:
+        if want.lower() == "none":
+            return None, "--parent none: a fresh baseline"
+        d = workspace.exp_dir(ws, want)  # refuses a bad or missing id
+        if read_json(d / "experiment.json").get("kind") == "diagnostic":
+            raise KxError("invalid", f"{want} is a diagnostic, not a model to build on",
+                          errors=["bad_parent"])
+        return want, "--parent"
+    if args.after:
+        return args.after[0], "the --after upstream"
+    from kx import validation
+
+    gib = bool((metric_cfg or {}).get("greater_is_better", True))
+    best = strategy.best_row(read_ledger(ws), gib, validation.reference_hash(ws))
+    if best:
+        return best["exp_id"], "default: the current best"
+    return None, "no recorded run yet: a baseline"
+
+
+def _is_stage(template: str, spec: dict) -> bool:
+    """A downstream stage that reads an upstream kernel's output (and inherits its CV)."""
+    ups = any(k.startswith("@") for k in (spec.get("sources") or {}).get("kernels") or [])
+    return template in ("deep-infer", "inference") or (template == "custom" and ups)
+
+
+def _expected_effect(args, parent: str | None, template: str) -> dict | None:
+    """The pre-registered prediction; required whenever there is a parent to compare with."""
+    direction = getattr(args, "expect", None)
+    delta = getattr(args, "expect_delta", None)
+    if direction is None and parent and (template in ("deep-infer", "inference") or
+                                         (template == "custom" and args.after)):
+        direction = "same"  # an inference stage inherits its upstream's CV
+    if direction is None and getattr(args, "cv_check", False):
+        return None  # another CV scheme: the scores are not comparable fold by fold
+    if direction is None:
+        if parent:
+            raise KxError("invalid", f"pre-register a prediction: how will this compare with "
+                          f"{parent}? Pass --expect better|worse|same (or --parent none)",
+                          errors=["expect_required"], data={"parent": parent})
+        if delta is not None:
+            raise KxError("invalid", "--expect-delta needs --expect", errors=["expect_required"])
+        return None
+    return {"direction": direction, "delta": delta}
+
+
 def cmd_new(ws: Path, args, adapter) -> dict:
     workspace.require_workspace(ws)
     profile = workspace.load_profile(ws)
@@ -331,6 +397,29 @@ def cmd_new(ws: Path, args, adapter) -> dict:
             picked, why = "deep-infer", f"inference stage for {args.after[0]} (deep)"
         elif up_t in ("tabular", "timeseries"):
             picked, why = "inference", f"inference stage for {args.after[0]} ({up_t})"
+        elif up_t == "custom":
+            picked, why = "custom", f"next stage of {args.after[0]} (custom)"
+    cv_check_of = None
+    if getattr(args, "cv_check", False):
+        if args.after or args.template:
+            raise KxError("invalid", "--cv-check reruns the parent's own template; drop "
+                          "--after/--template", errors=["bad_cv_check"])
+        cv_check_of, _ = _pick_parent(ws, args, _metric_cfg(ws))
+        if cv_check_of is None:
+            raise KxError("invalid", "--cv-check needs a recorded run to re-check: pass --parent",
+                          errors=["cv_check_needs_parent"])
+        up = read_json(ws / "experiments" / cv_check_of / "experiment.json")
+        if up.get("template") not in ("tabular", "timeseries", "deep", "custom"):
+            raise KxError("invalid", f"{cv_check_of} ({up.get('template')}) has no CV scheme "
+                          "to re-check", errors=["bad_cv_check"])
+        picked, why = up["template"], f"CV-scheme check of {cv_check_of}"
+    if not (args.after or cv_check_of or args.template):
+        parent_id, _ = _pick_parent(ws, args, _metric_cfg(ws))
+        if parent_id:
+            p_t = read_json(ws / "experiments" / parent_id / "experiment.json").get("template")
+            if p_t in INHERITABLE and effective(profile).get("submission_mode") in \
+                    templates_registry.TEMPLATES[p_t]["modes"]:
+                picked, why = p_t, f"the template of parent {parent_id}"
     name = args.template or picked
     reason = why
     if args.template and args.template != picked:
@@ -347,6 +436,9 @@ def cmd_new(ws: Path, args, adapter) -> dict:
     if name not in templates_registry.TEMPLATES:
         raise KxError("invalid", f"unknown template {name!r}", errors=["unknown_template"],
                       data={"templates": sorted(templates_registry.TEMPLATES)})
+    if name == "diagnose":
+        raise KxError("invalid", "diagnostics are scaffolded by `kx diagnose`",
+                      errors=["use_kx_diagnose"], next_action=E.run("kx diagnose"))
     info = templates_registry.TEMPLATES[name]
     metric_cfg = _require_metric(ws, eff.get("metric_suggestion")) if info.get("needs_metric") \
         else _metric_cfg(ws)
@@ -362,24 +454,55 @@ def cmd_new(ws: Path, args, adapter) -> dict:
     for flag in ("idea", "hypothesis"):
         if not (getattr(args, flag) or "").strip():
             raise KxError("invalid", f"--{flag} is required", errors=[f"{flag}_required"])
+    parent, parent_reason = _pick_parent(ws, args, metric_cfg)
+    expected = _expected_effect(args, parent, name)
+    evidence = None
+    if getattr(args, "evidence", None):
+        from kx import diagnose
+
+        evidence = [diagnose.resolve_evidence(ws, ref) for ref in args.evidence]
 
     exp_id = workspace.mint_exp_id(ws)
     exp_dir = ws / "experiments" / exp_id
     exp_dir.mkdir(parents=True)
+    # The run this one starts from: a CV-scheme check's parent, or a parent on the same
+    # template. It gives the AI block, folds, runtime and sources; flags override them.
+    base = cv_check_of
+    if base is None and parent and name in INHERITABLE and not args.after and \
+            read_json(ws / "experiments" / parent / "experiment.json").get("template") == name:
+        base = parent
+    inherit_from = base if base and base != cv_check_of else None
+    base_spec = read_json(ws / "experiments" / base / "experiment.json") if base else None
+    n_folds = args.folds or ((base_spec or {}).get("cv") or {}).get("n_folds") or 5
     spec = experiment.draft(exp_id, utc_now(), args.idea.strip(), args.hypothesis.strip(), name,
-                            reason, profile["slug"], n_folds=args.folds,
+                            reason, profile["slug"], n_folds=n_folds,
                             accelerator=args.accelerator or info.get("default_accelerator", "cpu"),
                             limit_s=args.limit or info.get("default_limit_s", 1800),
                             target="local" if (args.local or info.get("target") == "local")
-                            else "kernel")
+                            else "kernel", parent=parent, expected_effect=expected)
     spec["code_file"] = info.get("code_file", "train.py")
+    if evidence:
+        spec["evidence"] = evidence
+    if base_spec:
+        rt = dict(base_spec["runtime"])
+        rt.update({k: v for k, v in (("accelerator", args.accelerator), ("limit_s", args.limit))
+                   if v})
+        if args.local:
+            rt["target"] = "local"
+        spec["runtime"] = rt
+        spec["sources"] = {k: list(v) if isinstance(v, list) else v
+                           for k, v in base_spec["sources"].items()}
+        if base_spec.get("local") and rt["target"] == "local":
+            spec["local"] = dict(base_spec["local"])
+    if cv_check_of:
+        spec["kind"] = "cv_check"
     if not info.get("needs_cv", True):
-        spec["cv"] = {"n_folds": args.folds, "reasoning": "n/a: this template has no CV loop"}
+        spec["cv"] = {"n_folds": n_folds, "reasoning": "n/a: this template has no CV loop"}
     if args.local:
         spec["local"] = {"subsample": args.subsample}
     if args.after:
         spec["sources"]["kernels"] = [f"@{a}" for a in args.after]
-        if name in ("deep-infer", "inference"):
+        if _is_stage(name, spec):
             up = read_json(ws / "experiments" / args.after[0] / "experiment.json")
             spec["cv"] = {"n_folds": up["cv"]["n_folds"],
                           "reasoning": f"inherits {args.after[0]}'s CV (its OOF predictions)"}
@@ -393,10 +516,12 @@ def cmd_new(ws: Path, args, adapter) -> dict:
             if v not in spec["sources"][key]:
                 spec["sources"][key].append(v)
     code = templates_registry.render(name, spec, profile | {"effective": eff, "_ws": ws}, metric_cfg)
-    if name in ("deep-infer", "inference"):
-        # The inference stage must rebuild the upstream's exact model: carry its AI block over.
-        up_spec = read_json(ws / "experiments" / args.after[0] / "experiment.json")
-        up_code = (ws / "experiments" / args.after[0] / up_spec["code_file"]).read_text()
+    carry = args.after[0] if _is_stage(name, spec) else base
+    if carry:
+        # An inference stage rebuilds the upstream's exact model; a CV-scheme check reruns the
+        # parent's model; a child changes one thing in its parent's: carry the AI block over.
+        up_spec = read_json(ws / "experiments" / carry / "experiment.json")
+        up_code = (ws / "experiments" / carry / up_spec["code_file"]).read_text()
         code = templates_registry.copy_ai_block(up_code, code)
     (exp_dir / spec["code_file"]).write_text(code)
     spec["harness_sha256"] = experiment.harness_hash(code)
@@ -406,17 +531,36 @@ def cmd_new(ws: Path, args, adapter) -> dict:
 
         research.mark_idea(ws, idea_row["n"], exp_id)
     tried = _tried(ws)
+    from kx import diagnose, validation
+
+    warnings = validation.warnings(ws)
+    if validation.get(ws)["status"] == "unchecked" and not diagnose.has_diagnostic(ws) \
+            and all(diagnose.diagnosable(profile)):
+        warnings.append("validation is unchecked: `kx diagnose` shows how test differs from "
+                        "train before you trust a CV scheme")
+    instruction = (f"Write the AI BLOCK in experiments/{exp_id}/{spec['code_file']} for this "
+                   f"idea and replace <TODO> in experiments/{exp_id}/experiment.json "
+                   "cv.reasoning with why this CV scheme mirrors the train/test split. Do not "
+                   "repeat an idea in data.tried.")
+    if inherit_from and not cv_check_of:
+        instruction = (f"The AI BLOCK of experiments/{exp_id}/{spec['code_file']} starts as "
+                       f"{inherit_from}'s: change only what this idea changes, and replace <TODO> "
+                       f"in experiments/{exp_id}/experiment.json cv.reasoning (keep "
+                       f"{inherit_from}'s folds to get a paired comparison). Do not repeat an "
+                       "idea in data.tried.")
+    if cv_check_of:
+        instruction = (f"The AI BLOCK of experiments/{exp_id}/{spec['code_file']} is "
+                       f"{cv_check_of}'s. Change ONLY assign_folds to the CV scheme under test "
+                       f"and write why in cv.reasoning of experiments/{exp_id}/experiment.json.")
     return E.make(
         "new", "ok", f"scaffolded {exp_id} from the {name} template",
         data={"exp_id": exp_id, "template": name, "template_reason": reason,
+              "parent": parent, "parent_reason": parent_reason, "expected_effect": expected,
+              "evidence": evidence, "ai_block_from": carry,
               "files": [f"experiments/{exp_id}/experiment.json",
                         f"experiments/{exp_id}/{spec['code_file']}"],
               "tried": tried},
-        next_action=E.edit(
-            f"Write the AI BLOCK in experiments/{exp_id}/{spec['code_file']} for this idea and "
-            f"replace <TODO> in experiments/{exp_id}/experiment.json cv.reasoning with why this CV "
-            "scheme mirrors the train/test split. Do not repeat an idea in data.tried.",
-            then=f"kx run {exp_id}"))
+        warnings=warnings, next_action=E.edit(instruction, then=f"kx run {exp_id}"))
 
 
 # --------------------------------------------------------------------------- #
@@ -439,8 +583,13 @@ def _validate_spec(ws: Path, exp_dir: Path, spec: dict, profile: dict) -> None:
 def _record_and_envelope(ws: Path, exp_dir: Path, spec: dict, run: dict, log_text,
                          warnings: list[str], data: dict) -> dict:
     tinfo = templates_registry.TEMPLATES.get(spec.get("template"), {})
+    diagnostic = spec.get("kind") == "diagnostic"
     if spec.get("template") == "agent":
         metric_cfg = {"name": "win_rate", "greater_is_better": True, "range": [0.0, 1.0]}
+    elif diagnostic:
+        from kx import diagnose
+
+        metric_cfg = diagnose.METRIC_CFG
     else:
         metric_cfg = _require_metric(ws)
     verdict_stub = workspace.render("VERDICT.md.tmpl", exp_id=spec["exp_id"])
@@ -458,12 +607,22 @@ def _record_and_envelope(ws: Path, exp_dir: Path, spec: dict, run: dict, log_tex
     data |= {"exp_id": exp_id, "result": meta["status"], "failure_reason": meta["failure_reason"],
              "metric": meta["metric"], "cv_mean": meta["cv_mean"], "cv_std": meta["cv_std"],
              "fold_scores": meta["fold_scores"], "failure_detail": meta.get("failure_detail"),
-             "subsample": meta.get("subsample")}
+             "subsample": meta.get("subsample"), "parent": meta.get("parent"),
+             "vs_parent": meta.get("vs_parent"), "prediction": meta.get("prediction")}
     if meta["status"] == "SUCCESS":
-        summary = (f"{exp_id} recorded SUCCESS: {meta['metric']} "
+        summary = (f"{exp_id} recorded SUCCESS: {metric_cfg.get('label') or meta['metric']} "
                    f"{strategy.fmt_score(meta['cv_mean'], meta['cv_std'])} ({meta['n_folds']} folds)")
+        line = compare.summary(meta.get("vs_parent"))
+        if line:
+            summary += f"; {line}" + (f"; prediction {meta['prediction']}"
+                                      if meta.get("prediction") else "")
     else:
         summary = f"{exp_id} recorded FAILED ({meta['failure_reason']}); no score recorded"
+    if diagnostic:
+        return _diagnostic_envelope(ws, exp_dir, meta, data, warnings)
+    from kx import validation
+
+    warnings += validation.warnings(ws)
     if run["resumable"]:
         data["resumable"] = True
         return E.make("run", "ok", f"{exp_id} stopped at its time budget with checkpoints saved "
@@ -478,6 +637,38 @@ def _record_and_envelope(ws: Path, exp_dir: Path, spec: dict, run: dict, log_tex
                       f"and a reasoning fragment (hypothesis queue + next action) in "
                       f"experiments/{exp_id}/reasoning.md.",
                       then=f"kx strategy --reasoning-file experiments/{exp_id}/reasoning.md"))
+
+
+def _diagnostic_envelope(ws: Path, exp_dir: Path, meta: dict, data: dict,
+                         warnings: list[str]) -> dict:
+    from kx import diagnose
+
+    exp_id = meta["exp_id"]
+    then = f"kx strategy --reasoning-file experiments/{exp_id}/reasoning.md"
+    if meta["status"] != "SUCCESS":
+        return E.make("run", "ok", f"diagnostic {exp_id} recorded FAILED "
+                                   f"({meta['failure_reason']}); no facts published",
+                      data=data, warnings=warnings,
+                      next_action=E.edit(f"Read the traceback, fix the AI BLOCK of experiments/"
+                                         f"{exp_id}/diagnose.py (e.g. load_tables) and re-run "
+                                         f"with --rerun, or write its VERDICT.md.", then=then))
+    from kx import validation
+
+    found = diagnose.publish(ws, exp_id, exp_dir)
+    high = [f for f in found if f["severity"] == "high"]
+    data["validation"] = validation.after_diagnostic(ws, exp_id, found)["status"]
+    warnings += validation.warnings(ws)
+    adv = ("adversarial AUC " + strategy.fmt_score(meta["cv_mean"], meta["cv_std"])
+           if meta["cv_mean"] is not None else "adversarial validation skipped")
+    data |= {"findings": found, "facts": "control/facts.json"}
+    return E.make("run", "ok", f"diagnostic {exp_id} recorded: {adv}; {len(found)} finding(s), "
+                               f"{len(high)} high", data=data, warnings=warnings,
+                  next_action=E.edit(
+                      f"Read data.findings (and control/facts.json). Write experiments/{exp_id}/"
+                      "VERDICT.md: what each finding means for the CV scheme and the features. "
+                      f"Write experiments/{exp_id}/reasoning.md with the CV scheme to use next. "
+                      "Cite facts in later hypotheses with `kx new --evidence facts:<path>`.",
+                      then=then))
 
 
 def cmd_run(ws: Path, args, adapter) -> dict:
@@ -518,7 +709,8 @@ def cmd_run(ws: Path, args, adapter) -> dict:
                                                  timeout=args.wait_local)
             return _record_and_envelope(ws, exp_dir, spec, run, log_text, [],
                                         {"backend": "local", "seconds": run["seconds"]})
-        _require_metric(ws)
+        if templates_registry.TEMPLATES.get(spec["template"], {}).get("needs_metric", True):
+            _require_metric(ws)
         run, log_text = local.run_local(ws, exp_dir, spec, profile, timeout=args.wait_local)
         warnings = [f"local run on a {run['subsample']:g} subsample: not comparable to full-data "
                     "CV"] if run.get("subsample") else []
@@ -529,8 +721,9 @@ def cmd_run(ws: Path, args, adapter) -> dict:
     if existing is None or args.rerun:
         _validate_spec(ws, exp_dir, spec, profile)
         _require_confirmed(profile)
-        _require_metric(ws)
-        if spec["runtime"].get("internet") and spec.get("template") in ("inference", "deep-infer") \
+        if templates_registry.TEMPLATES.get(spec["template"], {}).get("needs_metric", True):
+            _require_metric(ws)
+        if spec["runtime"].get("internet") and _is_stage(spec.get("template"), spec) \
                 and effective(profile).get("submission_mode") == "code_kernel":
             raise KxError("invalid", "this inference stage is what gets submitted, and code "
                           "competitions rerun it with internet off",
@@ -682,14 +875,18 @@ def cmd_strategy(ws: Path, args, adapter) -> dict:
     sub_rows = [r for r in strategy.read_jsonl(ws / "control" / "submissions.jsonl")
                 if r.get("mode") != "agent"]
     ideas = strategy.read_jsonl(ws / "research" / "ideas.jsonl")
+    from kx import validation
+
+    ref = validation.reference_hash(ws)
     strategy.write(ws, profile.get("canonical_ref") or profile.get("slug"), rows, sub_rows, ideas,
-                   bool(metric_cfg["greater_is_better"]), reasoning)
+                   bool(metric_cfg["greater_is_better"]), reasoning, validation.body(ws), ref,
+                   metric_cfg.get("label"))
     state = workspace.load_state(ws)
     state["last_strategy"] = {"at": utc_now(), "n_experiments": len(rows),
                               "last_exp": rows[-1]["exp_id"] if rows else None}
     workspace.save_state(ws, state)
     paths = ["strategy.md", "control/ledger.jsonl", "control/config.json", "control/state.json",
-             "control/profile.json", "control/submissions.jsonl"]
+             "control/profile.json", "control/submissions.jsonl", "control/facts.json"]
     try:
         paths.append(str(reasoning_path.relative_to(ws.resolve())))
     except ValueError:
@@ -709,12 +906,17 @@ def cmd_strategy(ws: Path, args, adapter) -> dict:
         paths += [str(p.relative_to(ws)) for p in sorted((ws / "research").glob("*.md"))]
         paths.append("research/ideas.jsonl")
     commit = git_commit_paths(ws, f"kx: strategy after {len(rows)} experiment(s)", paths)
-    best = strategy.best_row(rows, bool(metric_cfg["greater_is_better"]))
+    best = strategy.best_row(rows, bool(metric_cfg["greater_is_better"]), ref)
+    warns = validation.warnings(ws)
+    na = E.run("kx new --idea '...' --hypothesis '...' --expect better|worse|same",
+               "Pick the top of the hypothesis queue, or stop when the user is satisfied. "
+               "Submitting is `kx submit <exp>`.")
+    if warns:
+        na = E.run("kx new --cv-check --idea '...' --hypothesis '...'", validation.STEER)
     return E.make("strategy", "ok", f"strategy.md regenerated from {len(rows)} ledger row(s)",
-                  data={"best": best, "tried": strategy.tried_lines(rows), "commit": commit},
-                  next_action=E.run("kx new --idea '...' --hypothesis '...'",
-                                    "Pick the top of the hypothesis queue, or stop when the user "
-                                    "is satisfied. Submitting is `kx submit <exp>`."))
+                  data={"best": best, "tried": strategy.tried_lines(rows, ref), "commit": commit,
+                        "validation": validation.get(ws)["status"]},
+                  warnings=warns, next_action=na)
 
 
 # --------------------------------------------------------------------------- #
@@ -798,4 +1000,16 @@ def cmd_status(ws: Path, args, adapter) -> dict:
                                                       "move on if they declined."))
     if eff["submission_mode"] == "writeup":
         return out("writeup competition", E.run("kx submit --writeup"))
+    from kx import diagnose, validation
+
+    v = validation.get(ws)
+    data["validation"] = v["status"]
+    if v["status"] == "suspect":
+        return out("validation is suspect: diagnose before trusting CV",
+                   E.run("kx new --cv-check --idea '...' --hypothesis '...'", validation.STEER))
+    if v["status"] == "unchecked" and not diagnose.has_diagnostic(ws) \
+            and all(diagnose.diagnosable(profile)):
+        return out("ready; validation is unchecked",
+                   E.run("kx diagnose", "Recommended before the first experiments; or go "
+                                        "straight to `kx new`."))
     return out("ready for the next idea", E.run("kx new --idea '...' --hypothesis '...'"))

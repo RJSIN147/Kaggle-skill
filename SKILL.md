@@ -61,18 +61,31 @@ When unsure where you are: `kx status`.
 4. **Load the type guide** for the confirmed type (and only that one):
    `${CLAUDE_SKILL_DIR}/references/types/<guide>.md` — see the table below.
 5. `kx metric <key>` — confirm the suggested metric key matches the evaluation metric.
-6. `kx new --idea "…" --hypothesis "…"` — kx picks the template from the profile. Read
-   `data.tried` first and **never repeat an idea** already in it. To override the template:
-   `--template <name> --template-reason "<why>"`.
+   Then `kx diagnose` + `kx run exp-NNN`: data facts, adversarial validation, time, entity
+   and leak checks. Its `findings` decide the CV scheme; they land in `control/facts.json`.
+6. `kx new --idea "…" --hypothesis "…" --expect better|worse|same` — kx picks the parent
+   (the current best; `--parent exp-NNN|none` to change it) and starts from its template and
+   AI block, so you change one thing and keep its folds. `--expect` is
+   your **pre-registered prediction** vs the parent, committed before the run. Cite facts
+   with `--evidence facts:<path>` / `exp-NNN:<key>` (kx reads the value; never type it).
+   Read `data.tried` first and **never repeat an idea** already in it. To override the
+   template: `--template <name> --template-reason "<why>"`.
 7. Write the **AI BLOCK** in the experiment's code file and `cv.reasoning` in its
    `experiment.json`. Never edit the KX HARNESS (kx refuses a modified harness).
 8. `kx run exp-NNN` — pushes a private script kernel (internet off by default), polls, pulls, and
    records. Long kernels: pass `--wait 540` with a 600000 ms Bash timeout, or come back
-   later — re-running resumes.
-9. Write `VERDICT.md` (replace every `_TODO`; reference the recorded numbers, never type
-   a score) and `reasoning.md` (hypothesis queue + next action), then
+   later — re-running resumes. kx compares the run with its parent fold by fold
+   (`data.vs_parent`: better / worse / inconclusive) and judges your prediction.
+9. Write `VERDICT.md` (replace every `_TODO`; reference the recorded numbers and the kx
+   comparison, never type a score; say whether your prediction held and what that changes)
+   and `reasoning.md` (hypothesis queue + next action), then
    `kx strategy --reasoning-file experiments/exp-NNN/reasoning.md`.
 10. Repeat from 6. A FAILED run gets a verdict too: say what it teaches.
+
+**Validation status** (`kx validation`): a high-severity diagnose finding or a CV-vs-LB rank
+inversion (`kx lb`) makes it `suspect`. kx only warns; you then diagnose, or rerun the
+parent under another CV scheme (`kx new --cv-check …`: change only `assign_folds`), and
+record the decision: `kx validation ok --note "…" [--scheme exp-NNN]`.
 
 | Confirmed type | Guide |
 |---|---|
@@ -82,7 +95,8 @@ When unsure where you are: `kx status`.
 | code_kernel incl. API-served (`api_served: true`) | `code-competition.md` |
 | agent (simulation) | `simulation.md` |
 | writeup | `writeup.md` |
-| artifact_upload / anything without a template | `other.md` |
+| artifact_upload / structured / anything no template fits (segmentation, detection, LLM…) | `custom.md` |
+| mode `unknown` | `other.md` |
 
 ## Submitting (only after the user says yes)
 

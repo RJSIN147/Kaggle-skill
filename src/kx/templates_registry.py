@@ -128,23 +128,55 @@ TEMPLATES["agent"] = {
     "summary": "single-file simulation agent; local self-play validation + win rate vs a pool",
 }
 
+TEMPLATES["custom"] = {
+    "file": "custom/main.py.tmpl",
+    "modalities": {"tabular", "image", "text", "audio", "structured", "none"},
+    "modes": {"csv_upload", "code_kernel", "artifact_upload"},
+    "fallback": True,  # selected automatically only when no specialised template fits
+    "needs_cv": True,
+    "needs_metric": True,
+    "predictions": False,  # kx-preds/1 is optional: validated only when declared
+    "ml_stack": False,  # stdlib harness: local runs do not need the local extra
+    "default_accelerator": "cpu",
+    "default_limit_s": 3600,
+    "extra_values": _deep_values,
+    "code_file": "main.py",
+    "summary": "bring-your-own pipeline: the harness only enforces the output contract",
+}
+
+TEMPLATES["diagnose"] = {
+    "file": "diagnose/diagnose.py.tmpl",
+    "modalities": {"tabular", "image", "text", "audio", "structured", "none"},
+    "modes": {"csv_upload", "code_kernel", "agent", "artifact_upload"},
+    "auto": False,  # scaffolded only by `kx diagnose`
+    "needs_cv": False,
+    "needs_metric": False,
+    "predictions": False,
+    "default_limit_s": 1800,
+    "code_file": "diagnose.py",
+    "summary": "data facts, adversarial validation and leak checks (kx diagnose)",
+}
+
 TABULAR_EXTS = (".csv", ".parquet")
 
 
 def select(effective: dict) -> tuple[str | None, str]:
     """(template name or None, reason) for a confirmed profile's effective facts."""
     mode, modality = effective.get("submission_mode"), effective.get("modality")
-    if mode in ("writeup", "artifact_upload", "unknown", None):
+    if mode in ("writeup", "unknown", None):
         return None, f"no experiment template for submission mode {mode!r}"
     for name, info in TEMPLATES.items():
         pick = info.get("select")
         if pick and pick(effective):
             return name, f"profile matches {name} ({info['summary']})"
     for name, info in TEMPLATES.items():
-        if info.get("select") or info.get("auto") is False:
+        if info.get("select") or info.get("auto") is False or info.get("fallback"):
             continue
         if mode in info["modes"] and modality in info["modalities"]:
             return name, f"profile is {modality} + {mode}"
+    if mode in TEMPLATES["custom"]["modes"]:
+        return "custom", (f"no specialised template fits {modality} + {mode}: bring your own "
+                          "pipeline (custom)")
     return None, f"no template fits modality {modality!r} with mode {mode!r}"
 
 
@@ -183,7 +215,10 @@ def render(name: str, spec: dict, profile: dict, metric_cfg: dict | None) -> str
         "N_FOLDS_LIT": repr(int((spec.get("cv") or {}).get("n_folds") or 5)),
         "EXPECTED_OUTPUT_LIT": repr(eff.get("expected_output") or "submission.csv"),
         "API_SERVED_LIT": repr(bool(eff.get("api_served"))),
-        "HARNESS": template_text("common/harness.py.tmpl").rstrip(),
+        # paths (stdlib) + the pandas helpers: composed, the text is unchanged since 0.3.
+        "HARNESS": (template_text("common/paths.py.tmpl")
+                    + template_text("common/harness.py.tmpl")).rstrip(),
+        "PATHS": template_text("common/paths.py.tmpl").rstrip(),
         "HOST_METRIC": host_metric_block(profile.get("_ws"), metric_cfg),
     }
     values.update(info.get("extra_values", lambda s, p: {})(spec, profile))

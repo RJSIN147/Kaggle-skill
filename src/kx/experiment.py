@@ -22,15 +22,22 @@ TARGETS = ("kernel", "local")
 MAX_LIMIT_S = 12 * 3600  # Kaggle's 12 h session maximum
 
 HARNESS_MARKER = "# === KX HARNESS"
+AI_STUB = "KX_TODO"  # a template's unwritten AI block (custom); kx run refuses it
 
 TOP_KEYS = {"schema_version", "exp_id", "created", "idea", "hypothesis", "template",
             "template_reason", "runtime", "sources", "cv", "code_file", "harness_sha256",
-            "local"}
+            "local", "kind", "parent", "expected_effect", "evidence"}
+# experiment: a model run; diagnostic: `kx diagnose` (never a model comparison or a
+# submission); cv_check: the parent's model under a different CV scheme.
+KINDS = ("experiment", "diagnostic", "cv_check")
+EXPECT_DIRECTIONS = ("better", "worse", "same")
+EXPECT_KEYS = {"direction", "delta"}
 RUNTIME_KEYS = {"target", "accelerator", "limit_s", "internet"}
 SOURCE_KEYS = {"competition", "datasets", "kernels", "models"}
 CV_KEYS = {"n_folds", "reasoning", "scheme"}
 LOCAL_KEYS = {"subsample", "env"}
 
+EXP_ID_RE = re.compile(r"^exp-\d{3,}$")
 _DATASET_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*/[A-Za-z0-9][A-Za-z0-9_.-]*$")
 # A kernel source is owner/slug, or @exp-NNN: this workspace's upstream experiment,
 # resolved to its kernel at run time (pushed only after the upstream completes).
@@ -48,13 +55,18 @@ def harness_hash(code: str) -> str | None:
 
 def draft(exp_id: str, created: str, idea: str, hypothesis: str, template: str,
           template_reason: str, competition: str, n_folds: int = 5,
-          accelerator: str = "cpu", limit_s: int = 1800, target: str = "kernel") -> dict:
+          accelerator: str = "cpu", limit_s: int = 1800, target: str = "kernel",
+          kind: str = "experiment", parent: str | None = None,
+          expected_effect: dict | None = None) -> dict:
     return {
         "schema_version": SCHEMA_VERSION,
         "exp_id": exp_id,
         "created": created,
+        "kind": kind,
+        "parent": parent,
         "idea": idea,
         "hypothesis": hypothesis,
+        "expected_effect": expected_effect,
         "template": template,
         "template_reason": template_reason,
         "runtime": {"target": target, "accelerator": accelerator, "limit_s": limit_s,
@@ -96,13 +108,38 @@ def validate(spec, *, exp_dir: Path, profile: dict | None, templates: dict,
     if spec.get("schema_version") != SCHEMA_VERSION:
         errs.append(f"schema_version must be {SCHEMA_VERSION}")
     exp_id = spec.get("exp_id")
-    if not isinstance(exp_id, str) or not re.match(r"^exp-\d{3,}$", exp_id):
+    if not isinstance(exp_id, str) or not EXP_ID_RE.match(exp_id):
         errs.append("exp_id must look like exp-NNN")
     elif exp_id != exp_dir.name:
         errs.append(f"exp_id {exp_id} does not match the folder {exp_dir.name}")
     for k in ("idea", "hypothesis"):
         if not _nonempty_str(spec.get(k)):
             errs.append(f"{k} must be a non-empty string")
+    if spec.get("kind", "experiment") not in KINDS:
+        errs.append(f"kind must be one of {KINDS}")
+    parent = spec.get("parent")
+    if parent is not None:
+        if not isinstance(parent, str) or not EXP_ID_RE.match(parent):
+            errs.append("parent must be an experiment id (exp-NNN) or null")
+        elif parent == exp_id:
+            errs.append("an experiment cannot be its own parent")
+        elif not (exp_dir.parent / parent / "experiment.json").is_file():
+            errs.append(f"parent {parent} does not exist")
+    exp = spec.get("expected_effect")
+    if exp is not None:
+        if not isinstance(exp, dict) or set(exp) - EXPECT_KEYS:
+            errs.append(f"expected_effect must be an object with keys {sorted(EXPECT_KEYS)}")
+        else:
+            if exp.get("direction") not in EXPECT_DIRECTIONS:
+                errs.append(f"expected_effect.direction must be one of {EXPECT_DIRECTIONS}")
+            d = exp.get("delta")
+            if d is not None and not (isinstance(d, (int, float)) and not isinstance(d, bool)):
+                errs.append("expected_effect.delta must be a number or null")
+    ev = spec.get("evidence")
+    if ev is not None and not (isinstance(ev, list) and all(
+            isinstance(e, dict) and set(e) == {"ref", "value"} and _nonempty_str(e.get("ref"))
+            for e in ev)):
+        errs.append("evidence must be a list of {ref, value} objects (set by kx new --evidence)")
     tmpl = spec.get("template")
     if tmpl not in templates:
         errs.append(f"template must be one of {sorted(templates)}")
@@ -177,6 +214,8 @@ def validate(spec, *, exp_dir: Path, profile: dict | None, templates: dict,
                 ast.parse(code)
             except SyntaxError as exc:
                 errs.append(f"{code_file} has a syntax error at line {exc.lineno}")
+            if AI_STUB in code:
+                errs.append(f"{code_file} still holds the {AI_STUB} stub: write the AI block")
             want = spec.get("harness_sha256")
             if want and harness_hash(code) != want:
                 errs.append(f"the KX HARNESS section of {code_file} was modified; only the AI "

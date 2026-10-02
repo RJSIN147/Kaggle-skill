@@ -20,15 +20,22 @@ REQUIRED_PROVENANCE_KEYS = ("run_id", "artifact_hash", "git_commit", "seed")
 
 # The exact, ordered key set of a derived ledger row (byte-stable rebuild).
 # `subsample` marks a local run on a fraction of the train rows (null = full data).
+# `kind`/`parent`/`fold_hash` give the lineage and CV scheme; `vs_parent` is the paired
+# comparison label (or "not comparable") and `prediction` the pre-registered outcome.
 LEDGER_ROW_KEYS = (
     "exp_id", "status", "idea", "metric", "greater_is_better", "cv_mean", "cv_std",
     "git_commit", "seed", "created", "verdict_path", "subsample",
+    "kind", "parent", "fold_hash", "vs_parent", "prediction",
 )
 
 
 def to_ledger_row(meta: dict) -> dict:
     """The derived row, in fixed key order. A pure projection (no validation)."""
     provenance = meta.get("provenance") or {}
+    vs = meta.get("vs_parent")
+    vs_label = None
+    if isinstance(vs, dict):
+        vs_label = vs.get("label") if vs.get("comparable") else "not comparable"
     return {
         "exp_id": meta.get("exp_id"),
         "status": meta.get("status"),
@@ -42,6 +49,11 @@ def to_ledger_row(meta: dict) -> dict:
         "created": meta.get("created"),
         "verdict_path": meta.get("verdict_path"),
         "subsample": meta.get("subsample"),
+        "kind": meta.get("kind") or "experiment",
+        "parent": meta.get("parent"),
+        "fold_hash": meta.get("fold_hash"),
+        "vs_parent": vs_label,
+        "prediction": meta.get("prediction"),
     }
 
 
