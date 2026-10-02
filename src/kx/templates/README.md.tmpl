@@ -3,7 +3,8 @@
 Driven by the `kaggle-exp` skill through the `kx` CLI. Every `kx` command prints one
 JSON object whose `next_action` says what to do next; `kx status` recomputes it.
 
-- `control/` — config, state, competition profile (`profile.json`) and the derived
+- `control/` — config, state (incl. the validation status), competition profile
+  (`profile.json`), the data facts from `kx diagnose` (`facts.json`) and the derived
   `ledger.jsonl` (one line per experiment, rebuilt from `experiments/*/meta.json`).
 - `experiments/exp-NNN/` — `experiment.json` (the declaration), the code file
   (`train.py`; `predict.py` for an inference stage, `main.py` for a simulation agent),
