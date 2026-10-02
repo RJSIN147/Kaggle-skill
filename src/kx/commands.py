@@ -412,7 +412,6 @@ def cmd_new(ws: Path, args, adapter) -> dict:
             raise KxError("invalid", f"{cv_check_of} ({up.get('template')}) has no CV scheme "
                           "to re-check", errors=["bad_cv_check"])
         picked, why = up["template"], f"CV-scheme check of {cv_check_of}"
-    inherit_from = None
     if not (args.after or cv_check_of or args.template):
         parent_id, _ = _pick_parent(ws, args, _metric_cfg(ws))
         if parent_id:
@@ -420,7 +419,6 @@ def cmd_new(ws: Path, args, adapter) -> dict:
             if p_t in INHERITABLE and effective(profile).get("submission_mode") in \
                     templates_registry.TEMPLATES[p_t]["modes"]:
                 picked, why = p_t, f"the template of parent {parent_id}"
-                inherit_from = parent_id
     name = args.template or picked
     reason = why
     if args.template and args.template != picked:
@@ -466,8 +464,17 @@ def cmd_new(ws: Path, args, adapter) -> dict:
     exp_id = workspace.mint_exp_id(ws)
     exp_dir = ws / "experiments" / exp_id
     exp_dir.mkdir(parents=True)
+    # The run this one starts from: a CV-scheme check's parent, or a parent on the same
+    # template. It gives the AI block, folds, runtime and sources; flags override them.
+    base = cv_check_of
+    if base is None and parent and name in INHERITABLE and not args.after and \
+            read_json(ws / "experiments" / parent / "experiment.json").get("template") == name:
+        base = parent
+    inherit_from = base if base and base != cv_check_of else None
+    base_spec = read_json(ws / "experiments" / base / "experiment.json") if base else None
+    n_folds = args.folds or ((base_spec or {}).get("cv") or {}).get("n_folds") or 5
     spec = experiment.draft(exp_id, utc_now(), args.idea.strip(), args.hypothesis.strip(), name,
-                            reason, profile["slug"], n_folds=args.folds,
+                            reason, profile["slug"], n_folds=n_folds,
                             accelerator=args.accelerator or info.get("default_accelerator", "cpu"),
                             limit_s=args.limit or info.get("default_limit_s", 1800),
                             target="local" if (args.local or info.get("target") == "local")
@@ -475,15 +482,21 @@ def cmd_new(ws: Path, args, adapter) -> dict:
     spec["code_file"] = info.get("code_file", "train.py")
     if evidence:
         spec["evidence"] = evidence
+    if base_spec:
+        rt = dict(base_spec["runtime"])
+        rt.update({k: v for k, v in (("accelerator", args.accelerator), ("limit_s", args.limit))
+                   if v})
+        if args.local:
+            rt["target"] = "local"
+        spec["runtime"] = rt
+        spec["sources"] = {k: list(v) if isinstance(v, list) else v
+                           for k, v in base_spec["sources"].items()}
+        if base_spec.get("local") and rt["target"] == "local":
+            spec["local"] = dict(base_spec["local"])
     if cv_check_of:
-        up = read_json(ws / "experiments" / cv_check_of / "experiment.json")
         spec["kind"] = "cv_check"
-        spec["runtime"] = dict(up["runtime"]) | ({"target": "local"} if args.local else {})
-        spec["sources"] = dict(up["sources"])
-        if up.get("local"):
-            spec["local"] = dict(up["local"])
     if not info.get("needs_cv", True):
-        spec["cv"] = {"n_folds": args.folds, "reasoning": "n/a: this template has no CV loop"}
+        spec["cv"] = {"n_folds": n_folds, "reasoning": "n/a: this template has no CV loop"}
     if args.local:
         spec["local"] = {"subsample": args.subsample}
     if args.after:
@@ -502,14 +515,10 @@ def cmd_new(ws: Path, args, adapter) -> dict:
             if v not in spec["sources"][key]:
                 spec["sources"][key].append(v)
     code = templates_registry.render(name, spec, profile | {"effective": eff, "_ws": ws}, metric_cfg)
-    carry = args.after[0] if _is_stage(name, spec) else cv_check_of
-    if carry is None and parent and name in INHERITABLE:
-        p_spec = read_json(ws / "experiments" / parent / "experiment.json")
-        if p_spec.get("template") == name:
-            carry = inherit_from = parent  # start from the parent's code: change one thing
+    carry = args.after[0] if _is_stage(name, spec) else base
     if carry:
-        # An inference stage must rebuild the upstream's exact model, and a CV-scheme check
-        # must rerun the parent's exact model: carry its AI block over.
+        # An inference stage rebuilds the upstream's exact model; a CV-scheme check reruns the
+        # parent's model; a child changes one thing in its parent's: carry the AI block over.
         up_spec = read_json(ws / "experiments" / carry / "experiment.json")
         up_code = (ws / "experiments" / carry / up_spec["code_file"]).read_text()
         code = templates_registry.copy_ai_block(up_code, code)
