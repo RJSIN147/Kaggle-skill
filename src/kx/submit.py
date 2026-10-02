@@ -22,7 +22,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from kx import envelope as E
-from kx import lb_gap, subs, workspace
+from kx import lb_gap, subs, validation, workspace
 from kx.ledger import read_ledger
 from kx.profile import effective
 from kx.strategy import tried_lines
@@ -71,7 +71,9 @@ def _check_file(path: Path, result: dict, errors: list[str]) -> None:
             pass  # existence checked; the kernel's own local-gateway run validated the shape
 
 
-def _best_submitted_cv(ws: Path, gib: bool) -> dict | None:
+def _best_submitted_cv(ws: Path, gib: bool, fold_hash: str | None = None) -> dict | None:
+    """The best CV among submitted runs. With the candidate's fold_hash, only runs on the
+    same folds count (runs recorded before fold hashes existed count as the same)."""
     ledger = {r["exp_id"]: r for r in read_ledger(ws)}
     cands = []
     for s in subs.read(ws):
@@ -79,6 +81,8 @@ def _best_submitted_cv(ws: Path, gib: bool) -> dict | None:
             row = ledger.get(s.get("exp_id"))
             if row and isinstance(row.get("cv_mean"), (int, float)):
                 cands.append(row)
+    if fold_hash:
+        cands = [r for r in cands if r.get("fold_hash") in (None, fold_hash)]
     if not cands:
         return None
     return (max if gib else min)(cands, key=lambda r: r["cv_mean"])
@@ -165,7 +169,8 @@ def cmd_submit(ws: Path, args, adapter) -> dict:
         errors.append(f"no submission slots left today (UTC): {charged}/{limit} used")
 
     gib = bool(meta.get("greater_is_better", True))
-    best = _best_submitted_cv(ws, gib)
+    best = _best_submitted_cv(ws, gib, meta.get("fold_hash"))
+    other_scheme = _best_submitted_cv(ws, gib) if best is None else None
     cand = meta.get("cv_mean")
     if best and isinstance(cand, (int, float)) and not args.force_cv:
         better = cand > best["cv_mean"] if gib else cand < best["cv_mean"]
@@ -241,7 +246,10 @@ def cmd_submit(ws: Path, args, adapter) -> dict:
         f"CV: {metric} {cand:g}" if isinstance(cand, (int, float)) else "CV: none (agent)"
         if mode == "agent" else "CV: none",
         f"best submitted CV so far: {best['cv_mean']:g} ({best['exp_id']})" if best
-        else "best submitted CV so far: none",
+        else (f"CV bar skipped: the best submitted CV ({other_scheme['cv_mean']:g}, "
+              f"{other_scheme['exp_id']}) used a different CV scheme" if other_scheme
+              else "best submitted CV so far: none"),
+        *[f"WARNING: {w}" for w in validation.warnings(ws)],
         f"daily slots: {remaining} of {limit} left today (UTC); this uses one"
         if remaining is not None else "daily slots: limit unknown",
         f"message: {msg}",
@@ -378,7 +386,9 @@ def cmd_lb(ws: Path, args, adapter) -> dict:
                          f"W{e.get('W', 0)} L{e.get('L', 0)} D{e.get('D', 0)} "
                          f"(+{e.get('self', 0)} self-play) | trend "
                          f"{[h[1] for h in r.get('rating_history') or []]}")
-    alarm = lb_gap.alarm_body(lb_gap.to_pairs(joined), gib)
+    pairs = lb_gap.to_pairs(joined)
+    alarm = lb_gap.alarm_body(pairs, gib)
+    opened = validation.after_lb(ws, lb_gap.alarm_state(pairs, gib)["inversions"])
     not_found = [r["exp_id"] for r in rows
                  if r.get("status") in ("HANDED_OVER", "SUBMITTING", "SUBMITTED", "SUBMIT_ERROR")]
     pending = [r["exp_id"] for r in rows if r.get("status") == "PENDING"]
@@ -396,6 +406,13 @@ def cmd_lb(ws: Path, args, adapter) -> dict:
                                                  "or two; re-run. A confirmed submit still "
                                                  "unlisted after 10 min becomes NOT_SUBMITTED "
                                                  "(it did not land; propose it again)."))
+    data["validation"] = validation.get(ws)["status"]
+    if opened:
+        return E.make("lb", "ok", f"{len(rows)} submission(s) read back; CV and LB rankings "
+                                  "disagree: validation is now suspect", data=data,
+                      warnings=validation.warnings(ws),
+                      next_action=E.run("kx diagnose", validation.STEER))
     return E.make("lb", "ok", f"{len(rows)} submission(s) read back", data=data,
+                  warnings=validation.warnings(ws),
                   next_action=E.run("kx status", "CV stays the decision metric; read the alarm "
                                                  "before trusting CV improvements."))

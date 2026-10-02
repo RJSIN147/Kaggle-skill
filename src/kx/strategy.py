@@ -33,15 +33,20 @@ def comparable_rows(rows: list[dict]) -> list[dict]:
             and r.get("kind", "experiment") != "diagnostic"]
 
 
-def best_row(rows: list[dict], greater_is_better: bool) -> dict | None:
+def best_row(rows: list[dict], greater_is_better: bool,
+             reference_hash: str | None = None) -> dict | None:
+    """The best comparable run; with a reference CV scheme, the best within it."""
     winners = comparable_rows(rows)
+    if reference_hash:
+        winners = [r for r in winners if r.get("fold_hash") == reference_hash] or winners
     if not winners:
         return None
     return (max if greater_is_better else min)(winners, key=lambda r: r["cv_mean"])
 
 
-def current_best_body(rows: list[dict], greater_is_better: bool) -> str:
-    best = best_row(rows, greater_is_better)
+def current_best_body(rows: list[dict], greater_is_better: bool,
+                      reference_hash: str | None = None) -> str:
+    best = best_row(rows, greater_is_better, reference_hash)
     if best is None:
         return "None yet."
     v = best.get("verdict_path") or ""
@@ -50,7 +55,7 @@ def current_best_body(rows: list[dict], greater_is_better: bool) -> str:
             + (f"[verdict]({v})" if v else "(no verdict)"))
 
 
-def tried_lines(rows: list[dict]) -> list[str]:
+def tried_lines(rows: list[dict], reference_hash: str | None = None) -> list[str]:
     """The never-repeat digest: one line per experiment, FAILED included."""
     out = []
     for r in rows:
@@ -61,6 +66,8 @@ def tried_lines(rows: list[dict]) -> list[str]:
         tag = f" [{kind}]" if kind != "experiment" else ""
         origin = f" (from {r['parent']})" if r.get("parent") else ""
         vs = f" | vs parent: {r['vs_parent']}" if r.get("vs_parent") else ""
+        if reference_hash and r.get("fold_hash") and r["fold_hash"] != reference_hash:
+            vs += " | other CV scheme"
         out.append(f"- {r.get('exp_id')}{tag}{origin} | {r.get('idea') or '(no idea recorded)'} | "
                    f"{r.get('status')} | {fmt_score(r.get('cv_mean'), r.get('cv_std'))}{sub}{vs} | "
                    + (f"[verdict]({v})" if v else "(no verdict)"))
@@ -121,15 +128,17 @@ def research_body(ideas: list[dict]) -> str:
 
 
 def render(title: str, rows: list[dict], sub_rows: list[dict], ideas: list[dict],
-           greater_is_better: bool, reasoning: str) -> str:
-    digest = "\n".join(tried_lines(rows)) or "_No experiments recorded yet._"
-    best = current_best_body(rows, greater_is_better)
+           greater_is_better: bool, reasoning: str, validation_body: str | None = None,
+           reference_hash: str | None = None) -> str:
+    digest = "\n".join(tried_lines(rows, reference_hash)) or "_No experiments recorded yet._"
+    best = current_best_body(rows, greater_is_better, reference_hash)
     calib = calibration_line(rows)
     if calib:
         best += f"\n\n{calib}"
+    valid = f"## Validation\n\n{validation_body}\n\n" if validation_body else ""
     return (
         f"# Strategy — {title}\n\n> {HEADER_NOTE}\n\n"
-        f"## Current best\n\n{best}\n\n"
+        f"## Current best\n\n{best}\n\n{valid}"
         f"## Tried-list digest\n\n{digest}\n\n"
         f"## CV-to-LB gap\n\n{lb_gap_body(sub_rows, rows, greater_is_better)}\n\n"
         f"## Research-sourced ideas\n\n{research_body(ideas)}\n\n"
@@ -138,6 +147,7 @@ def render(title: str, rows: list[dict], sub_rows: list[dict], ideas: list[dict]
 
 
 def write(ws: Path, title: str, rows, sub_rows, ideas, greater_is_better: bool,
-          reasoning: str) -> None:
+          reasoning: str, validation_body: str | None = None,
+          reference_hash: str | None = None) -> None:
     atomic_write(ws / "strategy.md", render(title, rows, sub_rows, ideas, greater_is_better,
-                                            reasoning))
+                                            reasoning, validation_body, reference_hash))
