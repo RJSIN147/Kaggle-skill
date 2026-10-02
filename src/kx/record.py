@@ -44,6 +44,8 @@ KERNEL_ERROR_MARKERS = (
 REQUIRED_RESULT_KEYS = ("metric", "n_folds", "fold_scores", "cv_mean", "cv_std")
 DEFAULT_SEED = 42
 TRACEBACK_TAIL_LINES = 40
+# The kx-written section of VERDICT.md, up to the next heading.
+_KX_SECTION = re.compile(r"(## Recorded by kx\n\n).*?\n\n(?=## )", re.S)
 
 
 def _is_number(v) -> bool:
@@ -275,8 +277,13 @@ def record(ws: Path, exp_dir: Path, spec: dict, run: dict, metric_cfg: dict,
                                                     meta["vs_parent"])
     write_json(exp_dir / "meta.json", meta)
     verdict = exp_dir / "VERDICT.md"
+    block = compare.verdict_block(meta)
     if not verdict.exists():
-        verdict.write_text(Template(verdict_stub).safe_substitute(
-            comparison=compare.verdict_block(meta)))
+        verdict.write_text(Template(verdict_stub).safe_substitute(comparison=block))
+    else:  # a rerun: refresh only the kx-owned section, keep the AI's prose
+        text = verdict.read_text()
+        fresh = _KX_SECTION.sub(lambda m: m.group(1) + block + "\n\n", text, count=1)
+        if fresh != text:
+            verdict.write_text(fresh)
     _, warnings = rebuild_ledger_file(ws)
     return meta, warnings

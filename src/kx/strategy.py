@@ -69,8 +69,12 @@ def tried_lines(rows: list[dict], reference_hash: str | None = None) -> list[str
         vs = f" | vs parent: {r['vs_parent']}" if r.get("vs_parent") else ""
         if reference_hash and r.get("fold_hash") and r["fold_hash"] != reference_hash:
             vs += " | other CV scheme"
+        score = fmt_score(r.get("cv_mean"), r.get("cv_std"))
+        if kind == "diagnostic":  # its "CV" is the train-vs-test AUC, not the metric
+            score = f"adversarial AUC {score}" if _is_number(r.get("cv_mean")) else \
+                "adversarial AUC skipped"
         out.append(f"- {r.get('exp_id')}{tag}{origin} | {r.get('idea') or '(no idea recorded)'} | "
-                   f"{r.get('status')} | {fmt_score(r.get('cv_mean'), r.get('cv_std'))}{sub}{vs} | "
+                   f"{r.get('status')} | {score}{sub}{vs} | "
                    + (f"[verdict]({v})" if v else "(no verdict)"))
     return out
 
@@ -83,11 +87,12 @@ def calibration_line(rows: list[dict]) -> str | None:
     if not judged and not unresolved:
         return None
     unjudged = sum(1 for r in rows if r.get("parent") and r.get("prediction") is None)
-    return (f"Pre-registered predictions: {judged.count('matched')} of {len(judged)} matched"
-            + (f", {unresolved} unresolved (an effect too small for the folds to confirm)"
-               if unresolved else "")
-            + (f"; {unjudged} more with a parent could not be compared" if unjudged else "")
-            + ".")
+    parts = [f"{judged.count('matched')} of {len(judged)} matched"] if judged else []
+    if unresolved:
+        parts.append(f"{unresolved} unresolved (an effect too small for the folds to confirm)")
+    if unjudged:
+        parts.append(f"{unjudged} more with a parent could not be compared")
+    return "Pre-registered predictions: " + "; ".join(parts) + "."
 
 
 def read_jsonl(path: Path) -> list[dict]:
