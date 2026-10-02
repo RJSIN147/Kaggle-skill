@@ -16,16 +16,18 @@ This file is for working ON the skill. Users install it with
 |---|---|
 | `SKILL.md` | The skill the agent loads. Keep it ≤150 lines (a test enforces this); detail goes in `references/`. |
 | `references/kx-reference.md` | Envelope, every command and flag, `experiment.json` keys, the `kx-preds/1` format. |
-| `references/types/*.md` | One guide per competition type: tabular, timeseries, deep-learning, code-competition, simulation, writeup, other. |
+| `references/types/*.md` | One guide per competition type: tabular, timeseries, deep-learning, code-competition, simulation, writeup, custom (bring-your-own), other (mode unknown). |
 | `src/kx/cli.py` | Argument parsing and dispatch. Stdout is guarded so the JSON envelope is the only output. |
 | `src/kx/envelope.py` | `{kx, command, status, summary, data, warnings, errors, next_action}` |
 | `src/kx/adapter.py` | The only module that talks to Kaggle (the in-process SDK `kaggle==2.2.3`/kagglesdk); see "Kaggle calls" below. |
 | `src/kx/commands.py` | init / sync / confirm / metric / new / run / strategy / status |
+| `src/kx/compare.py` | Fold hash and the paired parent comparison; prediction outcome. |
+| `src/kx/diagnose.py`, `validation.py` | `kx diagnose` (facts.json, findings, evidence refs) and the warn-only validation status. |
 | `src/kx/profile.py`, `metrics.py` | Competition profile (submission mode, modality, metric) and the metric registry. |
 | `src/kx/kernel.py`, `record.py`, `pipeline.py` | Push and read back, bounded poll, pull, the fail-closed recorder, upstream chaining. |
 | `src/kx/submit.py`, `subs.py`, `lb_gap.py` | Propose, then confirm and submit, read back, and the CV→LB gap with its divergence alarm. |
 | `src/kx/research.py`, `ensemble.py`, `local.py`, `agent_eval.py` | Research ingestion, OOF blending, local runs, the simulation-agent evaluator. |
-| `src/kx/templates/` | tabular, timeseries, deep (also deep-infer), inference, agent, plus `common/harness.py.tmpl` shared by all. |
+| `src/kx/templates/` | tabular, timeseries, deep (also deep-infer), inference, agent, custom (bring-your-own, stdlib harness), diagnose; `common/paths.py.tmpl` (stdlib path resolvers, used by all) + `common/harness.py.tmpl` (pandas helpers). |
 | `tests/` | Offline suite with a `FakeAdapter` (`conftest.py`); `tests/live/` holds the opt-in real-Kaggle checks. |
 
 ## Commands
@@ -45,6 +47,9 @@ uv run kx <command>                        # run kx from the repo
   predictions is recorded FAILED with no score. Never record a number the kernel didn't write.
 - **The AI edits only the AI BLOCK.** The harness is hashed at `kx new`, and `kx run` refuses
   a modified harness. Changing a template's harness changes that hash.
+- **Numbers come from kx.** Comparisons, findings and evidence values are computed by kx
+  and rendered into envelopes, verdict stubs and `strategy.md`; the AI never types one.
+  The parent comparison and the validation status inform and warn; they never refuse.
 - **Every kx output is one JSON envelope** whose `next_action` is run / edit / ask_user / done.
   Add new behaviour as envelope fields, not printed text.
 - **Kaggle calls.** Import the SDK lazily: importing it authenticates and can exit. Every call
