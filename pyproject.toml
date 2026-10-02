@@ -1,12 +1,12 @@
-# The kaggle-exp skill package. `uv sync --project <skill dir>` installs the `kx`
-# CLI and the pinned `kaggle` package (CLI + kagglesdk) into the skill's own
-# locked environment; the AI then runs `uv run --project <skill dir> kx ...`
+# The kaggle-exp skill package. `uv sync --project <skill>` installs the `kx`
+# CLI and the pinned `kaggle` package (CLI + kagglesdk) into the skill folder's own
+# locked environment; the agent then runs `uv run --project <skill> kx ...`
 # from the competition workspace.
 
 [project]
 name = "kaggle-exp"
 version = "0.4.0"
-description = "Kaggle competition research loop for Claude Code: one kx CLI, kernel-first runs, validation diagnosis, fold-paired comparisons, a git-backed ledger."
+description = "Kaggle competition research loop for coding agents (Claude Code, OpenCode, any Agent Skills harness): one kx CLI, kernel-first runs, validation diagnosis, fold-paired comparisons, a git-backed ledger."
 requires-python = ">=3.11"
 dependencies = [
     # Exact pin: every Kaggle call kx makes was verified live against 2.2.3.
