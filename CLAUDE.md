@@ -1,6 +1,7 @@
 # kaggle-exp — developer notes
 
-A Claude Code skill (`SKILL.md` at the repo root) plus the `kx` Python CLI it drives. It runs a
+An Agent Skills skill (`SKILL.md` at the repo root; tested in Claude Code and OpenCode) plus
+the `kx` Python CLI it drives. It runs a
 Kaggle competition as a CV-first experiment loop:
 - profile the competition from Kaggle's API;
 - diagnose the data (`kx diagnose`: adversarial validation, time, entities, leaks) so the CV
@@ -10,14 +11,15 @@ Kaggle competition as a CV-first experiment loop:
 - write a verdict to a git-backed ledger, then submit (after the user confirms) and read the
   leaderboard back; a CV-vs-LB rank inversion makes the validation status suspect.
 
-This file is for working ON the skill. Users install it with
-`git clone … ~/.claude/skills/kaggle-exp && uv sync --project ~/.claude/skills/kaggle-exp`.
+This file is for working ON the skill. Users clone it into their agent's skills folder as
+`kaggle-exp` (Claude Code `~/.claude/skills/`, OpenCode `~/.config/opencode/skills/`) and run
+`uv sync --project <that folder>`; see README.
 
 ## Layout
 
 | Path | What |
 |---|---|
-| `SKILL.md` | The skill the agent loads. Keep it ≤150 lines (a test enforces this); detail goes in `references/`. |
+| `SKILL.md` | The skill the agent loads. Keep it ≤150 lines (a test enforces this); detail goes in `references/`. Harness-neutral: see the rule below. |
 | `references/kx-reference.md` | Envelope, every command and flag, `experiment.json` keys, the parent comparison, `kx-facts/1`, the validation status, the custom harness API, the `kx-preds/1` format. |
 | `references/types/*.md` | One guide per competition type: tabular, timeseries, deep-learning, code-competition, simulation, writeup, custom (bring-your-own), other (mode unknown). |
 | `src/kx/cli.py` | Argument parsing and dispatch. Stdout is guarded so the JSON envelope is the only output. |
@@ -48,6 +50,14 @@ uvx ruff check src tests                   # lint (config in pyproject.toml)
 uv run kx <command>                        # run kx from the repo
 ```
 
+Clean OpenCode check (a fresh user's install; none of your own skills or plugins load):
+clone the branch into `<fake home>/.config/opencode/skills/kaggle-exp`, `uv sync --project`
+it, symlink `~/.kaggle` into the fake home, then run `opencode run --format json "start a
+Kaggle workspace for titanic" </dev/null` from an empty workspace with `HOME` and
+`OPENCODE_TEST_HOME` set to the fake home, `OPENCODE_DISABLE_CLAUDE_CODE=1`,
+`OPENCODE_DISABLE_EXTERNAL_SKILLS=1`, and `XDG_DATA_HOME` left at the real one (the OpenCode
+login). Continue with `--session <id>`. Without `</dev/null`, `opencode run` waits on stdin.
+
 ## Rules that must hold
 
 - **Fail closed.** A run that errors, times out, or writes a bad `result.json` or bad
@@ -71,6 +81,10 @@ uv run kx <command>                        # run kx from the repo
   explicitly adopted, which is sha256-pinned.
 - **Credentials** never enter a workspace or a commit, and the leak hook blocks them. Record
   only which `KAGGLE*` environment variable names exist, never their values.
+- **Harness-neutral skill.** SKILL.md calls its folder `<skill>` (the base directory the
+  harness reports on load), never `${CLAUDE_SKILL_DIR}` or another harness variable (a test
+  forbids `${`), and names no harness-specific tool. Envelopes name skill files by absolute
+  path (`util.skill_path()`). After changing SKILL.md, re-run the clean OpenCode check below.
 - **Done means live.** A change to kernel, submission or profile behaviour is verified on a
   real competition, not only by fixtures. Use durable workspaces (not `/tmp`) and CPU kernels
   where you can; the GPU quota is shared.
@@ -90,3 +104,14 @@ uv run kx <command>                        # run kx from the repo
 - **Code-competition submit** = kernel ref + version + output file name. API-served
   competitions (`kaggle_evaluation`) score in about 10–20 minutes.
 - **Agents.** A simulation agent's local win rate does not predict its ladder rating.
+
+## Harness facts (OpenCode 1.18, 2026-10-02)
+
+- OpenCode loads skills from `~/.config/opencode/skills/`, `~/.claude/skills/` and
+  `~/.agents/skills/` (and the same folders under the project, walking up from the cwd to
+  the git root, or to `/` without one). It finds every `SKILL.md` below them, so a git
+  worktree inside the repo shows up as a duplicate `kaggle-exp`. The `name` must equal the
+  folder name.
+- Its skill tool states "Base directory for this skill: …" and leaves `${…}` unexpanded.
+- Verified on deepseek-v4-flash in a clean install: the full Titanic loop, and the submit
+  gate (it proposed, asked yes/no, and honoured "no").
