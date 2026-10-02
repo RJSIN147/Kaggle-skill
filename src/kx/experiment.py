@@ -25,7 +25,12 @@ HARNESS_MARKER = "# === KX HARNESS"
 
 TOP_KEYS = {"schema_version", "exp_id", "created", "idea", "hypothesis", "template",
             "template_reason", "runtime", "sources", "cv", "code_file", "harness_sha256",
-            "local"}
+            "local", "kind", "parent", "expected_effect", "evidence"}
+# experiment: a model run; diagnostic: `kx diagnose` (never a model comparison or a
+# submission); cv_check: the parent's model under a different CV scheme.
+KINDS = ("experiment", "diagnostic", "cv_check")
+EXPECT_DIRECTIONS = ("better", "worse", "same")
+EXPECT_KEYS = {"direction", "delta"}
 RUNTIME_KEYS = {"target", "accelerator", "limit_s", "internet"}
 SOURCE_KEYS = {"competition", "datasets", "kernels", "models"}
 CV_KEYS = {"n_folds", "reasoning", "scheme"}
@@ -48,13 +53,18 @@ def harness_hash(code: str) -> str | None:
 
 def draft(exp_id: str, created: str, idea: str, hypothesis: str, template: str,
           template_reason: str, competition: str, n_folds: int = 5,
-          accelerator: str = "cpu", limit_s: int = 1800, target: str = "kernel") -> dict:
+          accelerator: str = "cpu", limit_s: int = 1800, target: str = "kernel",
+          kind: str = "experiment", parent: str | None = None,
+          expected_effect: dict | None = None) -> dict:
     return {
         "schema_version": SCHEMA_VERSION,
         "exp_id": exp_id,
         "created": created,
+        "kind": kind,
+        "parent": parent,
         "idea": idea,
         "hypothesis": hypothesis,
+        "expected_effect": expected_effect,
         "template": template,
         "template_reason": template_reason,
         "runtime": {"target": target, "accelerator": accelerator, "limit_s": limit_s,
@@ -103,6 +113,31 @@ def validate(spec, *, exp_dir: Path, profile: dict | None, templates: dict,
     for k in ("idea", "hypothesis"):
         if not _nonempty_str(spec.get(k)):
             errs.append(f"{k} must be a non-empty string")
+    if spec.get("kind", "experiment") not in KINDS:
+        errs.append(f"kind must be one of {KINDS}")
+    parent = spec.get("parent")
+    if parent is not None:
+        if not isinstance(parent, str) or not re.match(r"^exp-\d{3,}$", parent):
+            errs.append("parent must be an experiment id (exp-NNN) or null")
+        elif parent == exp_id:
+            errs.append("an experiment cannot be its own parent")
+        elif not (exp_dir.parent / parent / "experiment.json").is_file():
+            errs.append(f"parent {parent} does not exist")
+    exp = spec.get("expected_effect")
+    if exp is not None:
+        if not isinstance(exp, dict) or set(exp) - EXPECT_KEYS:
+            errs.append(f"expected_effect must be an object with keys {sorted(EXPECT_KEYS)}")
+        else:
+            if exp.get("direction") not in EXPECT_DIRECTIONS:
+                errs.append(f"expected_effect.direction must be one of {EXPECT_DIRECTIONS}")
+            d = exp.get("delta")
+            if d is not None and not (isinstance(d, (int, float)) and not isinstance(d, bool)):
+                errs.append("expected_effect.delta must be a number or null")
+    ev = spec.get("evidence")
+    if ev is not None and not (isinstance(ev, list) and all(
+            isinstance(e, dict) and set(e) == {"ref", "value"} and _nonempty_str(e.get("ref"))
+            for e in ev)):
+        errs.append("evidence must be a list of {ref, value} objects (set by kx new --evidence)")
     tmpl = spec.get("template")
     if tmpl not in templates:
         errs.append(f"template must be one of {sorted(templates)}")

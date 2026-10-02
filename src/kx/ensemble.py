@@ -101,14 +101,16 @@ def cmd_ensemble(ws: Path, args, adapter) -> dict:
                       errors=["local_deps_missing"],
                       next_action=E.ask_user("Ask the user to run: uv sync --project <skill dir> "
                                              "--extra local")) from exc
-    members = []
+    members, member_cv = [], {}
     for e in args.exp_ids:
         d = workspace.exp_dir(ws, e)
         meta = read_json(d / "meta.json") if (d / "meta.json").exists() else {}
-        if meta.get("status") != "SUCCESS" or not meta.get("predictions") or meta.get("subsample"):
+        if meta.get("status") != "SUCCESS" or not meta.get("predictions") or meta.get("subsample") \
+                or meta.get("kind") == "diagnostic":
             raise KxError("invalid", f"{e} is not a full-data SUCCESS with saved predictions",
                           errors=["bad_member"], data={"exp_id": e})
         members.append(_load(d))
+        member_cv[e] = meta["cv_mean"]
     base = members[0]
     for e, m in zip(args.exp_ids[1:], members[1:]):
         if m["ids"] != base["ids"] or m["test_ids"] != base["test_ids"] or m["cols"] != base["cols"]:
@@ -206,8 +208,11 @@ def cmd_ensemble(ws: Path, args, adapter) -> dict:
               "sample_rows": base["res"].get("sample_rows")}
     (d / "output" / "result.json").write_text(json.dumps(result, indent=2))
     idea = args.idea or f"{args.method} blend of {', '.join(args.exp_ids)}"
-    spec = {"schema_version": 1, "exp_id": exp_id, "created": utc_now(), "idea": idea,
+    best_member = (max if gib else min)(member_cv, key=member_cv.get)
+    spec = {"schema_version": 1, "exp_id": exp_id, "created": utc_now(), "kind": "experiment",
+            "parent": best_member, "idea": idea,
             "hypothesis": "a blend of diverse experiments beats its best member on CV",
+            "expected_effect": {"direction": "better", "delta": None},
             "template": "ensemble", "template_reason": "kx ensemble",
             "runtime": {"target": "local", "accelerator": "cpu", "limit_s": 60, "internet": False},
             "sources": {"competition": profile["slug"], "datasets": [], "kernels": [], "models": []},
@@ -222,10 +227,11 @@ def cmd_ensemble(ws: Path, args, adapter) -> dict:
                   f"{exp_id} recorded {meta['status']}: blend {metric_cfg['name']} "
                   f"{meta['cv_mean'] if meta['cv_mean'] is None else round(meta['cv_mean'], 6)}",
                   data={"exp_id": exp_id, "result": meta["status"], "cv_mean": meta["cv_mean"],
-                        "weights": blend["members"], "fold_scores": meta["fold_scores"]},
+                        "weights": blend["members"], "fold_scores": meta["fold_scores"],
+                        "vs_parent": meta.get("vs_parent"), "prediction": meta.get("prediction")},
                   warnings=warns,
-                  next_action=E.edit(f"Write experiments/{exp_id}/VERDICT.md (does the blend beat "
-                                     "its best member by more than the fold std?) and a "
-                                     "reasoning.md.",
+                  next_action=E.edit(f"Write experiments/{exp_id}/VERDICT.md (kx compared the "
+                                     f"blend with its best member {best_member} fold by fold: "
+                                     "read data.vs_parent) and a reasoning.md.",
                                      then=f"kx strategy --reasoning-file experiments/{exp_id}/"
                                           "reasoning.md"))

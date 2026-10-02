@@ -355,7 +355,8 @@ def test_ensemble_blends_into_a_recorded_experiment(tmp_path, token_home):
     ws, fake = _ws(tmp_path, token_home, raw, "accuracy", _titanic_like())
     exps = []
     for i in range(2):
-        exp = kx(ws, fake, "new", "--idea", f"m{i}", "--hypothesis", "h", "--local")["data"]["exp_id"]
+        exp = kx(ws, fake, "new", "--idea", f"m{i}", "--hypothesis", "h", "--local",
+                 "--expect", "better")["data"]["exp_id"]
         _fill(ws, exp)
         p = ws / "experiments" / exp / "train.py"
         p.write_text(p.read_text().replace("n_estimators=400", f"n_estimators={50 + 300 * i}"))
