@@ -18,7 +18,7 @@ from pathlib import Path
 from kx import envelope as E
 from kx.data import data_dir
 from kx.profile import effective
-from kx.util import KxError, git_commit_paths, git_head, utc_now
+from kx.util import KxError, git_commit_paths, git_head, skill_path, utc_now
 
 ML_MODULES = ("pandas", "numpy", "sklearn", "lightgbm")
 
@@ -82,7 +82,7 @@ def run_local(ws: Path, exp_dir: Path, spec: dict, profile: dict, timeout: float
         raise KxError("invalid", f"local runs need {', '.join(missing)} in the skill environment",
                       errors=["local_deps_missing"],
                       next_action=E.ask_user(
-                          "Ask the user to run: uv sync --project <skill dir> --extra local",
+                          f"Ask the user to run: uv sync --project {skill_path()} --extra local",
                           then=f"kx run {exp_dir.name}"))
     ddir = data_dir(ws, profile)
     if not ddir.is_dir():

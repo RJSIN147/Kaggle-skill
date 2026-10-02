@@ -15,7 +15,7 @@ from kx.adapter import CredentialUnavailable
 from kx.credentials import NO_CREDENTIAL_INSTRUCTIONS, detect_source, permission_warnings
 from kx.ledger import read_ledger
 from kx.profile import build_profile, effective
-from kx.util import KxError, git_commit_paths, git_head, read_json, utc_now, write_json
+from kx.util import KxError, git_commit_paths, git_head, read_json, skill_path, utc_now, write_json
 
 DEFAULT_WAIT_S = 90
 
@@ -277,8 +277,8 @@ def cmd_confirm(ws: Path, args, adapter) -> dict:
     else:
         na = E.run("kx new --idea '...' --hypothesis '...'")
     guides = type_guides(eff)
-    na["instruction"] = (f"First read {', '.join(guides)} (under the skill dir) and no other type "
-                         "guide. " + na.get("instruction", "")).strip()
+    na["instruction"] = (f"First read {', '.join(skill_path(g) for g in guides)} and no other "
+                         "type guide. " + na.get("instruction", "")).strip()
     return E.make("confirm", "ok", f"profile confirmed: {eff['submission_mode']}, {eff['modality']}",
                   data={"profile": _profile_summary(profile), "template": tmpl,
                         "template_reason": why, "type_guides": guides}, next_action=na)
