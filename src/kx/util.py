@@ -28,6 +28,20 @@ class KxError(Exception):
         self.quarantine = quarantine
 
 
+def skill_dir() -> Path | None:
+    """The skill folder kx runs from (it holds SKILL.md), or None when kx is installed apart
+    from it. Envelopes name skill files by absolute path so no harness variable is needed."""
+    root = Path(__file__).resolve().parents[2]
+    return root if (root / "SKILL.md").is_file() else None
+
+
+def skill_path(rel: str = "") -> str:
+    root = skill_dir()
+    if root is None:
+        return f"<skill folder>/{rel}".rstrip("/")
+    return str(root / rel) if rel else str(root)
+
+
 def utc_now() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 

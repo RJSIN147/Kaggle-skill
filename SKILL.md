@@ -19,14 +19,17 @@ allowed-tools: Bash(uv sync --project *) Bash(uv run --project *) Read Write Edi
 
 # kaggle-exp
 
-The current folder is the user's competition workspace. Everything goes through one CLI:
+The current folder is the user's competition workspace. `<skill>` below is this skill's
+folder: the base directory your harness reported when it loaded this file (the folder holding
+this SKILL.md), as an absolute path. Everything goes through one CLI:
 
 ```
-uv run --project ${CLAUDE_SKILL_DIR} kx <command> [args]
+uv run --project <skill> kx <command> [args]
 ```
 
-(First use in a session: `uv sync --project ${CLAUDE_SKILL_DIR} --inexact` installs kx and
-the pinned `kaggle` package; `--inexact` keeps the optional local ML stack if installed.) Below, `kx …` means that full command.
+(First use in a session: `uv sync --project <skill> --inexact` installs kx and the pinned
+`kaggle` package; `--inexact` keeps the optional local ML stack if installed.) Below, `kx …`
+means that full command. kx names its own files (type guides) by absolute path.
 
 ## The one rule
 
@@ -61,14 +64,15 @@ When unsure where you are: `kx status`.
    Mode `unknown` → read the competition's Evaluation page yourself, propose a mode,
    confirm it with the user.
 4. **Load the type guide** for the confirmed type (and only that one):
-   `${CLAUDE_SKILL_DIR}/references/types/<guide>.md` — see the table below.
+   `<skill>/references/types/<guide>.md` — see the table below.
 5. `kx metric <key>` — confirm the suggested metric key matches the evaluation metric.
    Then `kx diagnose` + `kx run exp-NNN`: data facts, adversarial validation, time, entity
    and leak checks. Its `findings` decide the CV scheme; they land in `control/facts.json`.
 6. `kx new --idea "…" --hypothesis "…" --expect better|worse|same` — kx picks the parent
    (the current best; `--parent exp-NNN|none` to change it) and starts from its template and
    AI block, so you change one thing and keep its folds. `--expect` is
-   your **pre-registered prediction** vs the parent, committed before the run. Cite facts
+   your **pre-registered prediction** vs the parent, committed before the run (the first
+   model has no parent: leave `--expect` out). Cite facts
    with `--evidence facts:<path>` / `exp-NNN:<key>` (kx reads the value; never type it).
    Read `data.tried` first and **never repeat an idea** already in it. To override the
    template: `--template <name> --template-reason "<why>"`.
@@ -106,7 +110,7 @@ record the decision: `kx validation ok --note "…" [--scheme exp-NNN]`.
 the best submitted CV on the same folds) and returns `status: needs_user` with `data.confirmation` (what
 will be submitted, CV, slots left, the message) and a one-time `next_action.then`
 (`kx submit exp-NNN --confirm <token>`). Ask the user with every confirmation line shown,
-yes or no (AskUserQuestion when available). **Run the `then` command only on an explicit
+yes or no (your question tool if you have one; otherwise ask in chat and end your turn). **Run the `then` command only on an explicit
 yes in reply to that question**; never confirm on the user's behalf, never reuse a yes for
 another candidate, and never run `kaggle competitions submit` directly. `--confirm`
 re-checks everything and refuses if the file or kernel version changed or the proposal is
@@ -138,6 +142,6 @@ have reached Kaggle.
   weekly GPU quota is shared with the user's other work.
 - Joining a competition (accepting its rules) is a browser step for the user.
 - Credentials never enter the workspace; a pre-commit hook blocks them.
-- Reference: `${CLAUDE_SKILL_DIR}/references/kx-reference.md` (envelope, commands,
-  `experiment.json`, the `kx-preds/1` prediction format). Egress scoping is an opt-in:
-  `references/egress-allowlist.md`.
+- Reference: `<skill>/references/kx-reference.md` (envelope, commands,
+  `experiment.json`, the `kx-preds/1` prediction format). Egress scoping (Claude Code) is opt-in:
+  `<skill>/references/egress-allowlist.md`.
