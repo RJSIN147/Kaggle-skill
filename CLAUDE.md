@@ -77,8 +77,9 @@ uv run kx <command>                        # run kx from the repo
   - another kernel's output → `/kaggle/input/notebooks/<owner>/<slug>/`
   - a kernel's own previous output → `/kaggle/input/<slug>/`
 - **Kernel sources.** A kernel with no COMPLETE version is rejected as a source. Some
-  competitions (ISIC, nlp-getting-started) refuse the data source until the user accepts the
-  rules in a browser.
+  competitions (ISIC, nlp-getting-started, ARC-AGI-2) refuse the data source until the user
+  accepts the rules in a browser; others mount while `user_has_entered` is false
+  (store-sales, digit-recognizer, 2026-10-02).
 - **Code-competition submit** = kernel ref + version + output file name. API-served
   competitions (`kaggle_evaluation`) score in about 10–20 minutes.
 - **Agents.** A simulation agent's local win rate does not predict its ladder rating.
