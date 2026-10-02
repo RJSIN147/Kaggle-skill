@@ -134,8 +134,9 @@ def _read_json(path: Path):
 
 
 def classify(run: dict, output_dir: Path, log_text: str | None, metric_cfg: dict,
-             require_predictions: bool = True):
-    """(status, failure_reason, valid_result) by the ladder above."""
+             require_predictions: bool = True, kind: str = "experiment"):
+    """(status, failure_reason, valid_result) by the ladder above. A diagnostic's result
+    rung is its facts.json (diagnose.read_facts) instead of result.json."""
     backend = run.get("backend", "kernel")
     st = run.get("status")
     if backend == "kernel":
@@ -152,6 +153,11 @@ def classify(run: dict, output_dir: Path, log_text: str | None, metric_cfg: dict
             return "FAILED", "kernel_error", None
         if log_text is not None and scan_log(log_text):
             return "FAILED", "kernel_error", None
+    if kind == "diagnostic":
+        from kx import diagnose
+
+        _, reason, result = diagnose.read_facts(output_dir)
+        return ("FAILED", reason, None) if reason else ("SUCCESS", None, result)
     result, err = _read_json(output_dir / "result.json")
     if err:
         return "FAILED", err, None
@@ -174,7 +180,7 @@ def record(ws: Path, exp_dir: Path, spec: dict, run: dict, metric_cfg: dict,
     rel = f"experiments/{exp_dir.name}"
     output_dir = exp_dir / "output"
     status, reason, result = classify(run, output_dir, log_text, metric_cfg,
-                                      require_predictions)
+                                      require_predictions, spec.get("kind") or "experiment")
 
     code = exp_dir / spec.get("code_file", "train.py")
     artifact_hash = "sha256:" + hashlib.sha256(code.read_bytes()).hexdigest() if code.is_file() \
@@ -245,6 +251,11 @@ def record(ws: Path, exp_dir: Path, spec: dict, run: dict, metric_cfg: dict,
         })
         oof = (result.get("predictions") or {}).get("oof")
         meta["fold_hash"] = compare.fold_hash(output_dir / oof) if oof else None
+        if meta["kind"] == "diagnostic":
+            from kx import diagnose
+
+            facts, _, _ = diagnose.read_facts(output_dir)
+            meta["findings"] = diagnose.findings(facts)
     else:
         partial = sorted(p.name for p in output_dir.iterdir()) if output_dir.is_dir() else []
         detail = {"partial_outputs": partial}

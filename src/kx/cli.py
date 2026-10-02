@@ -98,6 +98,14 @@ def build_parser() -> KxParser:
     s.add_argument("--expect-delta", type=float,
                    help="predicted size of the change in the metric (+ = better)")
 
+    s.add_argument("--evidence", action="append", help="a fact this hypothesis rests on, read "
+                   "by kx: facts:<path>, exp-NNN:<key> or idea:<n> (repeatable)")
+
+    s = sub.add_parser("diagnose", help="scaffold a diagnostic: data facts, adversarial "
+                                        "validation, leak checks")
+    s.add_argument("--limit", type=int, help="kernel runtime limit in seconds")
+    s.add_argument("--local", action="store_true", help="run on this machine instead of a kernel")
+
     s = sub.add_parser("run", help="push, poll, pull and record an experiment")
     s.add_argument("exp_id")
     s.add_argument("--wait", type=float, default=90.0,
@@ -151,7 +159,7 @@ def dispatch(argv, ws: Path, adapter) -> dict:
     if not args.command:
         return E.make("help", "ok", "kx usage", data={"usage": parser.format_help()},
                       next_action=E.run("kx status"))
-    from kx import commands, ensemble, envinfo, research, submit
+    from kx import commands, diagnose, ensemble, envinfo, research, submit
 
     handlers = {
         "init": commands.cmd_init, "status": commands.cmd_status, "sync": commands.cmd_sync,
@@ -159,7 +167,7 @@ def dispatch(argv, ws: Path, adapter) -> dict:
         "run": commands.cmd_run, "strategy": commands.cmd_strategy,
         "submit": submit.cmd_submit, "lb": submit.cmd_lb,
         "research": research.cmd_research, "ensemble": ensemble.cmd_ensemble,
-        "env": envinfo.cmd_env,
+        "env": envinfo.cmd_env, "diagnose": diagnose.cmd_diagnose,
     }
     try:
         return handlers[args.command](ws, args, adapter)

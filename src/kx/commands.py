@@ -307,9 +307,15 @@ def cmd_metric(ws: Path, args, adapter) -> dict:
                                None if hi == float("inf") else hi],
                      "set_at": utc_now()}
     workspace.save_config(ws, cfg)
+    na = E.run("kx new --idea '...' --hypothesis '...'")
+    from kx import diagnose
+
+    if not diagnose.has_diagnostic(ws) and all(diagnose.diagnosable(workspace.load_profile(ws))):
+        na = E.run("kx diagnose", "Before the first experiment: check how test differs from "
+                                  "train (adversarial validation, time, entities, leaks) so the "
+                                  "CV scheme mirrors it.")
     return E.make("metric", "ok", f"metric set to {name} ({'higher' if gib else 'lower'} is better)",
-                  data={"metric": cfg["metric"]},
-                  next_action=E.run("kx new --idea '...' --hypothesis '...'"))
+                  data={"metric": cfg["metric"]}, next_action=na)
 
 
 # --------------------------------------------------------------------------- #
@@ -381,6 +387,9 @@ def cmd_new(ws: Path, args, adapter) -> dict:
     if name not in templates_registry.TEMPLATES:
         raise KxError("invalid", f"unknown template {name!r}", errors=["unknown_template"],
                       data={"templates": sorted(templates_registry.TEMPLATES)})
+    if name == "diagnose":
+        raise KxError("invalid", "diagnostics are scaffolded by `kx diagnose`",
+                      errors=["use_kx_diagnose"], next_action=E.run("kx diagnose"))
     info = templates_registry.TEMPLATES[name]
     metric_cfg = _require_metric(ws, eff.get("metric_suggestion")) if info.get("needs_metric") \
         else _metric_cfg(ws)
@@ -398,6 +407,11 @@ def cmd_new(ws: Path, args, adapter) -> dict:
             raise KxError("invalid", f"--{flag} is required", errors=[f"{flag}_required"])
     parent, parent_reason = _pick_parent(ws, args, metric_cfg)
     expected = _expected_effect(args, parent, name)
+    evidence = None
+    if getattr(args, "evidence", None):
+        from kx import diagnose
+
+        evidence = [diagnose.resolve_evidence(ws, ref) for ref in args.evidence]
 
     exp_id = workspace.mint_exp_id(ws)
     exp_dir = ws / "experiments" / exp_id
@@ -409,6 +423,8 @@ def cmd_new(ws: Path, args, adapter) -> dict:
                             target="local" if (args.local or info.get("target") == "local")
                             else "kernel", parent=parent, expected_effect=expected)
     spec["code_file"] = info.get("code_file", "train.py")
+    if evidence:
+        spec["evidence"] = evidence
     if not info.get("needs_cv", True):
         spec["cv"] = {"n_folds": args.folds, "reasoning": "n/a: this template has no CV loop"}
     if args.local:
@@ -446,6 +462,7 @@ def cmd_new(ws: Path, args, adapter) -> dict:
         "new", "ok", f"scaffolded {exp_id} from the {name} template",
         data={"exp_id": exp_id, "template": name, "template_reason": reason,
               "parent": parent, "parent_reason": parent_reason, "expected_effect": expected,
+              "evidence": evidence,
               "files": [f"experiments/{exp_id}/experiment.json",
                         f"experiments/{exp_id}/{spec['code_file']}"],
               "tried": tried},
@@ -476,8 +493,13 @@ def _validate_spec(ws: Path, exp_dir: Path, spec: dict, profile: dict) -> None:
 def _record_and_envelope(ws: Path, exp_dir: Path, spec: dict, run: dict, log_text,
                          warnings: list[str], data: dict) -> dict:
     tinfo = templates_registry.TEMPLATES.get(spec.get("template"), {})
+    diagnostic = spec.get("kind") == "diagnostic"
     if spec.get("template") == "agent":
         metric_cfg = {"name": "win_rate", "greater_is_better": True, "range": [0.0, 1.0]}
+    elif diagnostic:
+        from kx import diagnose
+
+        metric_cfg = diagnose.METRIC_CFG
     else:
         metric_cfg = _require_metric(ws)
     verdict_stub = workspace.render("VERDICT.md.tmpl", exp_id=spec["exp_id"])
@@ -506,6 +528,8 @@ def _record_and_envelope(ws: Path, exp_dir: Path, spec: dict, run: dict, log_tex
                                       if meta.get("prediction") else "")
     else:
         summary = f"{exp_id} recorded FAILED ({meta['failure_reason']}); no score recorded"
+    if diagnostic:
+        return _diagnostic_envelope(ws, exp_dir, meta, data, warnings)
     if run["resumable"]:
         data["resumable"] = True
         return E.make("run", "ok", f"{exp_id} stopped at its time budget with checkpoints saved "
@@ -520,6 +544,34 @@ def _record_and_envelope(ws: Path, exp_dir: Path, spec: dict, run: dict, log_tex
                       f"and a reasoning fragment (hypothesis queue + next action) in "
                       f"experiments/{exp_id}/reasoning.md.",
                       then=f"kx strategy --reasoning-file experiments/{exp_id}/reasoning.md"))
+
+
+def _diagnostic_envelope(ws: Path, exp_dir: Path, meta: dict, data: dict,
+                         warnings: list[str]) -> dict:
+    from kx import diagnose
+
+    exp_id = meta["exp_id"]
+    then = f"kx strategy --reasoning-file experiments/{exp_id}/reasoning.md"
+    if meta["status"] != "SUCCESS":
+        return E.make("run", "ok", f"diagnostic {exp_id} recorded FAILED "
+                                   f"({meta['failure_reason']}); no facts published",
+                      data=data, warnings=warnings,
+                      next_action=E.edit(f"Read the traceback, fix the AI BLOCK of experiments/"
+                                         f"{exp_id}/diagnose.py (e.g. load_tables) and re-run "
+                                         f"with --rerun, or write its VERDICT.md.", then=then))
+    found = diagnose.publish(ws, exp_id, exp_dir)
+    high = [f for f in found if f["severity"] == "high"]
+    adv = ("adversarial AUC " + strategy.fmt_score(meta["cv_mean"], meta["cv_std"])
+           if meta["cv_mean"] is not None else "adversarial validation skipped")
+    data |= {"findings": found, "facts": "control/facts.json"}
+    return E.make("run", "ok", f"diagnostic {exp_id} recorded: {adv}; {len(found)} finding(s), "
+                               f"{len(high)} high", data=data, warnings=warnings,
+                  next_action=E.edit(
+                      f"Read data.findings (and control/facts.json). Write experiments/{exp_id}/"
+                      "VERDICT.md: what each finding means for the CV scheme and the features. "
+                      f"Write experiments/{exp_id}/reasoning.md with the CV scheme to use next. "
+                      "Cite facts in later hypotheses with `kx new --evidence facts:<path>`.",
+                      then=then))
 
 
 def cmd_run(ws: Path, args, adapter) -> dict:
@@ -560,7 +612,8 @@ def cmd_run(ws: Path, args, adapter) -> dict:
                                                  timeout=args.wait_local)
             return _record_and_envelope(ws, exp_dir, spec, run, log_text, [],
                                         {"backend": "local", "seconds": run["seconds"]})
-        _require_metric(ws)
+        if templates_registry.TEMPLATES.get(spec["template"], {}).get("needs_metric", True):
+            _require_metric(ws)
         run, log_text = local.run_local(ws, exp_dir, spec, profile, timeout=args.wait_local)
         warnings = [f"local run on a {run['subsample']:g} subsample: not comparable to full-data "
                     "CV"] if run.get("subsample") else []
@@ -571,7 +624,8 @@ def cmd_run(ws: Path, args, adapter) -> dict:
     if existing is None or args.rerun:
         _validate_spec(ws, exp_dir, spec, profile)
         _require_confirmed(profile)
-        _require_metric(ws)
+        if templates_registry.TEMPLATES.get(spec["template"], {}).get("needs_metric", True):
+            _require_metric(ws)
         if spec["runtime"].get("internet") and spec.get("template") in ("inference", "deep-infer") \
                 and effective(profile).get("submission_mode") == "code_kernel":
             raise KxError("invalid", "this inference stage is what gets submitted, and code "
@@ -731,7 +785,7 @@ def cmd_strategy(ws: Path, args, adapter) -> dict:
                               "last_exp": rows[-1]["exp_id"] if rows else None}
     workspace.save_state(ws, state)
     paths = ["strategy.md", "control/ledger.jsonl", "control/config.json", "control/state.json",
-             "control/profile.json", "control/submissions.jsonl"]
+             "control/profile.json", "control/submissions.jsonl", "control/facts.json"]
     try:
         paths.append(str(reasoning_path.relative_to(ws.resolve())))
     except ValueError:

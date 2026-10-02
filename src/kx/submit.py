@@ -147,6 +147,9 @@ def cmd_submit(ws: Path, args, adapter) -> dict:
     meta = read_json(meta_p)
     spec = read_json(exp_dir / "experiment.json")
     errors: list[str] = []
+    if meta.get("kind") == "diagnostic":
+        raise KxError("invalid", f"{args.exp_id} is a diagnostic, not a submission candidate",
+                      errors=["not_a_candidate"])
     if meta.get("status") != "SUCCESS":
         errors.append(f"{args.exp_id} is {meta.get('status')}: only a SUCCESS with a CV is submitted")
     if meta.get("subsample"):
