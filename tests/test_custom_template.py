@@ -121,8 +121,26 @@ def test_no_template_profiles_fall_back_to_custom(tmp_path, token_home):
     assert "task accuracy" in env["summary"] and env["data"]["metric"]["label"] == "task accuracy"
     env = kx(ws, fake, "new", "--idea", "x", "--hypothesis", "h")
     assert env["data"]["template"] == "custom"
-    code = (ws / "experiments" / env["data"]["exp_id"] / "main.py").read_text()
+    exp = env["data"]["exp_id"]
+    code = (ws / "experiments" / exp / "main.py").read_text()
     assert "EXPECTED_OUTPUT = 'submission.json'" in code
+    # a code-competition proposal for a custom kernel, CV shown under the metric's label
+    d = ws / "experiments" / exp
+    (d / "main.py").write_text(code.replace(STUB, "report([0.1, 0.2, 0.1, 0.2, 0.1])"))
+    spec = json.loads((d / "experiment.json").read_text())
+    spec["cv"]["reasoning"] = "x"
+    (d / "experiment.json").write_text(json.dumps(spec))
+    res = {"exp_id": exp, "metric": "custom", "n_folds": 5, "fold_scores": [0.1, 0.2, 0.1, 0.2, 0.1],
+           "cv_mean": 0.14, "cv_std": 0.05, "submission_file": "submission.json"}
+    fake.outputs = {"result.json": json.dumps(res).encode(), "submission.json": b"{}",
+                    "kx_manifest.json": b"{}"}
+    fake.statuses = ["COMPLETE"]
+    assert kx(ws, fake, "run", exp, "--wait", "5")["data"]["result"] == "SUCCESS"
+    fake.submissions = lambda slug, page_size=50: []
+    env = kx(ws, fake, "submit", exp)
+    assert env["status"] == "needs_user", env
+    assert "CV: task accuracy 0.14" in env["data"]["confirmation"]
+    assert any("output submission.json" in line for line in env["data"]["confirmation"])
 
 
 def test_custom_stages_chain_and_refuse_internet_when_submitted(tmp_path, token_home):
