@@ -105,6 +105,9 @@ def versus_parent(ws: Path, meta: dict) -> dict | None:
     base = {"parent": parent}
     if meta.get("status") != "SUCCESS":
         return base | _not(f"this run is {meta.get('status')}")
+    ups = [u.get("exp_id") for u in (meta.get("kernel") or {}).get("upstream") or []]
+    if parent in ups:
+        return base | _not(f"an inference stage: it carries {parent}'s CV")
     pdir = ws / "experiments" / parent
     try:
         pmeta = json.loads((pdir / "meta.json").read_text())

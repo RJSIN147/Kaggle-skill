@@ -184,3 +184,11 @@ def test_a_diagnostic_cannot_be_a_parent(ready_ws, fake):
     env = kx(ready_ws, fake, "new", "--idea", "x", "--hypothesis", "h", "--parent",
              env["data"]["exp_id"], "--expect", "better")
     assert env["errors"] == ["bad_parent"]
+
+
+def test_an_inference_stage_is_not_compared_with_its_upstream(tmp_path):
+    meta = {"parent": "exp-001", "status": "SUCCESS",
+            "kernel": {"upstream": [{"exp_id": "exp-001"}]}}
+    vs = compare.versus_parent(tmp_path, meta)
+    assert vs == {"parent": "exp-001", "comparable": False,
+                  "reason": "an inference stage: it carries exp-001's CV"}
