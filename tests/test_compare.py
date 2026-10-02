@@ -54,6 +54,9 @@ def test_prediction_outcome():
     assert compare.prediction_outcome({"direction": "better"}, up) == "matched"
     assert compare.prediction_outcome({"direction": "worse"}, up) == "missed"
     assert compare.prediction_outcome({"direction": "same"}, up) == "missed"
+    same = {"comparable": True, "label": "identical"}  # e.g. a blend that kept one member
+    assert compare.prediction_outcome({"direction": "better"}, same) == "missed"
+    assert compare.prediction_outcome({"direction": "same"}, same) == "matched"
     assert compare.prediction_outcome({"direction": "better"}, {"comparable": False}) is None
     assert compare.prediction_outcome(None, vs) is None
 

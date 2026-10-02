@@ -69,7 +69,7 @@ sorted `(row_id, fold)` pairs of `oof.csv`), kx compares them per fold: deltas o
 + = better, a paired t with the Nadeau-Bengio correction (se = sd·√(1/k + 1/(k−1))) against
 the two-sided 95 % t value → `better` / `worse` / `inconclusive` (`identical` when every
 delta is equal). Otherwise `vs_parent` says why not (CV scheme changed, parent FAILED,
-another metric or subsample, no predictions). The prediction is then `matched`, `missed` (a change it ruled out) or `unresolved` (a change was predicted, the comparison is inconclusive).
+another metric or subsample, no predictions). The prediction is then `matched`, `missed` (a change it ruled out, or identical folds when a change was predicted) or `unresolved` (a change was predicted, the comparison is inconclusive).
 All of it is in `meta.json`, the ledger row, the `kx run` envelope, the VERDICT stub and
 `strategy.md` (with a calibration line). It is informational: it gates nothing.
 
