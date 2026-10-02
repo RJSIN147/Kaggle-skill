@@ -76,8 +76,11 @@ def _tabular(n=3000, m=1500, shift=0.0, leak=False, groups=False, seed=0):
     rng = np.random.default_rng(seed)
 
     def frame(k, start, s):
+        # "cabin": mostly missing, nearly unique when present (Titanic's Cabin): not an entity
+        cabin = [f"C{start + i}" if rng.random() < 0.2 else None for i in range(k)]
         df = pd.DataFrame({"id": range(start, start + k), "a": rng.normal(s, 1, k),
-                           "b": rng.normal(0, 1, k), "c": rng.choice(list("pqrstuvwxy"), k)})
+                           "b": rng.normal(0, 1, k), "c": rng.choice(list("pqrstuvwxy"), k),
+                           "cabin": cabin})
         if groups:
             df["patient_id"] = rng.integers(start, start + k // 10, k)
         return df
@@ -116,6 +119,7 @@ def test_iid_data_is_clean_and_facts_are_published(tmp_path, token_home):
     facts = json.loads((ws / "control" / "facts.json").read_text())
     assert facts["from"] == exp and facts["n_train"] == 3000 and facts["target"]["column"] == "y"
     assert facts["adversarial"]["status"] == "ok" and "id" not in facts["columns"]
+    assert "cabin" not in [e["column"] for e in facts["entities"]]
     meta = json.loads((ws / "experiments" / exp / "meta.json").read_text())
     assert meta["kind"] == "diagnostic" and meta["metric"] == "adv_auc"
     row = json.loads((ws / "control" / "ledger.jsonl").read_text().splitlines()[-1])

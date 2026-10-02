@@ -49,7 +49,11 @@ def test_corrected_t_is_more_conservative_than_plain():
 def test_prediction_outcome():
     vs = {"comparable": True, "label": "inconclusive"}
     assert compare.prediction_outcome({"direction": "same"}, vs) == "matched"
-    assert compare.prediction_outcome({"direction": "better"}, vs) == "missed"
+    assert compare.prediction_outcome({"direction": "better"}, vs) == "unresolved"
+    up = {"comparable": True, "label": "better"}
+    assert compare.prediction_outcome({"direction": "better"}, up) == "matched"
+    assert compare.prediction_outcome({"direction": "worse"}, up) == "missed"
+    assert compare.prediction_outcome({"direction": "same"}, up) == "missed"
     assert compare.prediction_outcome({"direction": "better"}, {"comparable": False}) is None
     assert compare.prediction_outcome(None, vs) is None
 

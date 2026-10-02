@@ -76,13 +76,18 @@ def tried_lines(rows: list[dict], reference_hash: str | None = None) -> list[str
 
 
 def calibration_line(rows: list[dict]) -> str | None:
-    """How often the pre-registered direction matched what the paired comparison found."""
-    judged = [r.get("prediction") for r in rows if r.get("prediction") in ("matched", "missed")]
-    if not judged:
+    """How the pre-registered directions fared against the paired comparisons."""
+    out = [r.get("prediction") for r in rows]
+    judged = [o for o in out if o in ("matched", "missed")]
+    unresolved = out.count("unresolved")
+    if not judged and not unresolved:
         return None
     unjudged = sum(1 for r in rows if r.get("parent") and r.get("prediction") is None)
     return (f"Pre-registered predictions: {judged.count('matched')} of {len(judged)} matched"
-            + (f" ({unjudged} more with a parent could not be judged)" if unjudged else "") + ".")
+            + (f", {unresolved} unresolved (an effect too small for the folds to confirm)"
+               if unresolved else "")
+            + (f"; {unjudged} more with a parent could not be compared" if unjudged else "")
+            + ".")
 
 
 def read_jsonl(path: Path) -> list[dict]:
