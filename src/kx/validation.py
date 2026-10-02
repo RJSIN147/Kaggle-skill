@@ -95,7 +95,7 @@ def warnings(ws: Path) -> list[str]:
     v = get(ws)
     if v["status"] != "suspect":
         return []
-    first = v["reasons"][0] if v["reasons"] else ""
+    first = (v["reasons"][0] if v["reasons"] else "").rstrip(".")
     more = f" (+{len(v['reasons']) - 1} more)" if len(v["reasons"]) > 1 else ""
     return [f"validation is SUSPECT ({v.get('source')}): {first}{more}. CV may not predict the "
             "leaderboard. " + STEER]

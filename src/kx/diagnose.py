@@ -140,8 +140,9 @@ def findings(facts: dict) -> list[dict]:
         if ov < UNSEEN_ENTITY_OVERLAP:
             out.append(_f("high", "unseen_entities",
                           f"{e.get('column')} repeats in train (~{e.get('rows_per_value', 0):.1f} "
-                          f"rows per value) but {1 - ov:.0%} of test rows have a value never seen "
-                          f"in train: group the folds by {e.get('column')} (GroupKFold)."))
+                          f"rows per value) but {1 - ov:.0%} of test rows with a value have one "
+                          f"never seen in train: group the folds by {e.get('column')} "
+                          "(GroupKFold)."))
         else:
             out.append(_f("info", "shared_entities",
                           f"{ov:.0%} of test rows share a {e.get('column')} value with train; "

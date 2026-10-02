@@ -51,7 +51,7 @@ def load_tables(data_dir: Path):
 $HARNESS
 
 
-MIN_TEST_ROWS = 1000
+MIN_TEST_ROWS = 200  # fewer: a hidden test set's public sample
 _ID_NAME = re.compile(r"id$", re.IGNORECASE)
 _DATE_TEXT = re.compile(r"\d{4}-\d{1,2}-\d{1,2}|\d{1,2}/\d{1,2}/\d{2,4}")
 
@@ -166,18 +166,19 @@ def _entity_columns(train, feats, time_cols) -> list:
 
 
 def _entities(train, test, feats, time_cols) -> list:
-    out, n = [], len(train)
+    out = []
     for c in _entity_columns(train, feats, time_cols):
         nu = int(train[c].nunique(dropna=True))
         if nu < 2:
             continue
-        rpv = n / nu
+        rpv = int(train[c].notna().sum()) / nu  # missing values are not an entity
         if not GROUP_COLS and (nu < 50 or rpv < 2):
             continue
         te = test[c].dropna()
         seen = set(train[c].dropna().unique())
         out.append({"column": str(c), "n_unique_train": nu, "rows_per_value": float(rpv),
                     "test_overlap": float(te.isin(seen).mean()) if len(te) else None,
+                    "missing_train": float(train[c].isna().mean()),
                     "given": bool(GROUP_COLS)})
     return sorted(out, key=lambda e: -e["n_unique_train"])[:10]
 

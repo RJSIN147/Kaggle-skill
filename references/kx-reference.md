@@ -69,7 +69,7 @@ sorted `(row_id, fold)` pairs of `oof.csv`), kx compares them per fold: deltas o
 + = better, a paired t with the Nadeau-Bengio correction (se = sd·√(1/k + 1/(k−1))) against
 the two-sided 95 % t value → `better` / `worse` / `inconclusive` (`identical` when every
 delta is equal). Otherwise `vs_parent` says why not (CV scheme changed, parent FAILED,
-another metric or subsample, no predictions). The prediction is then `matched` / `missed`.
+another metric or subsample, no predictions). The prediction is then `matched`, `missed` (a change it ruled out) or `unresolved` (a change was predicted, the comparison is inconclusive).
 All of it is in `meta.json`, the ledger row, the `kx run` envelope, the VERDICT stub and
 `strategy.md` (with a calibration line). It is informational: it gates nothing.
 
@@ -80,7 +80,7 @@ counts, missing rates, mean shift or unseen-in-train share), `time` (date-like c
 train/test ranges, `relation`), `entities` (repeating columns: rows per value, test
 overlap), `duplicates`, `single_feature` (one-feature target AUC or |Spearman|) and
 `adversarial` (LightGBM train-vs-test: `fold_aucs`, `auc_mean`, `top_features`; `skipped`
-with a reason when test has < 1000 rows). The recorder fails it closed like a result.json;
+with a reason when test has < 200 rows). The recorder fails it closed like a result.json;
 the recorded CV is the adversarial AUC (`adv_auc`, lower is better). kx derives `findings`
 (high: adversarial AUC ≥ 0.70, test after train, unseen entities, a single-feature leak ≥
 0.98; medium: AUC ≥ 0.60, ≥ 1 % test rows in train) and publishes `control/facts.json`.
