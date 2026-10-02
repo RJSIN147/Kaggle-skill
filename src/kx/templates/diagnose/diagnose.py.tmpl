@@ -1,0 +1,311 @@
+"""kx diagnostic $EXP_ID — data facts, adversarial validation, leak checks (a Kaggle script kernel).
+
+Writes facts.json (kx-facts/1): what the train and test tables look like, how well a model
+tells their rows apart (adversarial validation), and which columns look like time, entities
+or target leaks. kx turns the facts into findings and a validation status.
+
+Everything is auto-detected; edit ONLY the AI BLOCK when the data needs it. The KX HARNESS is
+hashed at `kx diagnose`; `kx run` refuses a modified harness. Exceptions are never caught.
+"""
+import json
+import os
+import platform
+import re
+import sys
+import warnings
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+
+EXP_ID = $EXP_ID_LIT
+IDEA = $IDEA_LIT
+COMPETITION_REF = $COMPETITION_REF_LIT
+SLUG = $SLUG_LIT
+SAMPLE_SUBMISSION = $SAMPLE_LIT
+TRAIN_FILE = $TRAIN_LIT
+TEST_FILE = $TEST_LIT
+EXPECTED_OUTPUT = $OUTPUT_LIT
+METRIC = $METRIC_LIT
+METRIC_INFO = $METRIC_INFO_LIT
+N_FOLDS = 5
+SEED = 42
+TARGET = None   # None: the sample submission's second column (or the one train-only column)
+ID_COL = None   # None: the sample submission's first column
+
+
+# === AI BLOCK: only if the defaults do not fit the data ==========================
+TIME_COL = None      # None: auto-detect date-like columns
+GROUP_COLS = None    # None: auto-detect entity columns (non-numeric, or names ending in "id")
+MAX_ROWS = 200_000   # rows per side for the adversarial model and single-feature scans
+MAX_COLUMNS = 300    # columns described in facts.json
+
+
+def load_tables(data_dir: Path):
+    """Return (train, test) DataFrames: the tables whose rows the model sees."""
+    return _read(data_dir / TRAIN_FILE), _read(data_dir / TEST_FILE)
+# === END AI BLOCK ===============================================================
+
+
+# === KX HARNESS (do not edit) ===================================================
+$HARNESS
+
+
+MIN_TEST_ROWS = 1000
+_ID_NAME = re.compile(r"id$", re.IGNORECASE)
+_DATE_TEXT = re.compile(r"\d{4}-\d{1,2}-\d{1,2}|\d{1,2}/\d{1,2}/\d{2,4}")
+
+
+def _num(s: pd.Series) -> bool:
+    return pd.api.types.is_numeric_dtype(s) and not pd.api.types.is_bool_dtype(s)
+
+
+def _cap(df: pd.DataFrame, n: int) -> pd.DataFrame:
+    return df.sample(n=n, random_state=SEED) if len(df) > n else df
+
+
+def _f(v):
+    return None if v is None or (isinstance(v, float) and not np.isfinite(v)) else float(v)
+
+
+def _target(train: pd.DataFrame, test: pd.DataFrame):
+    global TARGET
+    if TARGET is None:
+        only = [c for c in train.columns if c not in test.columns]
+        TARGET = only[0] if len(only) == 1 else None
+    return TARGET if TARGET in train.columns else None
+
+
+def _is_classification(y: pd.Series) -> bool:
+    if METRIC_INFO.get("prediction_type") in ("proba", "label"):
+        return True
+    if METRIC_INFO.get("prediction_type") == "raw" and METRIC != "custom":
+        return False
+    return not _num(y) or y.nunique(dropna=True) <= 20
+
+
+def _time_columns(train: pd.DataFrame, feats: list) -> list:
+    if TIME_COL:
+        return [TIME_COL]
+    out = []
+    for c in feats:
+        s = train[c]
+        if pd.api.types.is_datetime64_any_dtype(s):
+            out.append(c)
+            continue
+        if _num(s) or pd.api.types.is_bool_dtype(s):
+            continue
+        probe = s.dropna().astype(str).head(200)
+        if len(probe) < 20 or probe.str.contains(_DATE_TEXT).mean() < 0.9:
+            continue
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            if pd.to_datetime(probe, errors="coerce").notna().mean() > 0.95:
+                out.append(c)
+    return out[:5]
+
+
+def _to_time(s: pd.Series) -> pd.Series:
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        return pd.to_datetime(s, errors="coerce", utc=True)
+
+
+def _time_facts(train, test, cols) -> list:
+    out = []
+    for c in cols:
+        tr, te = _to_time(train[c]), _to_time(test[c])
+        if tr.notna().sum() == 0 or te.notna().sum() == 0:
+            continue
+        a0, a1, b0, b1 = tr.min(), tr.max(), te.min(), te.max()
+        rel = "test_after_train" if b0 >= a1 else "test_before_train" if b1 <= a0 else "overlap"
+        out.append({"column": str(c), "train_min": str(a0), "train_max": str(a1),
+                    "test_min": str(b0), "test_max": str(b1), "relation": rel,
+                    "test_share_after_train_end": float((te > a1).mean())})
+    return out
+
+
+def _column_facts(train, test, feats) -> dict:
+    out = {}
+    for c in feats[:MAX_COLUMNS]:
+        tr, te = train[c], test[c]
+        e = {"dtype": str(tr.dtype), "n_unique_train": int(tr.nunique(dropna=True)),
+             "n_unique_test": int(te.nunique(dropna=True)),
+             "missing_train": float(tr.isna().mean()), "missing_test": float(te.isna().mean())}
+        if _num(tr):
+            sd = tr.std()
+            mt = te.mean() if _num(te) else None
+            e.update({"mean_train": _f(tr.mean()), "mean_test": _f(mt), "std_train": _f(sd),
+                      "mean_shift_in_train_sd": _f((mt - tr.mean()) / sd)
+                      if sd and mt is not None else None})
+        else:
+            seen = set(tr.dropna().unique())
+            e["test_unseen_share"] = float((~te.isin(seen) & te.notna()).mean())
+        out[str(c)] = e
+    return out
+
+
+def _target_facts(y: pd.Series, classification: bool) -> dict:
+    if y is None:
+        return {"column": None}
+    if classification:
+        counts = y.value_counts(dropna=False)
+        return {"column": str(y.name), "type": "classification", "n_classes": int(len(counts)),
+                "class_shares": {str(k): float(v / len(y)) for k, v in counts.head(20).items()}}
+    q = y.astype(float).quantile([0, 0.01, 0.25, 0.5, 0.75, 0.99, 1])
+    return {"column": str(y.name), "type": "regression",
+            "quantiles": {str(k): _f(v) for k, v in q.items()}, "mean": _f(y.mean())}
+
+
+def _entity_columns(train, feats, time_cols) -> list:
+    if GROUP_COLS:
+        return list(GROUP_COLS)
+    return [c for c in feats if c not in time_cols and c != ID_COL
+            and (not _num(train[c]) or (pd.api.types.is_integer_dtype(train[c])
+                                        and _ID_NAME.search(str(c))))]
+
+
+def _entities(train, test, feats, time_cols) -> list:
+    out, n = [], len(train)
+    for c in _entity_columns(train, feats, time_cols):
+        nu = int(train[c].nunique(dropna=True))
+        if nu < 2:
+            continue
+        rpv = n / nu
+        if not GROUP_COLS and (nu < 50 or rpv < 2):
+            continue
+        te = test[c].dropna()
+        seen = set(train[c].dropna().unique())
+        out.append({"column": str(c), "n_unique_train": nu, "rows_per_value": float(rpv),
+                    "test_overlap": float(te.isin(seen).mean()) if len(te) else None,
+                    "given": bool(GROUP_COLS)})
+    return sorted(out, key=lambda e: -e["n_unique_train"])[:10]
+
+
+def _duplicates(train, test, feats) -> dict:
+    if not feats:
+        return {"train_internal": None, "test_in_train": None}
+    htr = pd.util.hash_pandas_object(train[feats], index=False)
+    hte = pd.util.hash_pandas_object(test[feats], index=False)
+    return {"train_internal": float(htr.duplicated().mean()),
+            "test_in_train": float(hte.isin(set(htr.tolist())).mean()) if len(hte) else None}
+
+
+def _single_feature(train, y, feats, classification) -> list:
+    if y is None:
+        return []
+    from sklearn.metrics import roc_auc_score
+
+    rows = _cap(train, MAX_ROWS).index
+    binary = classification and y.nunique(dropna=True) == 2
+    if classification and not binary:
+        return []  # multiclass: no single scalar score per feature
+    yy = y.loc[rows]
+    pos = sorted(yy.dropna().unique().tolist(), key=str)[-1] if binary else None
+    out = []
+    for c in feats[:MAX_COLUMNS]:
+        x = train.loc[rows, c]
+        if not _num(x):
+            continue
+        m = x.notna() & yy.notna()
+        if m.sum() < 50 or x[m].nunique() < 2:
+            continue
+        if binary:
+            a = float(roc_auc_score((yy[m] == pos).astype(int), x[m]))
+            out.append({"column": str(c), "kind": "auc", "score": max(a, 1 - a)})
+        else:
+            r = x[m].rank().corr(yy[m].astype(float).rank())
+            if r == r:
+                out.append({"column": str(c), "kind": "spearman", "score": abs(float(r))})
+    return sorted(out, key=lambda s: -s["score"])[:10]
+
+
+def _adversarial(train, test, feats, time_cols) -> dict:
+    if len(test) < MIN_TEST_ROWS:
+        return {"status": "skipped",
+                "reason": f"test has {len(test)} rows (a hidden test set or a small public "
+                          f"sample; adversarial validation needs >= {MIN_TEST_ROWS})"}
+    excluded = list(time_cols)
+    use = []
+    for c in feats:
+        if c in time_cols:
+            continue
+        s = train[c]
+        near_unique = s.nunique(dropna=True) > 0.9 * len(s)
+        if (near_unique and not _num(s)) or (_num(s) and _ID_NAME.search(str(c))):
+            # identifiers separate train from test trivially (new rows, new entities); the
+            # entity facts report the latter
+            excluded.append(c)
+            continue
+        use.append(c)
+    if not use:
+        return {"status": "skipped", "reason": "no shared feature columns to compare"}
+    import lightgbm as lgb
+    from sklearn.metrics import roc_auc_score
+    from sklearn.model_selection import StratifiedKFold
+
+    a, b = _cap(train[use], MAX_ROWS), _cap(test[use], MAX_ROWS)
+    X = pd.concat([a, b], ignore_index=True)
+    for c in X.columns:  # frequency-encode text: identity of rare values is not a shift
+        if not _num(X[c]):
+            X[c] = X[c].map(X[c].value_counts(dropna=False)).astype(float)
+        elif pd.api.types.is_bool_dtype(X[c]):
+            X[c] = X[c].astype(int)
+    y = np.r_[np.zeros(len(a)), np.ones(len(b))]
+    aucs, gain = [], np.zeros(len(use))
+    for tr, va in StratifiedKFold(N_FOLDS, shuffle=True, random_state=SEED).split(X, y):
+        m = lgb.LGBMClassifier(n_estimators=200, learning_rate=0.1, num_leaves=31,
+                               importance_type="gain", random_state=SEED, verbose=-1)
+        m.fit(X.iloc[tr], y[tr])
+        aucs.append(float(roc_auc_score(y[va], m.predict_proba(X.iloc[va])[:, 1])))
+        gain += m.feature_importances_
+    share = gain / gain.sum() if gain.sum() > 0 else gain
+    top = sorted(zip(use, share), key=lambda t: -t[1])[:10]
+    return {"status": "ok", "fold_aucs": aucs, "auc_mean": float(np.mean(aucs)),
+            "auc_std": float(np.std(aucs)), "rows_used": [int(len(a)), int(len(b))],
+            "top_features": [{"column": str(c), "gain_share": float(s)} for c, s in top],
+            "excluded": [str(c) for c in excluded]}
+
+
+def main():
+    global DATA_DIR
+    DATA_DIR = _resolve_data_dir()
+    train, test = load_tables(DATA_DIR)
+    if (DATA_DIR / SAMPLE_SUBMISSION).exists():
+        _setup_columns(_read(DATA_DIR / SAMPLE_SUBMISSION), train)
+    out = _output_dir()
+    target = _target(train, test)
+    y = train[target] if target else None
+    feats = [c for c in train.columns if c in test.columns and c not in (target, ID_COL)]
+    classification = _is_classification(y) if y is not None else False
+    time_cols = _time_columns(train, feats)
+    facts = {
+        "format": "kx-facts/1", "exp_id": EXP_ID, "n_train": int(len(train)),
+        "n_test": int(len(test)), "target": _target_facts(y, classification),
+        "id_column": None if ID_COL is None else str(ID_COL),
+        "n_shared_columns": len(feats), "columns_truncated": len(feats) > MAX_COLUMNS,
+        "columns": _column_facts(train, test, feats),
+        "time": _time_facts(train, test, time_cols),
+        "entities": _entities(train, test, feats, time_cols),
+        "duplicates": _duplicates(train, test, feats),
+        "single_feature": _single_feature(train, y, feats, classification),
+        "adversarial": _adversarial(train, test, feats, time_cols),
+    }
+    (out / "facts.json").write_text(json.dumps(facts, indent=2))
+    (out / "result.json").write_text(json.dumps({"exp_id": EXP_ID, "kind": "diagnostic",
+                                                 "facts": "facts.json"}, indent=2))
+    import time as _time
+
+    (out / "kx_manifest.json").write_text(json.dumps({
+        "exp_id": EXP_ID, "created": _time.strftime("%Y-%m-%dT%H:%M:%SZ", _time.gmtime()),
+        "run_nonce": os.urandom(8).hex(), "python": sys.version.split()[0],
+        "platform": platform.platform(), "libraries": _versions(), "data_dir": str(DATA_DIR),
+        "kaggle_env_keys": sorted(k for k in os.environ if k.startswith("KAGGLE")),
+        "run_type": os.environ.get("KAGGLE_KERNEL_RUN_TYPE")}, indent=2))
+    adv = facts["adversarial"]
+    print("KX_DIAGNOSE adversarial " + (f"AUC {adv['auc_mean']:.4f}" if adv["status"] == "ok"
+                                        else f"skipped: {adv['reason']}"), flush=True)
+
+
+DATA_DIR = None
+main()

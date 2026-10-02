@@ -36,6 +36,7 @@ SOURCE_KEYS = {"competition", "datasets", "kernels", "models"}
 CV_KEYS = {"n_folds", "reasoning", "scheme"}
 LOCAL_KEYS = {"subsample", "env"}
 
+EXP_ID_RE = re.compile(r"^exp-\d{3,}$")
 _DATASET_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*/[A-Za-z0-9][A-Za-z0-9_.-]*$")
 # A kernel source is owner/slug, or @exp-NNN: this workspace's upstream experiment,
 # resolved to its kernel at run time (pushed only after the upstream completes).
@@ -106,7 +107,7 @@ def validate(spec, *, exp_dir: Path, profile: dict | None, templates: dict,
     if spec.get("schema_version") != SCHEMA_VERSION:
         errs.append(f"schema_version must be {SCHEMA_VERSION}")
     exp_id = spec.get("exp_id")
-    if not isinstance(exp_id, str) or not re.match(r"^exp-\d{3,}$", exp_id):
+    if not isinstance(exp_id, str) or not EXP_ID_RE.match(exp_id):
         errs.append("exp_id must look like exp-NNN")
     elif exp_id != exp_dir.name:
         errs.append(f"exp_id {exp_id} does not match the folder {exp_dir.name}")
@@ -117,7 +118,7 @@ def validate(spec, *, exp_dir: Path, profile: dict | None, templates: dict,
         errs.append(f"kind must be one of {KINDS}")
     parent = spec.get("parent")
     if parent is not None:
-        if not isinstance(parent, str) or not re.match(r"^exp-\d{3,}$", parent):
+        if not isinstance(parent, str) or not EXP_ID_RE.match(parent):
             errs.append("parent must be an experiment id (exp-NNN) or null")
         elif parent == exp_id:
             errs.append("an experiment cannot be its own parent")

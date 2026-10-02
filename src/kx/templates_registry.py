@@ -128,6 +128,19 @@ TEMPLATES["agent"] = {
     "summary": "single-file simulation agent; local self-play validation + win rate vs a pool",
 }
 
+TEMPLATES["diagnose"] = {
+    "file": "diagnose/diagnose.py.tmpl",
+    "modalities": {"tabular", "image", "text", "audio", "structured", "none"},
+    "modes": {"csv_upload", "code_kernel", "agent", "artifact_upload"},
+    "auto": False,  # scaffolded only by `kx diagnose`
+    "needs_cv": False,
+    "needs_metric": False,
+    "predictions": False,
+    "default_limit_s": 1800,
+    "code_file": "diagnose.py",
+    "summary": "data facts, adversarial validation and leak checks (kx diagnose)",
+}
+
 TABULAR_EXTS = (".csv", ".parquet")
 
 
