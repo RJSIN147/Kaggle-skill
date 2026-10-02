@@ -4,7 +4,7 @@ import json
 import subprocess
 
 import pytest
-from conftest import _base_env, kx
+from conftest import REPO_ROOT, _base_env, kx
 
 from kx.commands import type_guides
 from kx.research import notebook_code
@@ -120,7 +120,6 @@ def test_type_guides_route_to_exactly_the_matching_guides(eff, guides):
 
 
 def test_every_routed_guide_exists_and_skill_is_lean():
-    from conftest import REPO_ROOT
 
     for name in ("tabular", "timeseries", "deep-learning", "code-competition", "simulation",
                  "writeup", "other", "custom"):
@@ -134,5 +133,13 @@ def test_confirm_names_only_the_matching_guide(tmp_path, token_home, fake):
     kx(ws, fake, "sync")
     env = kx(ws, fake, "confirm", "--note", "ok")
     assert env["data"]["type_guides"] == ["references/types/tabular.md"]
-    assert "tabular.md" in env["next_action"]["instruction"]
+    assert str(REPO_ROOT / "references/types/tabular.md") in env["next_action"]["instruction"]
     assert "deep-learning" not in env["next_action"]["instruction"]
+
+
+def test_skill_names_no_harness_specific_variable():
+    """The skill runs in any Agent Skills harness (Claude Code, OpenCode, Codex…): it refers
+    to its folder as <skill>, and kx prints absolute paths to its own files."""
+    text = (REPO_ROOT / "SKILL.md").read_text()
+    assert "${" not in text and "CLAUDE_SKILL_DIR" not in text
+    assert "uv run --project <skill> kx" in text

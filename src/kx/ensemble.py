@@ -17,7 +17,7 @@ from pathlib import Path
 from kx import envelope as E
 from kx import record, workspace
 from kx.metrics import REGISTRY
-from kx.util import KxError, read_json, utc_now, write_json
+from kx.util import KxError, read_json, skill_path, utc_now, write_json
 
 HILL_ITERS = 40
 
@@ -147,8 +147,8 @@ def cmd_ensemble(ws: Path, args, adapter) -> dict:
     except ImportError as exc:
         raise KxError("invalid", "blending scores locally: install the local extra",
                       errors=["local_deps_missing"],
-                      next_action=E.ask_user("Ask the user to run: uv sync --project <skill dir> "
-                                             "--extra local")) from exc
+                      next_action=E.ask_user("Ask the user to run: uv sync --project "
+                                             f"{skill_path()} --extra local")) from exc
     members, member_cv = [], {}
     for e in args.exp_ids:
         d = workspace.exp_dir(ws, e)
