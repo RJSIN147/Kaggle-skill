@@ -121,7 +121,7 @@ def versus_parent(ws: Path, meta: dict) -> dict | None:
     if not mine or not theirs:
         return base | _not("no out-of-fold predictions to check that the folds match")
     if mine != theirs:
-        return base | _not("CV scheme changed (the folds differ)")
+        return base | _not("CV scheme changed: the folds differ")
     gib = meta.get("greater_is_better")
     return base | paired(meta.get("fold_scores") or [], pmeta.get("fold_scores") or [],
                          True if gib is None else bool(gib))

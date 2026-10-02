@@ -151,3 +151,27 @@ def test_a_rerun_refreshes_only_the_kx_section_of_the_verdict(ready_ws, fake):
     text = v.read_text()
     assert "my prose" in text and "prediction missed" in text and "STALE" not in text
     assert text.count("## Recorded by kx") == 1
+
+
+def test_a_child_starts_from_its_parents_template_and_ai_block(ready_ws, fake):
+    exp1, d1, _ = _record(ready_ws, fake, "walk-forward", (0.80, 0.81), "--template",
+                          "timeseries", "--template-reason", "time-ordered", "--parent", "none")
+    code = (d1 / "train.py").read_text().replace("def make_model(seed: int):",
+                                                 "# parent marker\ndef make_model(seed: int):")
+    (d1 / "train.py").write_text(code)
+    env = kx(ready_ws, fake, "new", "--idea", "lags", "--hypothesis", "h", "--expect", "better")
+    assert env["status"] == "ok", env
+    assert env["data"]["template"] == "timeseries" and env["data"]["ai_block_from"] == exp1
+    assert env["data"]["template_reason"] == f"the template of parent {exp1}"
+    d2 = ready_ws / "experiments" / env["data"]["exp_id"]
+    assert "# parent marker" in (d2 / "train.py").read_text()
+    assert "change only what this idea changes" in env["next_action"]["instruction"]
+    env = kx(ready_ws, fake, "new", "--idea", "fresh", "--hypothesis", "h", "--parent", "none")
+    assert env["data"]["template"] == "tabular" and env["data"]["ai_block_from"] is None
+
+
+def test_a_diagnostic_cannot_be_a_parent(ready_ws, fake):
+    env = kx(ready_ws, fake, "diagnose")
+    env = kx(ready_ws, fake, "new", "--idea", "x", "--hypothesis", "h", "--parent",
+             env["data"]["exp_id"], "--expect", "better")
+    assert env["errors"] == ["bad_parent"]

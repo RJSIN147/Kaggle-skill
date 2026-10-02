@@ -77,7 +77,7 @@ def test_cv_check_copies_the_parent_model_and_is_not_compared(ready_ws, fake):
 def test_reference_scheme_ranks_best_within_it(ready_ws, fake):
     exp1, _, _ = _record(ready_ws, fake, "random folds", (0.90, 0.91))
     exp2, _, env = _record(ready_ws, fake, "group folds", (0.80, 0.81), folds_shift=1)
-    assert env["data"]["vs_parent"]["reason"] == "CV scheme changed (the folds differ)"
+    assert env["data"]["vs_parent"]["reason"] == "CV scheme changed: the folds differ"
     rows = read_ledger(ready_ws)
     assert strategy.best_row(rows, True)["exp_id"] == exp1
     assert kx(ready_ws, fake, "validation", "ok", "--note", "n", "--scheme",
