@@ -26,9 +26,15 @@ def fmt_score(mean, std) -> str:
     return f"{mean:g}±{(std if _is_number(std) else 0.0):g}"
 
 
+def comparable_rows(rows: list[dict]) -> list[dict]:
+    """Model runs whose CV can be ranked: full-data SUCCESS, not a diagnostic."""
+    return [r for r in rows if r.get("status") == "SUCCESS" and _is_number(r.get("cv_mean"))
+            and not r.get("subsample")  # a subsample CV is not comparable
+            and r.get("kind", "experiment") != "diagnostic"]
+
+
 def best_row(rows: list[dict], greater_is_better: bool) -> dict | None:
-    winners = [r for r in rows if r.get("status") == "SUCCESS" and _is_number(r.get("cv_mean"))
-               and not r.get("subsample")]  # a subsample CV is not comparable
+    winners = comparable_rows(rows)
     if not winners:
         return None
     return (max if greater_is_better else min)(winners, key=lambda r: r["cv_mean"])
@@ -51,10 +57,24 @@ def tried_lines(rows: list[dict]) -> list[str]:
         v = r.get("verdict_path") or ""
         sub = f" (subsample {r['subsample']:g})" if isinstance(r.get("subsample"), (int, float)) \
             else ""
-        out.append(f"- {r.get('exp_id')} | {r.get('idea') or '(no idea recorded)'} | "
-                   f"{r.get('status')} | {fmt_score(r.get('cv_mean'), r.get('cv_std'))}{sub} | "
+        kind = r.get("kind") or "experiment"
+        tag = f" [{kind}]" if kind != "experiment" else ""
+        origin = f" (from {r['parent']})" if r.get("parent") else ""
+        vs = f" | vs parent: {r['vs_parent']}" if r.get("vs_parent") else ""
+        out.append(f"- {r.get('exp_id')}{tag}{origin} | {r.get('idea') or '(no idea recorded)'} | "
+                   f"{r.get('status')} | {fmt_score(r.get('cv_mean'), r.get('cv_std'))}{sub}{vs} | "
                    + (f"[verdict]({v})" if v else "(no verdict)"))
     return out
+
+
+def calibration_line(rows: list[dict]) -> str | None:
+    """How often the pre-registered direction matched what the paired comparison found."""
+    judged = [r.get("prediction") for r in rows if r.get("prediction") in ("matched", "missed")]
+    if not judged:
+        return None
+    unjudged = sum(1 for r in rows if r.get("parent") and r.get("prediction") is None)
+    return (f"Pre-registered predictions: {judged.count('matched')} of {len(judged)} matched"
+            + (f" ({unjudged} more with a parent could not be judged)" if unjudged else "") + ".")
 
 
 def read_jsonl(path: Path) -> list[dict]:
@@ -103,9 +123,13 @@ def research_body(ideas: list[dict]) -> str:
 def render(title: str, rows: list[dict], sub_rows: list[dict], ideas: list[dict],
            greater_is_better: bool, reasoning: str) -> str:
     digest = "\n".join(tried_lines(rows)) or "_No experiments recorded yet._"
+    best = current_best_body(rows, greater_is_better)
+    calib = calibration_line(rows)
+    if calib:
+        best += f"\n\n{calib}"
     return (
         f"# Strategy — {title}\n\n> {HEADER_NOTE}\n\n"
-        f"## Current best\n\n{current_best_body(rows, greater_is_better)}\n\n"
+        f"## Current best\n\n{best}\n\n"
         f"## Tried-list digest\n\n{digest}\n\n"
         f"## CV-to-LB gap\n\n{lb_gap_body(sub_rows, rows, greater_is_better)}\n\n"
         f"## Research-sourced ideas\n\n{research_body(ideas)}\n\n"

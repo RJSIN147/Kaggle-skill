@@ -91,6 +91,12 @@ def build_parser() -> KxParser:
                    "(owner/slug; repeatable)")
     s.add_argument("--after", action="append", help="upstream experiment whose kernel output "
                                                     "this one reads (repeatable)")
+    s.add_argument("--parent", help="the experiment this one changes (exp-NNN, or none); "
+                                    "default: the current best")
+    s.add_argument("--expect", choices=("better", "worse", "same"),
+                   help="pre-registered prediction vs the parent (required with a parent)")
+    s.add_argument("--expect-delta", type=float,
+                   help="predicted size of the change in the metric (+ = better)")
 
     s = sub.add_parser("run", help="push, poll, pull and record an experiment")
     s.add_argument("exp_id")

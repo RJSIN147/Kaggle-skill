@@ -22,8 +22,9 @@ import re
 import statistics
 import uuid
 from pathlib import Path
+from string import Template
 
-from kx import preds
+from kx import compare, preds
 from kx.ledger import rebuild_ledger_file
 from kx.metrics import REGISTRY
 from kx.util import utc_now, write_json
@@ -187,8 +188,12 @@ def record(ws: Path, exp_dir: Path, spec: dict, run: dict, metric_cfg: dict,
         "exp_id": spec.get("exp_id") or exp_dir.name,
         "created": spec.get("created"),
         "recorded": utc_now(),
+        "kind": spec.get("kind") or "experiment",
+        "parent": spec.get("parent"),
         "idea": spec.get("idea"),
         "hypothesis": spec.get("hypothesis"),
+        "expected_effect": spec.get("expected_effect"),
+        "evidence": spec.get("evidence"),
         "template": spec.get("template"),
         "cv_reasoning": (spec.get("cv") or {}).get("reasoning"),
         "runtime": spec.get("runtime"),
@@ -238,6 +243,8 @@ def record(ws: Path, exp_dir: Path, spec: dict, run: dict, metric_cfg: dict,
             "agent_eval": {k: result[k] for k in ("validation", "opponents") if k in result}
             or None,
         })
+        oof = (result.get("predictions") or {}).get("oof")
+        meta["fold_hash"] = compare.fold_hash(output_dir / oof) if oof else None
     else:
         partial = sorted(p.name for p in output_dir.iterdir()) if output_dir.is_dir() else []
         detail = {"partial_outputs": partial}
@@ -251,9 +258,13 @@ def record(ws: Path, exp_dir: Path, spec: dict, run: dict, metric_cfg: dict,
             detail["log"] = run["log_file"]
         meta["failure_detail"] = detail
 
+    meta["vs_parent"] = compare.versus_parent(ws, meta)
+    meta["prediction"] = compare.prediction_outcome(meta.get("expected_effect"),
+                                                    meta["vs_parent"])
     write_json(exp_dir / "meta.json", meta)
     verdict = exp_dir / "VERDICT.md"
     if not verdict.exists():
-        verdict.write_text(verdict_stub)
+        verdict.write_text(Template(verdict_stub).safe_substitute(
+            comparison=compare.verdict_block(meta)))
     _, warnings = rebuild_ledger_file(ws)
     return meta, warnings

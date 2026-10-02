@@ -9,8 +9,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from kx import compare, experiment, kernel, metrics, record, strategy, templates_registry, workspace
 from kx import envelope as E
-from kx import experiment, kernel, metrics, record, strategy, templates_registry, workspace
 from kx.adapter import CredentialUnavailable
 from kx.credentials import NO_CREDENTIAL_INSTRUCTIONS, detect_source, permission_warnings
 from kx.ledger import read_ledger
@@ -315,6 +315,40 @@ def cmd_metric(ws: Path, args, adapter) -> dict:
 # --------------------------------------------------------------------------- #
 # new
 # --------------------------------------------------------------------------- #
+def _pick_parent(ws: Path, args, metric_cfg: dict | None) -> tuple[str | None, str]:
+    """(parent exp id or None, why): --parent, else the --after upstream, else the best run."""
+    want = getattr(args, "parent", None)
+    if want:
+        if want.lower() == "none":
+            return None, "--parent none: a fresh baseline"
+        workspace.exp_dir(ws, want)  # refuses a bad or missing id
+        return want, "--parent"
+    if args.after:
+        return args.after[0], "the --after upstream"
+    gib = bool((metric_cfg or {}).get("greater_is_better", True))
+    best = strategy.best_row(read_ledger(ws), gib)
+    if best:
+        return best["exp_id"], "default: the current best"
+    return None, "no recorded run yet: a baseline"
+
+
+def _expected_effect(args, parent: str | None, template: str) -> dict | None:
+    """The pre-registered prediction; required whenever there is a parent to compare with."""
+    direction = getattr(args, "expect", None)
+    delta = getattr(args, "expect_delta", None)
+    if direction is None and parent and template in ("deep-infer", "inference"):
+        direction = "same"  # an inference stage inherits its upstream's CV
+    if direction is None:
+        if parent:
+            raise KxError("invalid", f"pre-register a prediction: how will this compare with "
+                          f"{parent}? Pass --expect better|worse|same (or --parent none)",
+                          errors=["expect_required"], data={"parent": parent})
+        if delta is not None:
+            raise KxError("invalid", "--expect-delta needs --expect", errors=["expect_required"])
+        return None
+    return {"direction": direction, "delta": delta}
+
+
 def cmd_new(ws: Path, args, adapter) -> dict:
     workspace.require_workspace(ws)
     profile = workspace.load_profile(ws)
@@ -362,6 +396,8 @@ def cmd_new(ws: Path, args, adapter) -> dict:
     for flag in ("idea", "hypothesis"):
         if not (getattr(args, flag) or "").strip():
             raise KxError("invalid", f"--{flag} is required", errors=[f"{flag}_required"])
+    parent, parent_reason = _pick_parent(ws, args, metric_cfg)
+    expected = _expected_effect(args, parent, name)
 
     exp_id = workspace.mint_exp_id(ws)
     exp_dir = ws / "experiments" / exp_id
@@ -371,7 +407,7 @@ def cmd_new(ws: Path, args, adapter) -> dict:
                             accelerator=args.accelerator or info.get("default_accelerator", "cpu"),
                             limit_s=args.limit or info.get("default_limit_s", 1800),
                             target="local" if (args.local or info.get("target") == "local")
-                            else "kernel")
+                            else "kernel", parent=parent, expected_effect=expected)
     spec["code_file"] = info.get("code_file", "train.py")
     if not info.get("needs_cv", True):
         spec["cv"] = {"n_folds": args.folds, "reasoning": "n/a: this template has no CV loop"}
@@ -409,6 +445,7 @@ def cmd_new(ws: Path, args, adapter) -> dict:
     return E.make(
         "new", "ok", f"scaffolded {exp_id} from the {name} template",
         data={"exp_id": exp_id, "template": name, "template_reason": reason,
+              "parent": parent, "parent_reason": parent_reason, "expected_effect": expected,
               "files": [f"experiments/{exp_id}/experiment.json",
                         f"experiments/{exp_id}/{spec['code_file']}"],
               "tried": tried},
@@ -458,10 +495,15 @@ def _record_and_envelope(ws: Path, exp_dir: Path, spec: dict, run: dict, log_tex
     data |= {"exp_id": exp_id, "result": meta["status"], "failure_reason": meta["failure_reason"],
              "metric": meta["metric"], "cv_mean": meta["cv_mean"], "cv_std": meta["cv_std"],
              "fold_scores": meta["fold_scores"], "failure_detail": meta.get("failure_detail"),
-             "subsample": meta.get("subsample")}
+             "subsample": meta.get("subsample"), "parent": meta.get("parent"),
+             "vs_parent": meta.get("vs_parent"), "prediction": meta.get("prediction")}
     if meta["status"] == "SUCCESS":
         summary = (f"{exp_id} recorded SUCCESS: {meta['metric']} "
                    f"{strategy.fmt_score(meta['cv_mean'], meta['cv_std'])} ({meta['n_folds']} folds)")
+        line = compare.summary(meta.get("vs_parent"))
+        if line:
+            summary += f"; {line}" + (f"; prediction {meta['prediction']}"
+                                      if meta.get("prediction") else "")
     else:
         summary = f"{exp_id} recorded FAILED ({meta['failure_reason']}); no score recorded"
     if run["resumable"]:

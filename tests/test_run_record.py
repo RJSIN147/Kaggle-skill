@@ -33,7 +33,7 @@ def make_outputs(n_oof=6, n_test=3, n_folds=2, scores=(0.8, 0.9), mean=None, bad
 
 
 def scaffold(ws, fake, idea="baseline"):
-    env = kx(ws, fake, "new", "--idea", idea, "--hypothesis", "h")
+    env = kx(ws, fake, "new", "--idea", idea, "--hypothesis", "h", "--expect", "better")
     assert env["status"] == "ok", env
     exp = env["data"]["exp_id"]
     d = ws / "experiments" / exp
@@ -250,8 +250,9 @@ def test_strategy_requires_verdict_and_renders_digest(ready_ws, fake):
     kx(ready_ws, fake, "run", exp2, "--wait", "5")
     (d2 / "VERDICT.md").write_text("# Verdict\nfailed\n")
     kx(ready_ws, fake, "strategy", "--reasoning-file", "r.md")
-    assert "- exp-002 | second | FAILED | —" in (ready_ws / "strategy.md").read_text()
-    new = kx(ready_ws, fake, "new", "--idea", "third", "--hypothesis", "h")
+    text = (ready_ws / "strategy.md").read_text()
+    assert "- exp-002 (from exp-001) | second | FAILED | — | vs parent: not comparable" in text
+    new = kx(ready_ws, fake, "new", "--idea", "third", "--hypothesis", "h", "--expect", "better")
     assert len(new["data"]["tried"]) == 2
 
 
