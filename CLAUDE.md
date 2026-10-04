@@ -113,8 +113,9 @@ login). Continue with `--session <id>`. Without `</dev/null`, `opencode run` wai
 - **GPU limits.** `get_accelerator_quota_statistics` gives the weekly quota (30 h GPU, 20 h
   TPU on this account). At most 2 GPU batch sessions run at once; a third push is refused
   ("Maximum batch GPU session count of 2").
-- **Missing resources.** `get_kernel` and `dataset_status` answer HTTP 403 (not 404) for a kernel or dataset that does not
-  exist; `dataset_list(mine=True)` includes private ones. `dataset_create_new(public=False)`
+- **Missing resources.** `get_kernel` and `dataset_status` answer HTTP 403 (not 404) for a
+  kernel or dataset that does not exist; `kernels_list(mine=True)` and
+  `dataset_list(mine=True)` include private ones. `dataset_create_new(public=False)`
   then `dataset_create_version` work on the same folder (2026-10-04).
 
 ## Harness facts (OpenCode 1.18, 2026-10-02)

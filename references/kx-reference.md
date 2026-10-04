@@ -3,7 +3,7 @@
 ## Envelope
 
 ```json
-{"kx": "0.4.0", "command": "run", "status": "ok",
+{"kx": "0.5.0", "command": "run", "status": "ok",
  "summary": "exp-001 recorded SUCCESS: accuracy 0.8215±0.02 (5 folds)",
  "data": {"exp_id": "exp-001", "result": "SUCCESS", "cv_mean": 0.8215},
  "warnings": [], "errors": [],

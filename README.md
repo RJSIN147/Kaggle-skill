@@ -51,15 +51,25 @@ kx init → kx sync <comp> → kx confirm → kx metric → kx diagnose → kx n
     leaderboard rank submissions differently. kx warns (it never blocks) and steers to a
     diagnosis or a CV-scheme check; the decision is recorded with a note, and adopting a CV
     scheme makes kx rank experiments only against others on the same folds.
+  - Where no honest CV exists (a ported public engine, a submission rule), `kx new --no-cv`
+    records a run judged on the leaderboard only, instead of a made-up score that would skew
+    every comparison.
 - **Submissions need your yes.** `kx submit` checks a candidate:
   - the file or kernel version, and its shape;
   - the daily slots left;
   - whether its CV beats your best submission on the same CV folds.
 
   It then shows you exactly what would be submitted. Only after you confirm does it submit,
-  once, and `kx lb` reads the score back next to CV with a divergence alarm.
+  once, and `kx lb` reads the score back next to CV with a divergence alarm. The public
+  description is only a kx marker unless you write one.
 - **Kernels are private, internet off by default.** They may turn internet on to fetch
   weights only where the rules allow it.
+- **Reproducible and quota-aware.**
+  - A kernel can be pinned to an earlier Kaggle image (`--image-from` a run or a notebook) when
+    Kaggle's latest image changes.
+  - GPU pushes show the weekly quota left and Kaggle's 2-session cap.
+  - An interrupted push is read back, never pushed twice.
+  - `kx dataset push` uploads offline wheels or weights as a private dataset.
 - **Research and blending.** `kx research` turns top discussions, public notebooks and the
   host's metric into untrusted, summarized notes. `kx ensemble` blends out-of-fold
   predictions into a new experiment and compares it with its best member.
