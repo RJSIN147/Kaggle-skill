@@ -400,3 +400,32 @@ def test_interrupted_push_that_never_landed_is_pushed_once(ready_ws, fake):
     fake.outputs = make_outputs()
     env = kx(ready_ws, fake, "run", exp, "--wait", "5")
     assert env["data"]["result"] == "SUCCESS" and len(fake.pushed()) == 1
+
+
+def test_gpu_push_shows_the_quota_and_warns_before_kaggle_refuses(ready_ws, fake):
+    exp, d = scaffold(ready_ws, fake)
+    spec = json.loads((d / "experiment.json").read_text())
+    spec["runtime"].update({"accelerator": "NvidiaTeslaT4", "limit_s": 7200})
+    (d / "experiment.json").write_text(json.dumps(spec))
+    fake.quota = {"refresh": "2026-10-10T00:00:00",
+                  "gpu": {"used_s": 100000.0, "reserved_s": 3600.0, "allowed_s": 108000.0}}
+    for other in ("exp-090", "exp-091"):  # two GPU kernels still running in this workspace
+        od = ready_ws / "experiments" / other
+        od.mkdir()
+        (od / "kernel_run.json").write_text(json.dumps(
+            {"accelerator": "NvidiaTeslaT4", "status": "RUNNING", "recorded": False}))
+    fake.statuses = ["RUNNING"]
+    env = kx(ready_ws, fake, "run", exp, "--wait", "0")
+    assert env["data"]["gpu_quota"]["gpu_hours_left"] == 1.2
+    assert env["data"]["gpu_quota"]["running_gpu_kernels"] == ["exp-090", "exp-091"]
+    assert any("GPU quota: 1.2 h left" in w for w in env["warnings"])
+    assert any("at most 2 GPU sessions" in w for w in env["warnings"])
+
+
+def test_the_gpu_session_cap_is_a_clear_refusal_and_leaves_no_push_record(ready_ws, fake):
+    exp, d = scaffold(ready_ws, fake)
+    fake.push_response = {"error": "Maximum batch GPU session count of 2 reached.",
+                          "version_number": None}
+    env = kx(ready_ws, fake, "run", exp)
+    assert env["status"] == "needs_user" and env["errors"] == ["gpu_session_limit"]
+    assert not (d / "kernel_run.json").exists()

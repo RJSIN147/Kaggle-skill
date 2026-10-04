@@ -399,6 +399,29 @@ class KaggleAdapter:
 
         return self._call("get_kernel_session_status", fn)
 
+    def accelerator_quota(self) -> dict:
+        """This account's weekly GPU/TPU quota: seconds used, reserved by running sessions,
+        and allowed, plus the refresh time (live-verified 2026-10-04)."""
+        from kagglesdk.kernels.types.kernels_api_service import (
+            ApiGetAcceleratorQuotaStatisticsRequest,
+        )
+
+        def secs(td):
+            return td.total_seconds() if hasattr(td, "total_seconds") else None
+
+        def fn(api):
+            with api.build_kaggle_client() as client:
+                r = client.kernels.kernels_api_client.get_accelerator_quota_statistics(
+                    ApiGetAcceleratorQuotaStatisticsRequest())
+                out = {"refresh": plain(r.quota_refresh_time)}
+                for name in ("gpu", "tpu"):
+                    q = getattr(r, f"{name}_quota")
+                    out[name] = {"used_s": secs(q.time_used), "reserved_s": secs(q.time_reserved),
+                                 "allowed_s": secs(q.total_time_allowed)}
+                return out
+
+        return self._call("get_accelerator_quota_statistics", fn)
+
     def get_kernel(self, owner: str, slug: str) -> dict:
         from kagglesdk.kernels.types.kernels_api_service import ApiGetKernelRequest
 

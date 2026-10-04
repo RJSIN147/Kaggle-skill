@@ -743,6 +743,7 @@ def cmd_run(ws: Path, args, adapter) -> dict:
                                     {"backend": "local", "seconds": run["seconds"]})
 
     warnings: list[str] = []
+    gpu_info = None
     pending_push = bool(existing) and existing.get("status") == "PUSHING"
     if existing is None or args.rerun or pending_push:
         _validate_spec(ws, exp_dir, spec, profile)
@@ -795,6 +796,9 @@ def cmd_run(ws: Path, args, adapter) -> dict:
                 warnings.append(f"an interrupted push of {exp_dir.name} reached Kaggle as version "
                                 f"{landed}; kx read it back and did not push again")
         if pushed is None:
+            if spec["runtime"]["accelerator"] != "cpu":
+                gpu_info, gw = kernel.gpu_check(ws, adapter, spec)
+                warnings += gw
             kernel.save_run(exp_dir, kernel.intent_record(meta, spec, prev, commit or "uncommitted"))
             try:
                 pushed = kernel.push_checked(adapter, meta, code_text, spec["runtime"]["limit_s"])
@@ -851,7 +855,8 @@ def cmd_run(ws: Path, args, adapter) -> dict:
                       f"{run['kernel_ref']} v{run['kernel_version']} is {run.get('status')}; "
                       "re-run to keep waiting (it is never re-pushed)",
                       data={"exp_id": exp_dir.name, "kernel": run["kernel_ref"],
-                            "version": run["kernel_version"], "kernel_status": run.get("status")},
+                            "version": run["kernel_version"], "kernel_status": run.get("status"),
+                            **({"gpu_quota": gpu_info} if gpu_info else {})},
                       warnings=warnings,
                       next_action=E.run(f"kx run {exp_dir.name}",
                                         "Re-run to resume polling. For long kernels pass "
@@ -888,7 +893,8 @@ def cmd_run(ws: Path, args, adapter) -> dict:
                                 {"backend": "kernel", "kernel": run["kernel_ref"],
                                  "kernel_version": run["kernel_version"],
                                  "kernel_status": run["status"],
-                                 "docker_image": run.get("docker_image")})
+                                 "docker_image": run.get("docker_image"),
+                                 **({"gpu_quota": gpu_info} if gpu_info else {})})
 
 
 def _re_record(ws: Path, exp_dir: Path, spec: dict) -> dict:

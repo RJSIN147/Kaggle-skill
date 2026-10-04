@@ -104,6 +104,7 @@ def test_env_compares_runs_with_local(ready_ws, fake):
     assert row["docker_image"].startswith("gcr.io/kaggle-images/python@sha256")
     assert row["libraries"] == {"pandas": "2.3.3"}
     assert env["data"]["local"]["python"]
+    assert any(t.startswith("GPU quota: 29.0 h left of 30 h") for t in env["data"]["table"])
 
 
 def test_partial_file_download_is_bounded_and_listed(ready_ws, fake, tmp_path):

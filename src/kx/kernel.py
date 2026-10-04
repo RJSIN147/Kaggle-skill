@@ -10,6 +10,7 @@ Facts this relies on (kaggle 2.2.3, live-verified in the spikes):
 
 from __future__ import annotations
 
+import json
 import random
 import re
 import time
@@ -85,6 +86,23 @@ def _check_push(adapter, meta: dict, resp: dict) -> dict:
                                    "instruction": "Ask the user to open https://www.kaggle.com/"
                                                   f"competitions/{comps[0]}/rules and accept the "
                                                   "rules (a browser step), then say when done.",
+                                   "then": "re-run the same kx run command"})
+    if "gpu session" in err.lower():
+        raise KxError("needs_user", f"Kaggle allows at most {GPU_SESSION_CAP} GPU sessions at "
+                      "once and that many are running", errors=["gpu_session_limit"],
+                      quarantine=err,
+                      next_action={"kind": "ask_user",
+                                   "instruction": "Tell the user Kaggle's GPU session cap is "
+                                                  "reached; wait for a running GPU kernel to "
+                                                  "finish (or stop one in the browser).",
+                                   "then": "re-run the same kx run command"})
+    if "quota" in err.lower():
+        raise KxError("needs_user", "Kaggle refused the push: the accelerator quota is used up",
+                      errors=["accelerator_quota"], quarantine=err,
+                      next_action={"kind": "ask_user",
+                                   "instruction": "Tell the user the weekly GPU quota is used "
+                                                  "up; run on CPU (--accelerator cpu) or wait "
+                                                  "for the refresh.",
                                    "then": "re-run the same kx run command"})
     if resp.get("error"):
         raise KxError("error", "Kaggle rejected the kernel push (server message quarantined "
@@ -176,6 +194,47 @@ def pull(adapter, owner: str, slug: str, out: Path) -> dict:
         (out / "kernel.log").write_text(log_text)
         log_file = "kernel.log"
     return {"files": files, "refused": refused, "log_text": log_text, "log_file": log_file}
+
+
+GPU_SESSION_CAP = 2  # Kaggle runs at most 2 GPU batch sessions at once (seen live 2026-10)
+
+
+def gpu_check(ws: Path, adapter, spec: dict) -> tuple[dict, list[str]]:
+    """Before a GPU push: the account's weekly GPU quota and this workspace's running GPU
+    kernels. Informs and warns; Kaggle itself enforces both limits."""
+    warnings: list[str] = []
+    running = []
+    for rp in sorted((ws / "experiments").glob("exp-*/kernel_run.json")):
+        try:
+            r = json.loads(rp.read_text())
+        except (OSError, json.JSONDecodeError):
+            continue
+        if r.get("accelerator", "cpu") != "cpu" and not r.get("recorded") \
+                and r.get("status") not in TERMINAL and rp.parent.name != spec["exp_id"]:
+            running.append(rp.parent.name)
+    info: dict = {"running_gpu_kernels": running}
+    if len(running) >= GPU_SESSION_CAP:
+        warnings.append(f"Kaggle runs at most {GPU_SESSION_CAP} GPU sessions at once and "
+                        f"{', '.join(running)} may still be running; this push may be refused. "
+                        "Finish or poll those first (`kx run <exp>`).")
+    try:
+        q = adapter.accelerator_quota()
+    except KxError:
+        return info, warnings + ["could not read the GPU quota from Kaggle"]
+    g = q.get("gpu") or {}
+    if not all(isinstance(g.get(k), (int, float)) for k in ("used_s", "reserved_s", "allowed_s")):
+        return info, warnings
+    left = g["allowed_s"] - g["used_s"] - g["reserved_s"]
+    info |= {"gpu_hours_used": round(g["used_s"] / 3600, 1),
+             "gpu_hours_reserved": round(g["reserved_s"] / 3600, 1),
+             "gpu_hours_allowed": round(g["allowed_s"] / 3600, 1),
+             "gpu_hours_left": round(left / 3600, 1), "quota_refresh": q.get("refresh")}
+    limit = spec["runtime"]["limit_s"]
+    if left < limit:
+        warnings.append(f"GPU quota: {left / 3600:.1f} h left this week (refresh "
+                        f"{q.get('refresh')}), but this run may take up to {limit / 3600:.1f} h; "
+                        "Kaggle stops a kernel when the quota runs out")
+    return info, warnings
 
 
 def intent_record(meta: dict, spec: dict, prev_version: int | None, git_commit: str) -> dict:

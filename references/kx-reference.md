@@ -32,7 +32,7 @@ appear in an envelope; they go to `control/raw/last-error.txt` (gitignored).
 | `kx submit exp-NNN --confirm TOKEN [--force-cv] [--file F]` | After the user's explicit yes: re-check and submit the proposed candidate once (refuses a changed file/kernel version or a proposal from an earlier UTC day: slots reset at UTC midnight). |
 | `kx lb [--wait S]` | Read back submissions, record scores next to CV, trend the gap; a rank inversion between two runs on the same folds makes the validation status suspect (each pair once). |
 | `kx research [all/pages/discussions/notebooks/metric/idea] [--limit N] [--use-metric owner/slug] [--idea "…" --source "…"]` | Research ingestion (see SKILL.md). `--use-metric` adopts a host metric kernel for CV; `idea --idea … --source …` queues an idea. |
-| `kx env` | Kernel image + library versions of each run next to this machine's. |
+| `kx env` | Kernel image + library versions of each run next to this machine's, and the account's weekly GPU/TPU quota (hours used, held by running sessions, left; refresh time). |
 | `kx ensemble exp-A exp-B … [--method hill/weights] [--idea "…"]` | Blend OOF predictions into a new experiment whose parent is the best member (predicted `better`); the submission keeps the member's shape (one column, or one probability column per class) or is skipped with a warning. |
 
 ## experiment.json
@@ -47,7 +47,7 @@ appear in an envelope; they go to `control/raw/last-error.txt` (gitignored).
 | `idea`, `hypothesis` | non-empty |
 | `template` | a registered template; `template_reason` records why (and any override) |
 | `runtime.target` | `kernel` (default) or `local` |
-| `runtime.accelerator` | `cpu` or `NvidiaTeslaT4` (live-verified ids only) |
+| `runtime.accelerator` | `cpu` or `NvidiaTeslaT4` (live-verified ids only). Before a GPU push `kx run` reads the weekly GPU quota (`data.gpu_quota`) and warns when fewer hours are left than `limit_s`, or when 2 GPU kernels of this workspace may still be running (Kaggle's session cap; a push refused for it is `gpu_session_limit`) |
 | `runtime.limit_s` | 60 … 43200 (Kaggle's 12 h cap); a run that hits it ends CANCEL_ACKNOWLEDGED → FAILED(runtime_limit) |
 | `runtime.internet` | `false` by default; `true` (e.g. to download weights not on Kaggle) is warned about, read back from Kaggle and recorded; refused for a code competition's `inference`/`deep-infer` stage, and `kx submit` refuses a code-competition kernel that ran with it on |
 | `sources.competition` | the synced competition |
