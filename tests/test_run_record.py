@@ -429,3 +429,43 @@ def test_the_gpu_session_cap_is_a_clear_refusal_and_leaves_no_push_record(ready_
     env = kx(ready_ws, fake, "run", exp)
     assert env["status"] == "needs_user" and env["errors"] == ["gpu_session_limit"]
     assert not (d / "kernel_run.json").exists()
+
+
+IMG = "gcr.io/kaggle-images/python@sha256:" + "d" * 64
+
+
+def test_a_pinned_docker_image_is_pushed_inherited_and_verified(ready_ws, fake):
+    env = kx(ready_ws, fake, "new", "--idea", "x", "--hypothesis", "h", "--docker-image",
+             "docker.io/evil/image:latest")
+    assert env["errors"] == ["bad_docker_image"]
+    fake.get_kernel = lambda owner, slug: {"docker_image": IMG}  # a public notebook's image
+    env = kx(ready_ws, fake, "new", "--idea", "x", "--hypothesis", "h",
+             "--image-from", "someone/top-notebook")
+    assert env["data"]["docker_image"] == IMG
+    del fake.get_kernel
+    exp, d = env["data"]["exp_id"], ready_ws / "experiments" / env["data"]["exp_id"]
+    spec = json.loads((d / "experiment.json").read_text())
+    assert spec["runtime"]["docker_image"] == IMG
+    spec["cv"]["reasoning"] = "iid"
+    (d / "experiment.json").write_text(json.dumps(spec))
+    fake.kernel_meta["docker_image"] = "gcr.io/kaggle-images/python@sha256:" + "0" * 64
+    assert kx(ready_ws, fake, "run", exp)["errors"] == ["server_flags_mismatch"]  # not pinned
+    fake.kernel_meta["docker_image"] = IMG
+    fake.outputs = make_outputs()
+    env = kx(ready_ws, fake, "run", exp, "--wait", "5")
+    assert env["data"]["result"] == "SUCCESS" and fake.pushed()[-1][1]["docker_image"] == IMG
+    child = kx(ready_ws, fake, "new", "--idea", "y", "--hypothesis", "h", "--expect", "better")
+    assert child["data"]["docker_image"] == IMG  # a child keeps its parent's environment
+
+
+def test_a_cpu_image_is_refused_on_a_gpu(ready_ws, fake):
+    env = kx(ready_ws, fake, "new", "--idea", "x", "--hypothesis", "h", "--docker-image", IMG,
+             "--accelerator", "NvidiaTeslaT4")
+    assert any("no NVIDIA driver" in w for w in env["warnings"])
+    d = ready_ws / "experiments" / env["data"]["exp_id"]
+    spec = json.loads((d / "experiment.json").read_text())
+    spec["cv"]["reasoning"] = "iid"
+    (d / "experiment.json").write_text(json.dumps(spec))
+    env = kx(ready_ws, fake, "run", env["data"]["exp_id"])
+    assert env["status"] == "invalid" and any("no NVIDIA driver" in e for e in env["errors"])
+    assert not fake.pushed()

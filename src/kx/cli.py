@@ -82,6 +82,9 @@ def build_parser() -> KxParser:
     s.add_argument("--template-reason")
     s.add_argument("--folds", type=int, help="CV folds (default: the parent's, else 5)")
     s.add_argument("--accelerator")
+    s.add_argument("--docker-image", help="pin a Kaggle image (gcr.io/kaggle-…/python@sha256:…)")
+    s.add_argument("--image-from", metavar="REF", help="pin the image an exp-NNN or a Kaggle "
+                   "notebook (owner/slug) ran on")
     s.add_argument("--limit", type=int, help="kernel runtime limit in seconds")
     s.add_argument("--local", action="store_true", help="run on this machine instead of a kernel")
     s.add_argument("--subsample", type=float, help="local runs: fraction of train rows")

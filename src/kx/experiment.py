@@ -32,7 +32,21 @@ TOP_KEYS = {"schema_version", "exp_id", "created", "idea", "hypothesis", "templa
 KINDS = ("experiment", "diagnostic", "cv_check", "no_cv")
 EXPECT_DIRECTIONS = ("better", "worse", "same")
 EXPECT_KEYS = {"direction", "delta"}
-RUNTIME_KEYS = {"target", "accelerator", "limit_s", "internet"}
+RUNTIME_KEYS = {"target", "accelerator", "limit_s", "internet", "docker_image"}
+# Live-verified 2026-10-04: a GPU kernel pinned to a CPU image (gcr.io/kaggle-images/...)
+# runs, but without an NVIDIA driver. GPU images are kaggle-private-byod / kaggle-gpu-images.
+CPU_IMAGE_ON_GPU = ("runtime.docker_image is a CPU image (gcr.io/kaggle-images/…): on a GPU it "
+                    "has no NVIDIA driver. Pin the GPU image of the same period "
+                    "(gcr.io/kaggle-private-byod/… or kaggle-gpu-images/…), e.g. "
+                    "--image-from an exp-NNN that ran on a GPU")
+
+
+def is_cpu_image(img: str) -> bool:
+    return img.startswith("gcr.io/kaggle-images/")
+
+
+# Kaggle's own images only (a digest or a tag); pinned with kx new --docker-image/--image-from
+DOCKER_IMAGE_RE = re.compile(r"^gcr\.io/kaggle-[a-z0-9-]+/python(@sha256:[0-9a-f]{64}|:[A-Za-z0-9._-]+)$")
 SOURCE_KEYS = {"competition", "datasets", "kernels", "models"}
 CV_KEYS = {"n_folds", "reasoning", "scheme"}
 LOCAL_KEYS = {"subsample", "env"}
@@ -159,6 +173,12 @@ def validate(spec, *, exp_dir: Path, profile: dict | None, templates: dict,
         errs.append(f"runtime.limit_s must be an int in [60, {MAX_LIMIT_S}]")
     if not isinstance(rt.get("internet"), bool):
         errs.append("runtime.internet must be true or false")
+    img = rt.get("docker_image")
+    if img is not None and not (isinstance(img, str) and DOCKER_IMAGE_RE.match(img)):
+        errs.append("runtime.docker_image must be a Kaggle image "
+                    "(gcr.io/kaggle-…/python@sha256:… or :tag)")
+    elif img and rt.get("accelerator", "cpu") != "cpu" and is_cpu_image(img):
+        errs.append(CPU_IMAGE_ON_GPU)
 
     src = spec.get("sources")
     if not isinstance(src, dict):

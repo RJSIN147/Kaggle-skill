@@ -58,6 +58,7 @@ def build_metadata(owner: str, slug: str, spec: dict, profile: dict) -> dict:
         "dataset_sources": list(src.get("datasets") or []),
         "kernel_sources": list(src.get("kernels") or []),
         "model_sources": list(src.get("models") or []),
+        **({"docker_image": rt["docker_image"]} if rt.get("docker_image") else {}),
     }
 
 
@@ -131,6 +132,10 @@ def verify_pushed(adapter, meta: dict, version_hint: int | None = None) -> dict:
     if bool(md.get("enable_internet")) != bool(meta["enable_internet"]):
         raise KxError("error", "the pushed kernel's internet setting differs from the declaration",
                       errors=["server_flags_mismatch"])
+    if meta.get("docker_image") and md.get("docker_image") != meta["docker_image"]:
+        raise KxError("error", "Kaggle did not pin the requested docker image",
+                      errors=["server_flags_mismatch"],
+                      data={"requested": meta["docker_image"], "got": md.get("docker_image")})
     return {"kernel_version": version, "is_private": md.get("is_private"),
             "enable_internet": md.get("enable_internet"), "docker_image": md.get("docker_image"),
             "machine_shape": clean(md.get("machine_shape"))}

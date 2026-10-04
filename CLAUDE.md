@@ -104,6 +104,14 @@ login). Continue with `--session <id>`. Without `</dev/null`, `opencode run` wai
 - **Code-competition submit** = kernel ref + version + output file name. API-served
   competitions (`kaggle_evaluation`) score in about 10–20 minutes.
 - **Agents.** A simulation agent's local win rate does not predict its ladder rating.
+- **Images (2026-10-04).** Kaggle's latest image moved from Python 3.12.13 to 3.13.15 on
+  2026-10-03. `docker_image` on push pins any earlier digest (read back exactly; the run
+  reports that Python). CPU images are `gcr.io/kaggle-images/python`, GPU images
+  `gcr.io/kaggle-private-byod/python`; a CPU image on a T4 runs without an NVIDIA driver. A
+  public notebook's metadata can report the CPU image even when it ran on a GPU.
+- **GPU limits.** `get_accelerator_quota_statistics` gives the weekly quota (30 h GPU, 20 h
+  TPU on this account). At most 2 GPU batch sessions run at once; a third push is refused
+  ("Maximum batch GPU session count of 2").
 
 ## Harness facts (OpenCode 1.18, 2026-10-02)
 

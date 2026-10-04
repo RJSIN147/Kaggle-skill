@@ -364,6 +364,10 @@ class KaggleAdapter:
                 r.category_ids = []
                 if metadata.get("machine_shape"):
                     r.machine_shape = metadata["machine_shape"]
+                if metadata.get("docker_image"):
+                    r.docker_image = metadata["docker_image"]
+                if metadata.get("docker_image_pinning_type"):
+                    r.docker_image_pinning_type = metadata["docker_image_pinning_type"]
                 if timeout_s:
                     r.session_timeout_seconds = int(timeout_s)
                 return plain(client.kernels.kernels_api_client.save_kernel(r))

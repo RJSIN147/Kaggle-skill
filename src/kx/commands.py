@@ -361,6 +361,33 @@ def _is_stage(template: str, spec: dict) -> bool:
     return template in ("deep-infer", "inference") or (template == "custom" and ups)
 
 
+def _docker_image(ws: Path, args, adapter) -> str | None:
+    """--docker-image as given, or --image-from: the image a recorded run (exp-NNN) or a
+    Kaggle notebook (owner/slug) ran on. Only Kaggle's own images are accepted."""
+    img, src = getattr(args, "docker_image", None), getattr(args, "image_from", None)
+    if img and src:
+        raise KxError("invalid", "pass --docker-image or --image-from, not both",
+                      errors=["bad_docker_image"])
+    if src and experiment.EXP_ID_RE.match(src):
+        mp = workspace.exp_dir(ws, src) / "meta.json"
+        img = ((read_json(mp) if mp.exists() else {}).get("environment") or {}).get("docker_image")
+    elif src and "/" in src:
+        owner, slug = src.split("/", 1)
+        img = adapter.get_kernel(owner, slug).get("docker_image")
+    elif src:
+        raise KxError("invalid", "--image-from takes exp-NNN or a notebook's owner/slug",
+                      errors=["bad_docker_image"])
+    if img is None:
+        if src:
+            raise KxError("invalid", f"{src} has no recorded docker image to pin",
+                          errors=["bad_docker_image"])
+        return None
+    if not experiment.DOCKER_IMAGE_RE.match(str(img)):
+        raise KxError("invalid", "only Kaggle's own images can be pinned "
+                      "(gcr.io/kaggle-…/python@sha256:… or :tag)", errors=["bad_docker_image"])
+    return str(img)
+
+
 def _kind_of(ws: Path, exp_id: str) -> str | None:
     p = ws / "experiments" / exp_id / "experiment.json"
     return read_json(p).get("kind") if p.exists() else None
@@ -508,6 +535,12 @@ def cmd_new(ws: Path, args, adapter) -> dict:
                            for k, v in base_spec["sources"].items()}
         if base_spec.get("local") and rt["target"] == "local":
             spec["local"] = dict(base_spec["local"])
+    image = _docker_image(ws, args, adapter)
+    if image:
+        spec["runtime"]["docker_image"] = image
+    pin_warnings = [experiment.CPU_IMAGE_ON_GPU] if spec["runtime"].get("docker_image") and \
+        spec["runtime"]["accelerator"] != "cpu" and \
+        experiment.is_cpu_image(spec["runtime"]["docker_image"]) else []
     if cv_check_of:
         spec["kind"] = "cv_check"
     if not info.get("needs_cv", True):
@@ -577,10 +610,12 @@ def cmd_new(ws: Path, args, adapter) -> dict:
         data={"exp_id": exp_id, "template": name, "template_reason": reason,
               "parent": parent, "parent_reason": parent_reason, "expected_effect": expected,
               "evidence": evidence, "ai_block_from": carry,
+              "docker_image": spec["runtime"].get("docker_image"),
               "files": [f"experiments/{exp_id}/experiment.json",
                         f"experiments/{exp_id}/{spec['code_file']}"],
               "tried": tried},
-        warnings=warnings, next_action=E.edit(instruction, then=f"kx run {exp_id}"))
+        warnings=pin_warnings + warnings,
+        next_action=E.edit(instruction, then=f"kx run {exp_id}"))
 
 
 # --------------------------------------------------------------------------- #
