@@ -71,7 +71,9 @@ login). Continue with `--session <id>`. Without `</dev/null`, `opencode run` wai
 - **Every kx output is one JSON envelope** whose `next_action` is run / edit / ask_user / done.
   Add new behaviour as envelope fields, not printed text.
 - **Kaggle calls.** Import the SDK lazily: importing it authenticates and can exit. Every call
-  runs under a deadline, and reads may retry. Never retry a push or a submit; read back instead.
+  runs under a deadline, and reads may retry. Never retry a push or a submit; read back instead
+  (kernel and dataset pushes save a PUSHING record first). Everything kx creates on Kaggle
+  is private; it never adds a version to a public dataset.
 - **Internet is off by default.** It may be on for csv_upload competitions or a code
   competition's training stage. A code competition's submitted stage must be off: `kx run`
   and `kx submit` refuse it.

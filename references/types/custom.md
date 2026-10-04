@@ -17,7 +17,7 @@ fail-closed like any other.
 
 | You do in `run()` | Why |
 |---|---|
-| Train with CV and call `report(fold_scores)` once: `N_FOLDS` finite scores in `METRIC` | kx computes the mean and std; a missing or second call fails the run |
+| Train with CV and call `report(fold_scores)` once: `N_FOLDS` finite scores in `METRIC` (never in a `--no-cv` run) | kx computes the mean and std; a missing or second call fails the run |
 | Write `EXPECTED_OUTPUT` into `OUT` (the submission file or the artifact) | the harness fails the run when it is missing |
 | On `IS_RERUN` (a code competition's scoring rerun), only predict and write `EXPECTED_OUTPUT` | Kaggle reruns the submitted version on the hidden test set |
 | Optional: `write_preds(oof_rows, test_rows, classes)` before `report()` | kx-preds/1 files: `kx ensemble` can blend the run (row-level tasks only) |

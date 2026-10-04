@@ -140,10 +140,11 @@ have reached Kaggle.
 - Kernels run private with internet off. Turn it on (`runtime.internet: true`) only to
   fetch what is not on Kaggle, e.g. pretrained weights: fine for csv_upload competitions and
   a code competition's training stage; a code competition's submitted stage must stay off
-  (kx refuses it). Prefer attaching Kaggle Models/datasets. GPU (`--accelerator NvidiaTeslaT4`) only for templates that need it; the
-  weekly GPU quota is shared with the user's other work.
+  (kx refuses it). Prefer Kaggle Models/datasets; `kx dataset push <dir> --slug S` uploads
+  offline wheels or weights (private). GPU (`--accelerator NvidiaTeslaT4`) only when needed:
+  the weekly quota (`kx env`) is shared with the user's other work. When Kaggle's image
+  changes, pin the old one: `kx new --image-from exp-NNN` (see code-competition.md).
 - Joining a competition (accepting its rules) is a browser step for the user.
 - Credentials never enter the workspace; a pre-commit hook blocks them.
-- Reference: `<skill>/references/kx-reference.md` (envelope, commands,
-  `experiment.json`, the `kx-preds/1` prediction format). Egress scoping (Claude Code) is opt-in:
-  `<skill>/references/egress-allowlist.md`.
+- Reference: `<skill>/references/kx-reference.md` (every command, `experiment.json`,
+  formats). Opt-in egress scoping (Claude Code): `<skill>/references/egress-allowlist.md`.
