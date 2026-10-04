@@ -392,8 +392,8 @@ def test_interrupted_push_that_never_landed_is_pushed_once(ready_ws, fake):
 
     def missing(owner, slug):
         fake.calls.append(("get_kernel", owner, slug))
-        if not fake.pushed():
-            raise KxError("invalid", "404", errors=["http_404:get_kernel"])
+        if not fake.pushed():  # Kaggle answers 403 for a kernel that does not exist
+            raise KxError("needs_user", "403", errors=["http_403:get_kernel"])
         return dict(fake.kernel_meta)
 
     fake.get_kernel = missing

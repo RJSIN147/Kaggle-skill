@@ -258,7 +258,10 @@ def landed_version(adapter, meta: dict, prev_version: int | None) -> int | None:
     try:
         md = adapter.get_kernel(owner, slug)
     except KxError as exc:
-        if any(e.startswith("http_404") for e in exc.errors):
+        # Kaggle answers 403 (not 404) for a kernel that does not exist (live 2026-10-04):
+        # confirm with a listing of this account's own kernels before concluding that.
+        if any(e.startswith(("http_404", "http_403")) for e in exc.errors) and \
+                meta["id"].lower() not in {r.lower() for r in adapter.my_kernel_refs(slug)}:
             return None
         raise
     v = md.get("current_version_number")

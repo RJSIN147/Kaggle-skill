@@ -410,11 +410,20 @@ class KaggleAdapter:
 
         return self._call("dataset_status", fn)
 
-    def my_dataset_refs(self, search: str) -> list[str]:
-        """Refs of this account's datasets (private included) matching search."""
+    def my_kernel_refs(self, search: str) -> list[str]:
+        """Refs of this account's kernels (private included) matching search."""
         def fn(api):
-            return [str(getattr(d, "ref", "")) for d in api.dataset_list(mine=True, search=search)
-                    or []]
+            return [str(getattr(k, "ref", "")) for k in
+                    api.kernels_list(mine=True, search=search, page_size=50) or []]
+
+        return self._call("kernels_list", fn)
+
+    def my_datasets(self, search: str) -> list[dict]:
+        """This account's datasets (private included) matching search: ref + is_private."""
+        def fn(api):
+            return [{"ref": str(getattr(d, "ref", "")),
+                     "is_private": getattr(d, "is_private", None)}
+                    for d in api.dataset_list(mine=True, search=search) or []]
 
         return self._call("dataset_list", fn)
 

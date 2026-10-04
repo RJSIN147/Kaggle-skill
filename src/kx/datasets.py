@@ -65,11 +65,16 @@ def _version(adapter, ref: str) -> int | None:
         # Kaggle answers 403 (not 404) for a dataset that does not exist: confirm with a
         # listing of this account's own datasets before concluding it is missing.
         if any(e.startswith(("http_404", "http_403")) for e in exc.errors) and \
-                ref not in adapter.my_dataset_refs(ref.split("/", 1)[1]):
+                _mine(adapter, ref) is None:
             return None
         raise
     v = st.get("current_version_number")
     return v if isinstance(v, int) else None
+
+
+def _mine(adapter, ref: str) -> dict | None:
+    return next((d for d in adapter.my_datasets(ref.split("/", 1)[1])
+                 if d["ref"].lower() == ref.lower()), None)
 
 
 def _write_metadata(folder: Path, ref: str, title: str) -> None:
@@ -120,6 +125,13 @@ def cmd_dataset(ws: Path, args, adapter) -> dict:
                           f"version {current}; kx read it back and did not upload again",
                           data={"dataset": ref, "version": current, "private": True},
                           next_action=E.run(use))
+    if current is not None:
+        # A new version inherits the dataset's visibility: never add files to a public one.
+        mine = _mine(adapter, ref)
+        if not mine or mine.get("is_private") is not True:
+            raise KxError("invalid", f"{ref} exists and is not private (or its visibility "
+                          "cannot be read): kx only uploads to private datasets. Pick another "
+                          "--slug.", errors=["dataset_not_private"])
     _write_metadata(folder, ref, args.title or args.slug.replace("-", " "))
     state[ref] = {"status": "PUSHING", "prev_version": current, "folder": str(folder),
                   "push_started": utc_now()}

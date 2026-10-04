@@ -185,7 +185,9 @@ def _dataset_fake(fake, versions):
         return {"ref": "x", "status": "ok", "error": ""}
 
     fake.dataset_state, fake.dataset_push = state, push
-    fake.my_dataset_refs = lambda search: [] if versions[0] is None else [f"kxuser/{search}"]
+    fake.public = False
+    fake.my_datasets = lambda search: [] if versions[0] is None else [
+        {"ref": f"{fake.username}/{search}", "is_private": not fake.public}]
 
 
 def test_dataset_push_creates_a_private_dataset_and_refuses_credentials(ready_ws, fake, tmp_path):
@@ -200,6 +202,11 @@ def test_dataset_push_creates_a_private_dataset_and_refuses_credentials(ready_ws
     assert env["next_action"]["command"].startswith(f"kx new --dataset {fake.username}/rdkit-wheels")
     env = kx(ready_ws, fake, "dataset", "push", str(folder), "--slug", "rdkit-wheels")
     assert env["data"]["version"] == 2 and not env["data"]["created"]
+    fake.public = True  # never add a version (and these files) to a public dataset
+    pushes = len([c for c in fake.calls if c[0] == "dataset_push"])
+    env = kx(ready_ws, fake, "dataset", "push", str(folder), "--slug", "rdkit-wheels")
+    assert env["errors"] == ["dataset_not_private"]
+    assert len([c for c in fake.calls if c[0] == "dataset_push"]) == pushes
     (folder / "kaggle.json").write_text("{}")
     env = kx(ready_ws, fake, "dataset", "push", str(folder), "--slug", "rdkit-wheels")
     assert env["errors"] == ["credential_in_folder"]
