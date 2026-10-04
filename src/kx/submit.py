@@ -264,7 +264,7 @@ def cmd_submit(ws: Path, args, adapter) -> dict:
         f"experiment: {args.exp_id} — {meta.get('idea') or ''}",
         *[f"submits: {w}" for w in what],
         f"CV: {metric} {cand:g}" if isinstance(cand, (int, float)) else "CV: none (agent)"
-        if mode == "agent" else "CV: none",
+        if mode == "agent" else "CV: none (a no-CV experiment: the leaderboard is its score)",
         f"best submitted CV so far: {best['cv_mean']:g} ({best['exp_id']})" if best
         else (f"CV bar skipped: no submitted run shares this run's folds (best submitted CV "
               f"{other_scheme['cv_mean']:g}, {other_scheme['exp_id']}, is on other folds or has "
@@ -403,6 +403,9 @@ def cmd_lb(ws: Path, args, adapter) -> dict:
     joined = lb_gap.join_cv_lb([r for r in rows if r.get("mode") != "agent"], ledger)
     table = [f"{r['exp_id']}: CV {r['cv_mean']:g} | LB {r['lb_score']:g} | gap {r['gap']:+g}"
              for r in joined]
+    no_cv = {r["exp_id"] for r in ledger if r.get("kind") == "no_cv"}
+    table += [f"{r['exp_id']}: no CV | LB {r['public_score']}" for r in rows
+              if r.get("exp_id") in no_cv and r.get("status") == "SCORED"]
     for r in rows:
         if r.get("mode") == "agent":
             e = r.get("episodes") or {}

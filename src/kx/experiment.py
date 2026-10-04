@@ -29,7 +29,7 @@ TOP_KEYS = {"schema_version", "exp_id", "created", "idea", "hypothesis", "templa
             "local", "kind", "parent", "expected_effect", "evidence"}
 # experiment: a model run; diagnostic: `kx diagnose` (never a model comparison or a
 # submission); cv_check: the parent's model under a different CV scheme.
-KINDS = ("experiment", "diagnostic", "cv_check")
+KINDS = ("experiment", "diagnostic", "cv_check", "no_cv")
 EXPECT_DIRECTIONS = ("better", "worse", "same")
 EXPECT_KEYS = {"direction", "delta"}
 RUNTIME_KEYS = {"target", "accelerator", "limit_s", "internet"}

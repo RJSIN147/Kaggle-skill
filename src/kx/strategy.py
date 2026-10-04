@@ -70,6 +70,8 @@ def tried_lines(rows: list[dict], reference_hash: str | None = None) -> list[str
         if reference_hash and r.get("fold_hash") and r["fold_hash"] != reference_hash:
             vs += " | other CV scheme"
         score = fmt_score(r.get("cv_mean"), r.get("cv_std"))
+        if kind == "no_cv":
+            score = "no CV (leaderboard only)"
         if kind == "diagnostic":  # its "CV" is the train-vs-test AUC, not the metric
             score = f"adversarial AUC {score}" if _is_number(r.get("cv_mean")) else \
                 "adversarial AUC skipped"

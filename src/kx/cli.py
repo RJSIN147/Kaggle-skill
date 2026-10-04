@@ -102,6 +102,8 @@ def build_parser() -> KxParser:
     s.add_argument("--evidence", action="append", help="a fact this hypothesis rests on, read "
                    "by kx: facts:<path>, exp-NNN:<key> or idea:<n> (repeatable)")
 
+    s.add_argument("--no-cv", action="store_true",
+                   help="custom template: no CV, judged on the leaderboard only (inherited)")
     s.add_argument("--cv-check", action="store_true",
                    help="rerun the parent's model under a different CV scheme (copies its AI "
                         "block; change only assign_folds)")

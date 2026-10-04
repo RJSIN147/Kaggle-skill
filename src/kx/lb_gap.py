@@ -110,6 +110,8 @@ def join_cv_lb(sub_rows, ledger_rows) -> list[dict]:
             continue  # no CV to compare against.
 
         led = by_exp[exp_id]
+        if not _is_number(led.get("cv_mean")):
+            continue  # a no-CV or FAILED run: nothing to compare its score with
         cv_mean = float(led["cv_mean"])
         joined.append(
             {

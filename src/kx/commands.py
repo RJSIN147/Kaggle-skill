@@ -361,6 +361,11 @@ def _is_stage(template: str, spec: dict) -> bool:
     return template in ("deep-infer", "inference") or (template == "custom" and ups)
 
 
+def _kind_of(ws: Path, exp_id: str) -> str | None:
+    p = ws / "experiments" / exp_id / "experiment.json"
+    return read_json(p).get("kind") if p.exists() else None
+
+
 def _expected_effect(args, parent: str | None, template: str) -> dict | None:
     """The pre-registered prediction; required whenever there is a parent to compare with."""
     direction = getattr(args, "expect", None)
@@ -399,6 +404,8 @@ def cmd_new(ws: Path, args, adapter) -> dict:
             picked, why = "inference", f"inference stage for {args.after[0]} ({up_t})"
         elif up_t == "custom":
             picked, why = "custom", f"next stage of {args.after[0]} (custom)"
+    if getattr(args, "no_cv", False) and not args.template:
+        picked, why = "custom", "--no-cv: a pipeline judged on the leaderboard only"
     cv_check_of = None
     if getattr(args, "cv_check", False):
         if args.after or args.template:
@@ -413,7 +420,7 @@ def cmd_new(ws: Path, args, adapter) -> dict:
             raise KxError("invalid", f"{cv_check_of} ({up.get('template')}) has no CV scheme "
                           "to re-check", errors=["bad_cv_check"])
         picked, why = up["template"], f"CV-scheme check of {cv_check_of}"
-    if not (args.after or cv_check_of or args.template):
+    if not (args.after or cv_check_of or args.template or getattr(args, "no_cv", False)):
         parent_id, _ = _pick_parent(ws, args, _metric_cfg(ws))
         if parent_id:
             p_t = read_json(ws / "experiments" / parent_id / "experiment.json").get("template")
@@ -454,8 +461,15 @@ def cmd_new(ws: Path, args, adapter) -> dict:
     for flag in ("idea", "hypothesis"):
         if not (getattr(args, flag) or "").strip():
             raise KxError("invalid", f"--{flag} is required", errors=[f"{flag}_required"])
+    if getattr(args, "no_cv", False) and not args.parent and not args.after:
+        args.parent = "none"  # the current best is a CV run: no comparable default parent
     parent, parent_reason = _pick_parent(ws, args, metric_cfg)
-    expected = _expected_effect(args, parent, name)
+    no_cv = bool(getattr(args, "no_cv", False)) or any(
+        _kind_of(ws, e) == "no_cv" for e in [parent, *(args.after or [])] if e)
+    if no_cv and (name != "custom" or cv_check_of):
+        raise KxError("invalid", "a no-CV experiment uses the custom template (and is not a "
+                      "--cv-check): pass --template custom", errors=["bad_no_cv"])
+    expected = None if no_cv else _expected_effect(args, parent, name)
     evidence = None
     if getattr(args, "evidence", None):
         from kx import diagnose
@@ -515,6 +529,9 @@ def cmd_new(ws: Path, args, adapter) -> dict:
                               errors=[f"bad_{key[:-1]}_handle"])
             if v not in spec["sources"][key]:
                 spec["sources"][key].append(v)
+    if no_cv:
+        spec["kind"] = "no_cv"
+        spec["cv"] = {"n_folds": n_folds, "reasoning": "n/a: no CV, judged on the leaderboard only"}
     code = templates_registry.render(name, spec, profile | {"effective": eff, "_ws": ws}, metric_cfg)
     carry = args.after[0] if _is_stage(name, spec) else base
     if _is_stage(name, spec) and parent and parent not in args.after and \
@@ -612,7 +629,10 @@ def _record_and_envelope(ws: Path, exp_dir: Path, spec: dict, run: dict, log_tex
              "fold_scores": meta["fold_scores"], "failure_detail": meta.get("failure_detail"),
              "subsample": meta.get("subsample"), "parent": meta.get("parent"),
              "vs_parent": meta.get("vs_parent"), "prediction": meta.get("prediction")}
-    if meta["status"] == "SUCCESS":
+    if meta["status"] == "SUCCESS" and meta.get("kind") == "no_cv":
+        summary = (f"{exp_id} recorded SUCCESS (no CV: it is judged on the leaderboard only; "
+                   "submit it to score it)")
+    elif meta["status"] == "SUCCESS":
         summary = (f"{exp_id} recorded SUCCESS: {metric_cfg.get('label') or meta['metric']} "
                    f"{strategy.fmt_score(meta['cv_mean'], meta['cv_std'])} ({meta['n_folds']} folds)")
         line = compare.summary(meta.get("vs_parent"))

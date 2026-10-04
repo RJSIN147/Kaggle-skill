@@ -6,7 +6,11 @@ stdlib-only and enforces just the output contract; kx then records the run fail-
 
 The contract:
 - a normal run calls report(fold_scores) exactly once, one score per CV fold (N_FOLDS) in
-  METRIC; kx computes the mean and std itself;
+  METRIC; kx computes the mean and std itself. report(fold_scores, folds=[(row_id, fold),
+  ...]) also saves the fold assignment, so kx can compare runs on the same folds without
+  write_preds;
+- a no-CV experiment (NO_CV, `kx new --no-cv`) never calls report(): it is judged on the
+  leaderboard only;
 - run() writes EXPECTED_OUTPUT into OUT (the submission file or artifact);
 - optional: write_preds(oof_rows, test_rows) before report() saves row-level predictions
   (kx-preds/1) so `kx ensemble` can blend this run;
@@ -38,6 +42,7 @@ EXPECTED_OUTPUT = $OUTPUT_LIT
 METRIC = $METRIC_LIT                         # report() scores are in this metric
 METRIC_INFO = $METRIC_INFO_LIT
 N_FOLDS = $N_FOLDS_LIT
+NO_CV = $NO_CV_LIT                           # kx new --no-cv: leaderboard only, no report()
 SEED = 42
 KERNEL_SLUG = $KERNEL_SLUG_LIT
 UPSTREAM = $UPSTREAM_LIT                     # --after: {"ref": "owner/slug", "exp_id": ...}
@@ -68,7 +73,7 @@ _REPORTED = []
 _PREDS = []
 _INCOMPLETE = []
 _RESERVED = {"exp_id", "metric", "n_folds", "fold_scores", "cv_mean", "cv_std", "seed",
-             "submission_file", "predictions", "incomplete", "stopped_at"}
+             "submission_file", "predictions", "incomplete", "stopped_at", "folds", "no_cv"}
 
 
 def time_left() -> float:
@@ -137,8 +142,11 @@ def write_preds(oof_rows, test_rows, classes=None):
                    "n_oof": len(oof_rows), "n_test": len(test_rows)})
 
 
-def report(fold_scores, **extra):
-    """Record the CV: N_FOLDS finite scores in METRIC, once. kx computes mean and std."""
+def report(fold_scores, folds=None, **extra):
+    """Record the CV: N_FOLDS finite scores in METRIC, once. kx computes mean and std.
+    folds: optional (row_id, fold) per train row, so kx can tell runs on the same folds."""
+    if NO_CV:
+        raise RuntimeError("a no-CV experiment (kx new --no-cv) does not call report()")
     if _REPORTED:
         raise RuntimeError("report() was already called")
     scores = [float(s) for s in fold_scores]
@@ -154,6 +162,15 @@ def report(fold_scores, **extra):
               "seed": SEED, "submission_file": EXPECTED_OUTPUT, **extra}
     if _PREDS:
         result["predictions"] = _PREDS[0]
+    if folds is not None:
+        rows = [(str(r), int(f)) for r, f in folds]
+        if not rows or any(f >= N_FOLDS or f < -1 for _, f in rows):
+            raise ValueError("report(folds=...): (row_id, fold) rows with fold in -1..N_FOLDS-1")
+        with (OUT / "folds.csv").open("w", newline="") as fh:
+            w = csv.writer(fh)
+            w.writerow(["row_id", "fold"])
+            w.writerows(rows)
+        result["folds"] = "folds.csv"
     (OUT / "result.json").write_text(json.dumps(result, indent=2))
     _REPORTED.append(result)
     print(f"KX_RESULT {METRIC}={result['cv_mean']:.6f}±{result['cv_std']:.6f}", flush=True)
@@ -161,10 +178,14 @@ def report(fold_scores, **extra):
 
 def report_upstream():
     """An inference stage carries its upstream's CV (and records which run it read)."""
+    if NO_CV:
+        return
     up = upstream_dir()
     if up is None:
         raise RuntimeError("report_upstream() needs kx new --after")
     res = json.loads((up / "result.json").read_text())
+    if res.get("no_cv"):
+        raise ValueError("the upstream has no CV: scaffold this stage with kx new --no-cv")
     if res.get("metric") != METRIC:
         raise ValueError(f"upstream metric {res.get('metric')} != {METRIC}")
     if (up / "kx_manifest.json").exists():
@@ -204,7 +225,13 @@ def main():
         raise FileNotFoundError(f"run() did not write {EXPECTED_OUTPUT} into OUT ({OUT})")
     if IS_RERUN:
         return
-    if not _REPORTED:
+    if NO_CV:
+        (OUT / "result.json").write_text(json.dumps({
+            "exp_id": EXP_ID, "metric": METRIC, "no_cv": True, "n_folds": 0, "fold_scores": [],
+            "cv_mean": None, "cv_std": None, "seed": SEED,
+            "submission_file": EXPECTED_OUTPUT}, indent=2))
+        print("KX_RESULT no CV (leaderboard only)", flush=True)
+    elif not _REPORTED:
         raise RuntimeError("run() did not call report(fold_scores)")
     (OUT / "kx_manifest.json").write_text(json.dumps({
         "exp_id": EXP_ID, "created": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),

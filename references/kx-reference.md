@@ -24,7 +24,7 @@ appear in an envelope; they go to `control/raw/last-error.txt` (gitignored).
 | `kx confirm [--mode M] [--modality X] [--expected-output F] --note "…"` | Record the user's confirmation (and corrections) of the profile. |
 | `kx metric <key> [--direction higher/lower] [--range LO HI] [--prediction-type proba/label/raw] [--label NAME]` | Set the CV metric. `custom` needs a direction; `--label` names it in summaries (e.g. `dice`). |
 | `kx diagnose [--local] [--limit S]` | Scaffold a diagnostic experiment (template `diagnose`); `kx run` it. See "Diagnose" below. |
-| `kx new --idea … --hypothesis … [--expect better/worse/same [--expect-delta D]] [--parent exp-NNN/none] [--evidence REF …] [--cv-check] [--template T --template-reason …] [--folds N] [--accelerator cpu/NvidiaTeslaT4] [--limit S] [--local [--subsample F]] [--after exp-NNN …] [--from-idea N] [--model HANDLE …] [--dataset owner/slug …]` | Scaffold `experiments/exp-NNN/`. The parent defaults to the current best (within the reference CV scheme); `--expect` is required whenever there is one. Without `--template`, the child uses the parent's template and starts from its AI block (`data.ai_block_from`); a diagnostic cannot be a parent. `--evidence` (repeatable) is `facts:<dotted.path>`, `exp-NNN:<meta key>` or `idea:<n>`; kx stores the value it reads. `--cv-check` reruns the parent's model (its AI block) so only `assign_folds` changes. `--model`/`--dataset` attach Kaggle Models/datasets as read-only kernel inputs. `--after` (repeatable) chains this kernel after upstream experiments' kernels (deep → `deep-infer`, tabular → `inference`, custom → custom); `--from-idea` runs research idea #N and marks it tried. |
+| `kx new --idea … --hypothesis … [--expect better/worse/same [--expect-delta D]] [--parent exp-NNN/none] [--evidence REF …] [--cv-check] [--no-cv] [--template T --template-reason …] [--folds N] [--accelerator cpu/NvidiaTeslaT4] [--limit S] [--local [--subsample F]] [--after exp-NNN …] [--from-idea N] [--model HANDLE …] [--dataset owner/slug …]` | Scaffold `experiments/exp-NNN/`. The parent defaults to the current best (within the reference CV scheme); `--expect` is required whenever there is one. Without `--template`, the child uses the parent's template and starts from its AI block (`data.ai_block_from`); a diagnostic cannot be a parent. `--evidence` (repeatable) is `facts:<dotted.path>`, `exp-NNN:<meta key>` or `idea:<n>`; kx stores the value it reads. `--cv-check` reruns the parent's model (its AI block) so only `assign_folds` changes. `--no-cv` (custom template; inherited by children and `--after` stages) records a run with no CV, judged on the leaderboard only. `--model`/`--dataset` attach Kaggle Models/datasets as read-only kernel inputs. `--after` (repeatable) chains this kernel after upstream experiments' kernels (deep → `deep-infer`, tabular → `inference`, custom → custom); `--from-idea` runs research idea #N and marks it tried. |
 | `kx run exp-NNN [--wait S] [--wait-local S] [--rerun] [--resume] [--re-record]` | Validate, push, poll (bounded), pull, record, compare with the parent (`data.vs_parent`, `data.prediction`). Re-running resumes polling and never re-pushes; a push interrupted mid-call is read back (kx saves a `PUSHING` record first) and pushed again only if no new version reached Kaggle; `--re-record` classifies the already-pulled output again (no push, no Kaggle call); `--rerun` pushes a new version (the VERDICT's kx section is refreshed, the prose kept); `--resume` continues a kernel's time-budget stop from its checkpoints. A diagnostic run publishes `control/facts.json` and its findings. |
 | `kx strategy --reasoning-file F` | Regenerate `strategy.md` and commit the cycle. Refuses while a verdict has `_TODO`. |
 | `kx validation [show]` / `kx validation ok --note "…" [--scheme exp-NNN]` | Show the validation status / record that CV can be trusted (acknowledges the event; `--scheme` adopts that run's folds as the reference CV scheme). |
@@ -40,7 +40,7 @@ appear in an envelope; they go to `control/raw/last-error.txt` (gitignored).
 | Field | Rule |
 |---|---|
 | `exp_id` | `exp-NNN`, equal to the folder name |
-| `kind` | `experiment` / `diagnostic` (`kx diagnose`) / `cv_check` (`kx new --cv-check`); set by kx |
+| `kind` | `experiment` / `diagnostic` (`kx diagnose`) / `cv_check` (`kx new --cv-check`) / `no_cv` (`kx new --no-cv`); set by kx |
 | `parent` | the `exp-NNN` this run changes, or null (a baseline) |
 | `expected_effect` | `{"direction": "better"/"worse"/"same", "delta": number/null}`: the pre-registered prediction vs the parent |
 | `evidence` | `[{"ref", "value"}]` written by `kx new --evidence` |
@@ -65,7 +65,7 @@ No `<TODO>` anywhere (and no `KX_TODO` stub left in the code file); unknown keys
 ## Parent comparison
 
 When a run and its parent assign every row to the same fold (`fold_hash`: sha256 of the
-sorted `(row_id, fold)` pairs of `oof.csv`), kx compares them per fold: deltas oriented so
+sorted `(row_id, fold)` pairs of `oof.csv`, or of a custom run's `folds.csv`), kx compares them per fold: deltas oriented so
 + = better, a paired t with the Nadeau-Bengio correction (se = sd·√(1/k + 1/(k−1))) against
 the two-sided 95 % t value → `better` / `worse` / `inconclusive`. When every delta is the
 same, there is no spread to test: all zero is `identical`, otherwise the sign decides.
@@ -109,7 +109,9 @@ comparable to nothing: it never sets the bar or inverts.
 
 `main.py`; `run()` is the whole pipeline. Harness (stdlib-only): `DATA_DIR`, `OUT`,
 `IS_RERUN`, `time_left()`, `model_dirs()`, `upstream_dir()`, `previous_output()`,
-`report(fold_scores, **extra)` (once, `N_FOLDS` finite scores; kx computes mean/std),
+`report(fold_scores, folds=None, **extra)` (once, `N_FOLDS` finite scores; kx computes
+mean/std; `folds` = `(row_id, fold)` rows saved as `folds.csv` for the fold hash),
+`NO_CV` (`kx new --no-cv`: never call `report()`; the harness writes a `no_cv` result),
 `report_upstream()`, `write_preds(oof_rows, test_rows, classes)` (optional kx-preds/1),
 `stop_incomplete(stopped_at)` (resumable with `kx run --resume` on a kernel; a local run is
 recorded FAILED runtime_limit). The run fails unless `report()` ran (not on a rerun) and

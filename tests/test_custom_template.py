@@ -34,7 +34,8 @@ PIPELINE = '''
         stop_incomplete({"fold": 0})
         return
     if REPORT:
-        report(scores, note="majority class")
+        extra = {"folds": [(r["PassengerId"], f) for r, f in zip(rows, folds)]} if FOLDS else {}
+        report(scores, note="majority class", **extra)
 '''
 
 
@@ -45,14 +46,16 @@ def titanic_custom(tmp_path, token_home):
     return _ws(tmp_path, token_home, raw, "accuracy", _titanic_like())
 
 
-def _custom(ws, fake, *extra, **flags):
-    env = kx(ws, fake, "new", "--idea", "majority", "--hypothesis", "h", "--template", "custom",
-             "--template-reason", "testing the contract", "--local", "--expect", "same", *extra)
+def _custom(ws, fake, *extra, new_args=None, **flags):
+    env = kx(ws, fake, "new", "--idea", "majority", "--hypothesis", "h", *(new_args or (
+        "--template", "custom", "--template-reason", "testing the contract", "--expect", "same")),
+        "--local", *extra)
     assert env["status"] == "ok", env
     exp = env["data"]["exp_id"]
     d = ws / "experiments" / exp
     code = (d / "main.py").read_text()
-    opts = {"WRITE_PREDS": False, "WRITE_OUTPUT": True, "STOP": False, "REPORT": True} | flags
+    opts = {"WRITE_PREDS": False, "WRITE_OUTPUT": True, "STOP": False, "REPORT": True,
+            "FOLDS": False} | flags
     body = "".join(f"    {k} = {v}\n" for k, v in opts.items()) + PIPELINE
     (d / "main.py").write_text(code.replace(f"    {STUB}\n", body))
     spec = json.loads((d / "experiment.json").read_text())
@@ -186,3 +189,40 @@ def test_custom_stages_chain_and_refuse_internet_when_submitted(tmp_path, token_
     assert env["status"] == "ok", env
     assert env["data"]["ai_block_from"] == down.name
     assert "# stage marker" in (ws / "experiments" / env["data"]["exp_id"] / "main.py").read_text()
+
+
+def test_report_folds_gives_a_fold_hash_and_a_paired_comparison(titanic_custom):
+    ws, fake = titanic_custom
+    a, da = _custom(ws, fake, FOLDS=True)
+    assert kx(ws, fake, "run", a)["data"]["result"] == "SUCCESS"
+    assert json.loads((da / "meta.json").read_text())["fold_hash"].startswith("sha256:")
+    b, _ = _custom(ws, fake, "--parent", a, FOLDS=True)
+    env = kx(ws, fake, "run", b)
+    assert env["data"]["vs_parent"]["comparable"] is True, env["data"]["vs_parent"]
+    c, dc = _custom(ws, fake, "--parent", a)  # starts from a's block: drop the folds
+    (dc / "main.py").write_text((dc / "main.py").read_text().replace(
+        "    FOLDS = True\n", "    FOLDS = False\n"))
+    env = kx(ws, fake, "run", c)  # no fold assignment: the reason says how to get one
+    assert "report(folds=...)" in env["data"]["vs_parent"]["reason"]
+
+
+def test_a_no_cv_experiment_is_recorded_without_a_score_and_inherited(titanic_custom):
+    ws, fake = titanic_custom
+    a, da = _custom(ws, fake, new_args=("--no-cv",), REPORT=False)
+    spec = json.loads((da / "experiment.json").read_text())
+    assert spec["kind"] == "no_cv" and spec["template"] == "custom" and spec["parent"] is None
+    assert spec["expected_effect"] is None and "NO_CV = True" in (da / "main.py").read_text()
+    env = kx(ws, fake, "run", a)
+    assert env["data"]["result"] == "SUCCESS" and env["data"]["cv_mean"] is None, env
+    assert "leaderboard only" in env["summary"]
+    # a child of a no-CV run is no-CV too, needs no --expect, and never calls report()
+    b, db = _custom(ws, fake, "--parent", a, new_args=())
+    assert json.loads((db / "experiment.json").read_text())["kind"] == "no_cv"
+    code = (db / "main.py").read_text()  # starts from a's block; now break the contract
+    (db / "main.py").write_text(code.replace("    REPORT = False\n", "    REPORT = True\n"))
+    env = kx(ws, fake, "run", b)
+    assert env["data"]["result"] == "FAILED" and env["data"]["failure_reason"] == "kernel_error"
+    status = kx(ws, fake, "status")
+    assert any("no CV (leaderboard only)" in t for t in status["data"]["tried"])
+    assert kx(ws, fake, "new", "--no-cv", "--idea", "x", "--hypothesis", "h", "--template",
+              "tabular", "--template-reason", "r")["errors"] == ["bad_no_cv"]

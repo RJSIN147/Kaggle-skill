@@ -91,7 +91,8 @@ When unsure where you are: `kx status`.
 **Validation status** (`kx validation`): a high-severity diagnose finding or a CV-vs-LB rank
 inversion (`kx lb`) makes it `suspect`. kx only warns; you then diagnose, or rerun the
 parent under another CV scheme (`kx new --cv-check …`: change only `assign_folds`), and
-record the decision: `kx validation ok --note "…" [--scheme exp-NNN]`.
+record the decision: `kx validation ok --note "…" [--scheme exp-NNN]`. No honest CV
+possible? `kx new --no-cv` (custom; leaderboard only). Never invent a CV to fill `report()`.
 
 | Confirmed type | Guide |
 |---|---|

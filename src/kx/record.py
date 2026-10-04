@@ -174,6 +174,9 @@ def _classify_outputs(output_dir: Path, metric_cfg: dict, require_predictions: b
         return "FAILED", err, None
     if isinstance(result, dict) and result.get("incomplete") is True:
         return "FAILED", "runtime_limit", None  # stopped at its time budget (resumable)
+    if kind == "no_cv":  # the harness writes this marker last; there is no CV to check
+        ok = isinstance(result, dict) and result.get("no_cv") is True
+        return ("SUCCESS", None, result) if ok else ("FAILED", "schema_invalid", None)
     reason = validate_result(result, metric_cfg)
     if reason:
         return "FAILED", reason, None
@@ -261,8 +264,7 @@ def record(ws: Path, exp_dir: Path, spec: dict, run: dict, metric_cfg: dict,
             "agent_eval": {k: result[k] for k in ("validation", "opponents") if k in result}
             or None,
         })
-        oof = (result.get("predictions") or {}).get("oof")
-        meta["fold_hash"] = compare.fold_hash(output_dir / oof) if oof else None
+        meta["fold_hash"] = compare.run_fold_hash(output_dir, result)
         if meta["kind"] == "diagnostic":
             from kx import diagnose
 
