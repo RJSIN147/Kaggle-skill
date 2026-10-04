@@ -577,6 +577,26 @@ def cmd_new(ws: Path, args, adapter) -> dict:
         up_code = (ws / "experiments" / carry / up_spec["code_file"]).read_text()
         code = templates_registry.copy_ai_block(up_code, code)
     (exp_dir / spec["code_file"]).write_text(code)
+    from kx import provenance
+
+    me = adapter.username or (workspace.load_state(ws).get("credentials") or {}).get("username")
+    cited = provenance.cited_notebooks(
+        [args.idea, args.hypothesis, json.dumps(evidence) if evidence else "",
+         (idea_row or {}).get("source", "")], adapter, me)
+    carried = read_json(ws / "experiments" / carry / "experiment.json").get("third_party") \
+        if carry else None
+    third_party = provenance.merged(cited, carried)
+    if third_party:
+        spec["third_party"] = third_party
+        if provenance.unconfirmed(third_party):
+            warnings_tp = [f"{exp_id} contains code ported from "
+                           f"{', '.join(third_party['sources'])}: `kx run` asks the user to "
+                           "confirm (license, the competition's rules, credit) before the "
+                           "first push"]
+        else:
+            warnings_tp = []
+    else:
+        warnings_tp = []
     spec["harness_sha256"] = experiment.harness_hash(code)
     write_json(exp_dir / "experiment.json", spec)
     if idea_row:
@@ -611,10 +631,11 @@ def cmd_new(ws: Path, args, adapter) -> dict:
               "parent": parent, "parent_reason": parent_reason, "expected_effect": expected,
               "evidence": evidence, "ai_block_from": carry,
               "docker_image": spec["runtime"].get("docker_image"),
+              "third_party": spec.get("third_party"),
               "files": [f"experiments/{exp_id}/experiment.json",
                         f"experiments/{exp_id}/{spec['code_file']}"],
               "tried": tried},
-        warnings=pin_warnings + warnings,
+        warnings=pin_warnings + warnings_tp + warnings,
         next_action=E.edit(instruction, then=f"kx run {exp_id}"))
 
 
@@ -794,6 +815,7 @@ def cmd_run(ws: Path, args, adapter) -> dict:
                                              f"{exp_dir.name}/experiment.json; download weights "
                                              "in the training stage and save them to its output.",
                                              then=f"kx run {exp_dir.name}"))
+        _third_party_gate(exp_dir, spec, args, pending_push)
         upstream = None
         if spec["sources"].get("kernels"):
             from kx import pipeline
@@ -930,6 +952,31 @@ def cmd_run(ws: Path, args, adapter) -> dict:
                                  "kernel_status": run["status"],
                                  "docker_image": run.get("docker_image"),
                                  **({"gpu_quota": gpu_info} if gpu_info else {})})
+
+
+def _third_party_gate(exp_dir: Path, spec: dict, args, pending_push: bool) -> None:
+    """Before a push: code citing a public notebook (in the spec, or a Kaggle code URL in the
+    code) needs the user's confirmation once, recorded in experiment.json."""
+    from kx import provenance
+
+    code = (exp_dir / spec["code_file"]).read_text()
+    block = provenance.merged(provenance.url_refs(code), spec.get("third_party"))
+    note = getattr(args, "third_party_ok", None)
+    if note is not None:
+        if not note.strip():
+            raise KxError("invalid", "--third-party-ok needs the user's words",
+                          errors=["note_required"])
+        if block:
+            block = provenance.confirm(block, note)
+    if block != spec.get("third_party"):
+        spec["third_party"] = block
+        write_json(exp_dir / "experiment.json", spec)
+    pending = provenance.unconfirmed(block)
+    if pending and not pending_push:
+        raise KxError("needs_user", f"{exp_dir.name} contains code ported from "
+                      f"{', '.join(pending)}; the user confirms before the first push",
+                      errors=["third_party_unconfirmed"], data={"third_party": block},
+                      next_action=provenance.ask(exp_dir.name, pending))
 
 
 def _re_record(ws: Path, exp_dir: Path, spec: dict) -> dict:

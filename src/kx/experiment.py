@@ -26,7 +26,7 @@ AI_STUB = "KX_TODO"  # a template's unwritten AI block (custom); kx run refuses 
 
 TOP_KEYS = {"schema_version", "exp_id", "created", "idea", "hypothesis", "template",
             "template_reason", "runtime", "sources", "cv", "code_file", "harness_sha256",
-            "local", "kind", "parent", "expected_effect", "evidence"}
+            "local", "kind", "parent", "expected_effect", "evidence", "third_party"}
 # experiment: a model run; diagnostic: `kx diagnose` (never a model comparison or a
 # submission); cv_check: the parent's model under a different CV scheme.
 KINDS = ("experiment", "diagnostic", "cv_check", "no_cv")
@@ -117,6 +117,9 @@ def validate(spec, *, exp_dir: Path, profile: dict | None, templates: dict,
     errs: list[str] = []
     for k in sorted(set(spec) - TOP_KEYS):
         errs.append(f"unknown key: {k}")
+    from kx import provenance
+
+    errs += provenance.validate(spec.get("third_party"))
     if _has_placeholder(spec):
         errs.append(f"a field still holds the {PLACEHOLDER} placeholder")
     if spec.get("schema_version") != SCHEMA_VERSION:

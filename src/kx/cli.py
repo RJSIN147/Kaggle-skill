@@ -127,6 +127,8 @@ def build_parser() -> KxParser:
     s.add_argument("--wait", type=float, default=90.0, nargs="?", const=540.0,
                    help="seconds to poll before returning status=running (default 90; "
                         "a bare --wait is 540)")
+    s.add_argument("--third-party-ok", metavar="NOTE",
+                   help="the user's confirmation for ported third-party code (their words)")
     s.add_argument("--re-record", action="store_true",
                    help="classify the already-pulled output again (no push, no Kaggle call)")
     s.add_argument("--wait-local", type=float, default=3000.0,

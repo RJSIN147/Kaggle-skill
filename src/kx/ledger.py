@@ -25,7 +25,7 @@ REQUIRED_PROVENANCE_KEYS = ("run_id", "artifact_hash", "git_commit", "seed")
 LEDGER_ROW_KEYS = (
     "exp_id", "status", "idea", "metric", "greater_is_better", "cv_mean", "cv_std",
     "git_commit", "seed", "created", "verdict_path", "subsample",
-    "kind", "parent", "fold_hash", "vs_parent", "prediction",
+    "kind", "parent", "fold_hash", "vs_parent", "prediction", "ported",
 )
 
 
@@ -54,6 +54,7 @@ def to_ledger_row(meta: dict) -> dict:
         "fold_hash": meta.get("fold_hash"),
         "vs_parent": vs_label,
         "prediction": meta.get("prediction"),
+        "ported": bool(meta.get("third_party")),
     }
 
 

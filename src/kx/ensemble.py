@@ -252,6 +252,12 @@ def cmd_ensemble(ws: Path, args, adapter) -> dict:
             "sources": {"competition": profile["slug"], "datasets": [], "kernels": [], "models": []},
             "cv": {"n_folds": len(fold_scores), "reasoning": f"inherits {args.exp_ids[0]}'s folds"},
             "code_file": "blend.json"}
+    from kx import provenance
+
+    tp = provenance.combine([read_json(ws / "experiments" / e / "experiment.json")
+                             .get("third_party") for e in args.exp_ids])
+    if tp:
+        spec["third_party"] = tp
     write_json(d / "experiment.json", spec)
     verdict = workspace.render("VERDICT.md.tmpl", exp_id=exp_id)
     meta, warns = record.record(ws, d, spec, {"backend": "local", "exit_code": 0,

@@ -65,6 +65,7 @@ def tried_lines(rows: list[dict], reference_hash: str | None = None) -> list[str
             else ""
         kind = r.get("kind") or "experiment"
         tag = f" [{kind}]" if kind != "experiment" else ""
+        tag += " [ported]" if r.get("ported") else ""
         origin = f" (from {r['parent']})" if r.get("parent") else ""
         vs = f" | vs parent: {r['vs_parent']}" if r.get("vs_parent") else ""
         if reference_hash and r.get("fold_hash") and r["fold_hash"] != reference_hash:
