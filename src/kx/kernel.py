@@ -17,6 +17,7 @@ import time
 from pathlib import Path
 
 from kx.adapter import safe_join
+from kx.experiment import MACHINE_SHAPES
 from kx.util import KxError, utc_now, write_json
 
 TERMINAL = {"COMPLETE", "ERROR", "CANCEL_ACKNOWLEDGED"}
@@ -59,6 +60,7 @@ def build_metadata(owner: str, slug: str, spec: dict, profile: dict) -> dict:
         "kernel_sources": list(src.get("kernels") or []),
         "model_sources": list(src.get("models") or []),
         **({"docker_image": rt["docker_image"]} if rt.get("docker_image") else {}),
+        **({"machine_shape": rt["accelerator"]} if rt["accelerator"] in MACHINE_SHAPES else {}),
     }
 
 
@@ -136,6 +138,10 @@ def verify_pushed(adapter, meta: dict, version_hint: int | None = None) -> dict:
         raise KxError("error", "Kaggle did not pin the requested docker image",
                       errors=["server_flags_mismatch"],
                       data={"requested": meta["docker_image"], "got": md.get("docker_image")})
+    if meta.get("machine_shape") and clean(md.get("machine_shape")) != meta["machine_shape"]:
+        raise KxError("error", "Kaggle did not assign the requested machine shape",
+                      errors=["server_flags_mismatch"],
+                      data={"requested": meta["machine_shape"], "got": md.get("machine_shape")})
     return {"kernel_version": version, "is_private": md.get("is_private"),
             "enable_internet": md.get("enable_internet"), "docker_image": md.get("docker_image"),
             "machine_shape": clean(md.get("machine_shape"))}

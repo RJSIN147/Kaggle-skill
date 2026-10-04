@@ -481,3 +481,33 @@ def test_strategy_defaults_to_the_newest_reasoning_file(ready_ws, fake):
     (d / "reasoning.md").write_text("next: more features\n")
     env = kx(ready_ws, fake, "strategy")
     assert env["status"] == "ok", env
+
+
+def test_an_l4x4_push_sends_and_verifies_the_machine_shape(ready_ws, fake):
+    env = kx(ready_ws, fake, "new", "--idea", "x", "--hypothesis", "h",
+             "--accelerator", "NvidiaL4")
+    exp, d = env["data"]["exp_id"], ready_ws / "experiments" / env["data"]["exp_id"]
+    spec = json.loads((d / "experiment.json").read_text())
+    assert spec["runtime"]["accelerator"] == "NvidiaL4"
+    spec["cv"]["reasoning"] = "iid"
+    (d / "experiment.json").write_text(json.dumps(spec))
+    fake.kernel_meta["machine_shape"] = "NvidiaTeslaT4"  # Kaggle assigned another machine
+    assert kx(ready_ws, fake, "run", exp)["errors"] == ["server_flags_mismatch"]
+    fake.kernel_meta["machine_shape"] = "NvidiaL4"
+    fake.outputs = make_outputs()
+    env = kx(ready_ws, fake, "run", exp, "--wait", "5")
+    meta = fake.pushed()[-1][1]
+    assert env["data"]["result"] == "SUCCESS"
+    assert meta["enable_gpu"] is True and meta["machine_shape"] == "NvidiaL4"
+
+
+def test_a_t4_push_sends_no_machine_shape(ready_ws, fake):
+    env = kx(ready_ws, fake, "new", "--idea", "x", "--hypothesis", "h",
+             "--accelerator", "NvidiaTeslaT4")
+    d = ready_ws / "experiments" / env["data"]["exp_id"]
+    spec = json.loads((d / "experiment.json").read_text())
+    spec["cv"]["reasoning"] = "iid"
+    (d / "experiment.json").write_text(json.dumps(spec))
+    fake.outputs = make_outputs()
+    kx(ready_ws, fake, "run", env["data"]["exp_id"], "--wait", "5")
+    assert "machine_shape" not in fake.pushed()[-1][1]

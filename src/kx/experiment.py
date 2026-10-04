@@ -15,9 +15,11 @@ from pathlib import Path
 SCHEMA_VERSION = 1
 PLACEHOLDER = "<TODO>"
 
-# Live-verified accelerator ids only (P100 is retired upstream; multi-GPU shapes
-# are unverified). cpu -> enable_gpu false; NvidiaTeslaT4 -> enable_gpu true.
-ACCELERATORS = ("cpu", "NvidiaTeslaT4")
+# Live-verified accelerator ids only (P100 is retired upstream). cpu -> enable_gpu false;
+# NvidiaTeslaT4 -> enable_gpu true; NvidiaL4 -> enable_gpu true plus machine_shape NvidiaL4
+# (the 4 x L4 machine some competitions unlock; it bills GPU quota at 2x).
+ACCELERATORS = ("cpu", "NvidiaTeslaT4", "NvidiaL4")
+MACHINE_SHAPES = ("NvidiaL4",)  # accelerators pushed as an explicit machine_shape
 TARGETS = ("kernel", "local")
 MAX_LIMIT_S = 12 * 3600  # Kaggle's 12 h session maximum
 
