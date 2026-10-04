@@ -121,6 +121,8 @@ def build_parser() -> KxParser:
     s.add_argument("exp_id")
     s.add_argument("--wait", type=float, default=90.0,
                    help="seconds to poll before returning status=running (default 90)")
+    s.add_argument("--re-record", action="store_true",
+                   help="classify the already-pulled output again (no push, no Kaggle call)")
     s.add_argument("--wait-local", type=float, default=3000.0,
                    help="local runs: timeout in seconds")
     s.add_argument("--rerun", action="store_true", help="push a new version even if recorded")

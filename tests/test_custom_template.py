@@ -178,3 +178,11 @@ def test_custom_stages_chain_and_refuse_internet_when_submitted(tmp_path, token_
     pushes = len(fake.pushed())
     env = kx(ws, fake, "run", env["data"]["exp_id"], "--wait", "5")
     assert env["errors"] == ["internet_on_submitted_stage"] and len(fake.pushed()) == pushes
+    # a second stage that changes one thing in the first starts from the first's block
+    (down / "main.py").write_text((down / "main.py").read_text().replace(
+        "# upstream marker", "# stage marker"))
+    env = kx(ws, fake, "new", "--idea", "rule", "--hypothesis", "h", "--after", up,
+             "--parent", down.name, "--expect", "better")
+    assert env["status"] == "ok", env
+    assert env["data"]["ai_block_from"] == down.name
+    assert "# stage marker" in (ws / "experiments" / env["data"]["exp_id"] / "main.py").read_text()

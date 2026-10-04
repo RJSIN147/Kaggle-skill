@@ -160,8 +160,8 @@ def test_budget_expiry_returns_running_and_resume_never_repushes(ready_ws, fake)
 @pytest.mark.parametrize("setup,reason", [
     (lambda f: f.statuses.__setitem__(slice(None), ["ERROR"]), "kernel_error"),
     (lambda f: f.statuses.__setitem__(slice(None), ["CANCEL_ACKNOWLEDGED"]), "runtime_limit"),
-    (lambda f: setattr(f, "log", (FIXTURES / "kernel_logs/titanic_error.json").read_text()),
-     "kernel_error"),
+    (lambda f: (setattr(f, "log", (FIXTURES / "kernel_logs/titanic_error.json").read_text()),
+                f.outputs.pop("result.json")), "kernel_error"),
     (lambda f: setattr(f, "log", None), "kernel_error"),
     (lambda f: f.outputs.pop("result.json"), "missing_result"),
     (lambda f: f.outputs.update(make_outputs(mean=0.99)), "schema_invalid"),
@@ -337,3 +337,66 @@ def test_preds_validator_accepts_walk_forward_and_multiclass(tmp_path):
     assert preds.validate(tmp_path, block, 2) == []
     block["oof"] = "../oof.csv"
     assert preds.validate(tmp_path, block, 2)
+
+
+def test_handled_traceback_in_a_complete_run_is_a_warning_and_re_record_needs_no_push(ready_ws,
+                                                                                      fake):
+    exp, d = scaffold(ready_ws, fake)
+    fake.outputs = make_outputs()
+    fake.log = (FIXTURES / "kernel_logs/titanic_error.json").read_text()
+    env = kx(ready_ws, fake, "run", exp, "--wait", "5")
+    assert env["data"]["result"] == "SUCCESS" and env["data"]["cv_mean"] == pytest.approx(0.85)
+    assert any("handled" in w and "traceback.txt" in w for w in env["warnings"])
+    assert json.loads((d / "meta.json").read_text())["log_markers"] is True
+    assert (d / "output" / "traceback.txt").exists()
+    # a run recorded under older rules is classified again from its pulled output
+    meta = json.loads((d / "meta.json").read_text())
+    meta.update({"status": "FAILED", "failure_reason": "kernel_error", "cv_mean": None})
+    (d / "meta.json").write_text(json.dumps(meta))
+    calls = len(fake.calls)
+    env = kx(ready_ws, fake, "run", exp, "--re-record")
+    assert env["data"]["result"] == "SUCCESS" and env["data"]["re_recorded"] is True
+    assert len(fake.calls) == calls  # no Kaggle call at all
+    assert kx(ready_ws, fake, "run", "exp-999", "--re-record")["status"] == "invalid"
+
+
+def test_interrupted_push_is_read_back_never_pushed_twice(ready_ws, fake):
+    exp, d = scaffold(ready_ws, fake)
+
+    def interrupted(meta, code_text, timeout_s=None):  # Kaggle got it; kx died mid-call
+        fake.calls.append(("push", meta, timeout_s))
+        raise KeyboardInterrupt
+
+    fake.push = interrupted
+    with pytest.raises(KeyboardInterrupt):
+        kx(ready_ws, fake, "run", exp, "--wait", "0")
+    intent = json.loads((d / "kernel_run.json").read_text())
+    assert intent["status"] == "PUSHING" and intent["prev_version"] is None
+    assert "resume" in kx(ready_ws, fake, "status")["summary"]
+    del fake.push
+    fake.kernel_meta["current_version_number"] = 1  # the push landed as v1
+    fake.outputs = make_outputs()
+    env = kx(ready_ws, fake, "run", exp, "--wait", "5")
+    assert env["data"]["result"] == "SUCCESS" and env["data"]["kernel_version"] == 1
+    assert len(fake.pushed()) == 1
+    assert any("did not push again" in w for w in env["warnings"])
+
+
+def test_interrupted_push_that_never_landed_is_pushed_once(ready_ws, fake):
+    exp, d = scaffold(ready_ws, fake)
+    from kx import kernel as K
+
+    K.save_run(d, {"backend": "kernel", "kernel_ref": "kxuser/never-landed", "status": "PUSHING",
+                   "prev_version": None, "recorded": False})
+    from kx.util import KxError
+
+    def missing(owner, slug):
+        fake.calls.append(("get_kernel", owner, slug))
+        if not fake.pushed():
+            raise KxError("invalid", "404", errors=["http_404:get_kernel"])
+        return dict(fake.kernel_meta)
+
+    fake.get_kernel = missing
+    fake.outputs = make_outputs()
+    env = kx(ready_ws, fake, "run", exp, "--wait", "5")
+    assert env["data"]["result"] == "SUCCESS" and len(fake.pushed()) == 1

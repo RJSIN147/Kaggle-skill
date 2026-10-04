@@ -75,13 +75,24 @@ def after_diagnostic(ws: Path, exp_id: str, found: list[dict]) -> dict:
     return get(ws)
 
 
+def _acknowledged_pairs(v: dict) -> set[str]:
+    out: set[str] = set()
+    for sig in v["acknowledged"]:
+        if sig.startswith("lb:"):
+            out |= set(sig[3:].split(";"))
+    return out
+
+
 def after_lb(ws: Path, inversions: list[tuple]) -> bool:
-    """A CV-vs-LB rank inversion makes validation suspect (once per inverted set)."""
-    if not inversions:
+    """A CV-vs-LB rank inversion makes validation suspect. Each inverted pair counts once:
+    a pair acknowledged with ``kx validation ok`` never re-opens it, so only a new pair can."""
+    acked = _acknowledged_pairs(get(ws))
+    new = [(a, b) for a, b, *_ in inversions if f"{a}>{b}" not in acked]
+    if not new:
         return False
-    pairs = sorted({f"{a}>{b}" for a, b, *_ in inversions})
-    reasons = [f"{a} has the better CV but {b} the better leaderboard score"
-               for a, b, *_ in inversions]
+    pairs = sorted({f"{a}>{b}" for a, b in new})
+    reasons = [f"{a} has the better CV but {b} the better leaderboard score (same folds)"
+               for a, b in dict.fromkeys(new)]
     return open_suspect(ws, "lb rank inversion", reasons, "lb:" + ";".join(pairs))
 
 

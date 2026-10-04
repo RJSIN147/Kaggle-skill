@@ -61,8 +61,19 @@ def build_metadata(owner: str, slug: str, spec: dict, profile: dict) -> dict:
 
 
 def push_checked(adapter, meta: dict, code_text: str, limit_s: int) -> dict:
-    """Push, then fail closed on any error or server-flag mismatch. Returns read-back facts."""
+    """Push, then fail closed on any error or server-flag mismatch. Returns read-back facts.
+    A refusal raised after Kaggle answered carries ``answered = True``: that push did not
+    leave a usable version, so the caller may push again. Anything else (a timeout, a
+    dropped connection) may have landed and must be read back first."""
     resp = adapter.push(meta, code_text, limit_s) or {}
+    try:
+        return _check_push(adapter, meta, resp)
+    except KxError as exc:
+        exc.answered = True
+        raise
+
+
+def _check_push(adapter, meta: dict, resp: dict) -> dict:
     err = str(resp.get("error") or "")
     if "accept this competition's rules" in err:
         # Classified by pattern only; the server text itself is quarantined.
@@ -86,9 +97,14 @@ def push_checked(adapter, meta: dict, code_text: str, limit_s: int) -> dict:
     if bad:
         raise KxError("invalid", "Kaggle says some sources are invalid", errors=["invalid_sources"],
                       data={"invalid_sources": bad})
+    return verify_pushed(adapter, meta, resp.get("version_number"))
+
+
+def verify_pushed(adapter, meta: dict, version_hint: int | None = None) -> dict:
+    """Read the pushed kernel back and fail closed on a server-flag mismatch."""
     owner, slug = meta["id"].split("/", 1)
     md = adapter.get_kernel(owner, slug)
-    version = resp.get("version_number") or md.get("current_version_number")
+    version = version_hint or md.get("current_version_number")
     if not isinstance(version, int):
         raise KxError("error", "could not read back the pushed kernel version",
                       errors=["version_unknown"])
@@ -160,6 +176,31 @@ def pull(adapter, owner: str, slug: str, out: Path) -> dict:
         (out / "kernel.log").write_text(log_text)
         log_file = "kernel.log"
     return {"files": files, "refused": refused, "log_text": log_text, "log_file": log_file}
+
+
+def intent_record(meta: dict, spec: dict, prev_version: int | None, git_commit: str) -> dict:
+    """Saved before a push. If kx is interrupted mid-push, the next ``kx run`` finds this
+    and reads back whether the push landed (``landed_version``) instead of pushing again."""
+    return {"backend": "kernel", "kernel_ref": meta["id"], "status": "PUSHING",
+            "push_started": utc_now(), "prev_version": prev_version, "git_commit": git_commit,
+            "accelerator": spec["runtime"]["accelerator"], "limit_s": spec["runtime"]["limit_s"],
+            "recorded": False}
+
+
+def landed_version(adapter, meta: dict, prev_version: int | None) -> int | None:
+    """The version an interrupted push created, or None when Kaggle has no newer version
+    than ``prev_version`` (the push never landed). A failed read raises: never guess."""
+    owner, slug = meta["id"].split("/", 1)
+    try:
+        md = adapter.get_kernel(owner, slug)
+    except KxError as exc:
+        if any(e.startswith("http_404") for e in exc.errors):
+            return None
+        raise
+    v = md.get("current_version_number")
+    if isinstance(v, int) and (prev_version is None or v > prev_version):
+        return v
+    return None
 
 
 def new_run_record(meta: dict, spec: dict, pushed: dict, git_commit: str) -> dict:

@@ -418,3 +418,16 @@ def test_multiclass_blend_writes_the_members_submission_shape(tmp_path, token_ho
         env = kx(ws, fake, "ensemble", *exps)
         assert any("no submission file written" in w for w in env["warnings"])
         assert not (ws / "experiments" / env["data"]["exp_id"] / "output/submission.csv").exists()
+
+
+def test_the_public_message_is_the_marker_unless_the_user_writes_one(ready_ws, fake):
+    fake.submissions = lambda slug, page_size=50: []
+    exp, _ = _recorded(ready_ws, fake, idea="port of someuser/top-notebook (v29)")
+    env, _ = _propose(ready_ws, fake, exp)
+    msg = next(line for line in env["data"]["confirmation"] if line.startswith("message: "))
+    assert "someuser" not in msg and msg.split()[1].startswith(f"kx:{exp}:")
+    env, _ = _propose(ready_ws, fake, exp, "--message", "fusion engine, credit @someuser")
+    assert any(line.startswith("WARNING: the message names @someuser")
+               for line in env["data"]["confirmation"])
+    env, _ = _propose(ready_ws, fake, exp, "--message", "gradient boosting baseline")
+    assert not any("WARNING" in line for line in env["data"]["confirmation"])

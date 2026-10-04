@@ -25,12 +25,12 @@ appear in an envelope; they go to `control/raw/last-error.txt` (gitignored).
 | `kx metric <key> [--direction higher/lower] [--range LO HI] [--prediction-type proba/label/raw] [--label NAME]` | Set the CV metric. `custom` needs a direction; `--label` names it in summaries (e.g. `dice`). |
 | `kx diagnose [--local] [--limit S]` | Scaffold a diagnostic experiment (template `diagnose`); `kx run` it. See "Diagnose" below. |
 | `kx new --idea … --hypothesis … [--expect better/worse/same [--expect-delta D]] [--parent exp-NNN/none] [--evidence REF …] [--cv-check] [--template T --template-reason …] [--folds N] [--accelerator cpu/NvidiaTeslaT4] [--limit S] [--local [--subsample F]] [--after exp-NNN …] [--from-idea N] [--model HANDLE …] [--dataset owner/slug …]` | Scaffold `experiments/exp-NNN/`. The parent defaults to the current best (within the reference CV scheme); `--expect` is required whenever there is one. Without `--template`, the child uses the parent's template and starts from its AI block (`data.ai_block_from`); a diagnostic cannot be a parent. `--evidence` (repeatable) is `facts:<dotted.path>`, `exp-NNN:<meta key>` or `idea:<n>`; kx stores the value it reads. `--cv-check` reruns the parent's model (its AI block) so only `assign_folds` changes. `--model`/`--dataset` attach Kaggle Models/datasets as read-only kernel inputs. `--after` (repeatable) chains this kernel after upstream experiments' kernels (deep → `deep-infer`, tabular → `inference`, custom → custom); `--from-idea` runs research idea #N and marks it tried. |
-| `kx run exp-NNN [--wait S] [--wait-local S] [--rerun] [--resume]` | Validate, push, poll (bounded), pull, record, compare with the parent (`data.vs_parent`, `data.prediction`). Re-running resumes polling and never re-pushes; `--rerun` pushes a new version (the VERDICT's kx section is refreshed, the prose kept); `--resume` continues a kernel's time-budget stop from its checkpoints. A diagnostic run publishes `control/facts.json` and its findings. |
+| `kx run exp-NNN [--wait S] [--wait-local S] [--rerun] [--resume] [--re-record]` | Validate, push, poll (bounded), pull, record, compare with the parent (`data.vs_parent`, `data.prediction`). Re-running resumes polling and never re-pushes; a push interrupted mid-call is read back (kx saves a `PUSHING` record first) and pushed again only if no new version reached Kaggle; `--re-record` classifies the already-pulled output again (no push, no Kaggle call); `--rerun` pushes a new version (the VERDICT's kx section is refreshed, the prose kept); `--resume` continues a kernel's time-budget stop from its checkpoints. A diagnostic run publishes `control/facts.json` and its findings. |
 | `kx strategy --reasoning-file F` | Regenerate `strategy.md` and commit the cycle. Refuses while a verdict has `_TODO`. |
 | `kx validation [show]` / `kx validation ok --note "…" [--scheme exp-NNN]` | Show the validation status / record that CV can be trusted (acknowledges the event; `--scheme` adopts that run's folds as the reference CV scheme). |
-| `kx submit exp-NNN [--force-cv] [--file F] [--message M]` / `kx submit --writeup` | Validate a candidate and propose it (confirmation details + one-time token; `--message` replaces the idea after the `kx:` marker) / write the writeup checklist. |
-| `kx submit exp-NNN --confirm TOKEN [--force-cv] [--file F]` | After the user's explicit yes: re-check and submit the proposed candidate once (refuses a changed file/kernel version or a proposal over 1 h old). |
-| `kx lb [--wait S]` | Read back submissions, record scores next to CV, trend the gap; a rank inversion makes the validation status suspect (once per inverted set). |
+| `kx submit exp-NNN [--force-cv] [--file F] [--message M]` / `kx submit --writeup` | Validate a candidate and propose it (confirmation details + one-time token). The public description is the `kx:` marker alone; `--message` adds text, with a WARNING line if it names an `owner/slug`, URL or `@user` / write the writeup checklist. |
+| `kx submit exp-NNN --confirm TOKEN [--force-cv] [--file F]` | After the user's explicit yes: re-check and submit the proposed candidate once (refuses a changed file/kernel version or a proposal from an earlier UTC day: slots reset at UTC midnight). |
+| `kx lb [--wait S]` | Read back submissions, record scores next to CV, trend the gap; a rank inversion between two runs on the same folds makes the validation status suspect (each pair once). |
 | `kx research [all/pages/discussions/notebooks/metric/idea] [--limit N] [--use-metric owner/slug] [--idea "…" --source "…"]` | Research ingestion (see SKILL.md). `--use-metric` adopts a host metric kernel for CV; `idea --idea … --source …` queues an idea. |
 | `kx env` | Kernel image + library versions of each run next to this machine's. |
 | `kx ensemble exp-A exp-B … [--method hill/weights] [--idea "…"]` | Blend OOF predictions into a new experiment whose parent is the best member (predicted `better`); the submission keeps the member's shape (one column, or one probability column per class) or is skipped with a warning. |
@@ -94,14 +94,16 @@ A diagnostic is never a parent, a blend member or a submission candidate.
 ## Validation status
 
 `control/state.json → validation`: `unchecked` → `ok` / `suspect`. Suspect after a diagnose
-with a high finding or a CV-vs-LB rank inversion (`kx lb`, once per inverted set). A clean
+with a high finding or a CV-vs-LB rank inversion between two runs on the same folds (`kx lb`;
+each inverted pair counts once, and an acknowledged pair never re-opens it). A clean
 diagnose makes it `ok` unless the suspicion came from the leaderboard; `kx validation ok
 --note` always does, and the event it acknowledges never re-opens it. Warn-only: `kx new` /
 `run` / `strategy` / `lb` warn, `kx submit` adds a WARNING confirmation line, `kx status`
 steers to a diagnosis or a `--cv-check`. With a reference scheme (`--scheme`), the current
-best and the default parent are ranked within it. The submit CV bar always compares only
-runs on the candidate's folds (runs recorded before 0.4, without a fold hash, count as the
-same).
+best and the default parent are ranked within it. The submit CV bar and the rank-inversion
+check compare only runs on the same folds (same `fold_hash`; for runs recorded before 0.4 it
+is computed from their `oof.csv`). A run with no fold assignment (no `oof.csv`) is
+comparable to nothing: it never sets the bar or inverts.
 
 ## custom template
 
@@ -128,10 +130,12 @@ and row counts; the recorder rejects mismatches as FAILED(predictions_invalid).
 
 ## Recorder ladder
 
-status ERROR → `kernel_error`; CANCEL_ACKNOWLEDGED → `runtime_limit`; log traceback / OOM
-marker or an unreadable log → `kernel_error`; `result.json` missing / malformed /
+status ERROR → `kernel_error`; CANCEL_ACKNOWLEDGED → `runtime_limit`; an unreadable log →
+`kernel_error`; `result.json` missing / malformed /
 non-finite / mean ≠ mean(folds) / wrong metric / out of range (a diagnostic: `facts.json`
 instead); then the predictions check (templates that make them optional: only when
-declared).
+declared). A traceback / OOM / kill marker in the log fails the run (`kernel_error`) unless
+the run COMPLETEd and every check above passed: the script handled that error, so the run is
+SUCCESS with `log_markers: true`, `output/traceback.txt` and a warning.
 A FAILED record keeps the idea, carries `cv_mean: null`, and points at the traceback, log
 and partial outputs.

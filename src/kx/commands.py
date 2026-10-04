@@ -517,6 +517,9 @@ def cmd_new(ws: Path, args, adapter) -> dict:
                 spec["sources"][key].append(v)
     code = templates_registry.render(name, spec, profile | {"effective": eff, "_ws": ws}, metric_cfg)
     carry = args.after[0] if _is_stage(name, spec) else base
+    if _is_stage(name, spec) and parent and parent not in args.after and \
+            read_json(ws / "experiments" / parent / "experiment.json").get("template") == name:
+        carry = parent  # this stage changes one thing in its parent; the upstream gives inputs
     if carry:
         # An inference stage rebuilds the upstream's exact model; a CV-scheme check reruns the
         # parent's model; a child changes one thing in its parent's: carry the AI block over.
@@ -679,6 +682,8 @@ def cmd_run(ws: Path, args, adapter) -> dict:
     run_path = exp_dir / "kernel_run.json"
     existing = read_json(run_path) if run_path.exists() else None
 
+    if getattr(args, "re_record", False):
+        return _re_record(ws, exp_dir, spec)
     resume = getattr(args, "resume", False)
     if resume:
         if not existing or existing.get("status") != "COMPLETE" or not existing.get("resumable"):
@@ -718,7 +723,8 @@ def cmd_run(ws: Path, args, adapter) -> dict:
                                     {"backend": "local", "seconds": run["seconds"]})
 
     warnings: list[str] = []
-    if existing is None or args.rerun:
+    pending_push = bool(existing) and existing.get("status") == "PUSHING"
+    if existing is None or args.rerun or pending_push:
         _validate_spec(ws, exp_dir, spec, profile)
         _require_confirmed(profile)
         if templates_registry.TEMPLATES.get(spec["template"], {}).get("needs_metric", True):
@@ -759,14 +765,37 @@ def cmd_run(ws: Path, args, adapter) -> dict:
                                    f"experiments/{exp_dir.name}/kernel-metadata.json"]) \
             or git_head(ws)
         code_text = (exp_dir / spec["code_file"]).read_text()
-        try:
-            pushed = kernel.push_checked(adapter, meta, code_text, spec["runtime"]["limit_s"])
-        except KxError as exc:
-            if exc.status == "error" and exc.next_action is None:
-                # A push can fail client-side after Kaggle accepted it; a retry makes the
-                # next version and kx polls whichever version it reads back.
-                exc.next_action = E.run(f"kx run {exp_dir.name}", "Retry once.")
-            raise
+        pushed = None
+        prev = existing.get("prev_version") if pending_push else (existing or {}).get("kernel_version")
+        if pending_push:
+            # An earlier kx run was interrupted mid-push: read back, never push twice.
+            landed = kernel.landed_version(adapter, meta, prev)
+            if landed is not None:
+                pushed = kernel.verify_pushed(adapter, meta, landed)
+                warnings.append(f"an interrupted push of {exp_dir.name} reached Kaggle as version "
+                                f"{landed}; kx read it back and did not push again")
+        if pushed is None:
+            kernel.save_run(exp_dir, kernel.intent_record(meta, spec, prev, commit or "uncommitted"))
+            try:
+                pushed = kernel.push_checked(adapter, meta, code_text, spec["runtime"]["limit_s"])
+            except KxError as exc:
+                if getattr(exc, "answered", False):  # refused: nothing usable landed
+                    if existing and not pending_push:
+                        kernel.save_run(exp_dir, existing)
+                    else:
+                        run_path.unlink(missing_ok=True)
+                    if exc.next_action is None:
+                        exc.next_action = E.ask_user(
+                            "Kaggle refused the push; its message is in control/raw/"
+                            "last-error.txt (read it, never paste it into Kaggle). Fix the cause "
+                            "or tell the user, then run again.", then=f"kx run {exp_dir.name}")
+                elif exc.status == "error" and exc.next_action is None:
+                    # A push can fail client-side after Kaggle accepted it. The intent record
+                    # makes the next kx run read back first and push only if nothing landed.
+                    exc.next_action = E.run(f"kx run {exp_dir.name}",
+                                            "Run it once more: kx reads back whether the push "
+                                            "reached Kaggle and pushes only if it did not.")
+                raise
         run = kernel.new_run_record(meta, spec, pushed, commit or "uncommitted")
         if upstream:
             run["upstream"] = upstream["used"]
@@ -840,6 +869,21 @@ def cmd_run(ws: Path, args, adapter) -> dict:
                                  "kernel_version": run["kernel_version"],
                                  "kernel_status": run["status"],
                                  "docker_image": run.get("docker_image")})
+
+
+def _re_record(ws: Path, exp_dir: Path, spec: dict) -> dict:
+    """Classify an already-pulled run again under the current rules: no push, no Kaggle call.
+    The score still comes only from what the kernel wrote into output/."""
+    local = spec.get("runtime", {}).get("target") == "local"
+    run_path = exp_dir / ("local_run.json" if local else "kernel_run.json")
+    run = read_json(run_path) if run_path.exists() else None
+    if not run or not run.get("recorded"):
+        raise KxError("invalid", f"{exp_dir.name} has no recorded run to classify again",
+                      errors=["nothing_to_re_record"], next_action=E.run(f"kx run {exp_dir.name}"))
+    log_path = exp_dir / "output" / ("local.log" if local else "kernel.log")
+    log_text = log_path.read_text() if log_path.is_file() else None
+    summary_data = {"backend": run.get("backend", "kernel"), "re_recorded": True}
+    return _record_and_envelope(ws, exp_dir, spec, run, log_text, [], summary_data)
 
 
 def _quarantine(ws: Path, text: str) -> None:
@@ -983,6 +1027,10 @@ def cmd_status(ws: Path, args, adapter) -> dict:
             break
         if run_path.exists():
             run = read_json(run_path)
+            if run.get("status") == "PUSHING":
+                return out(f"{exp_id}'s push was interrupted; resume it",
+                           E.run(f"kx run {exp_id}", "Reads back whether the push reached "
+                                                     "Kaggle; pushes only if it did not."))
             return out(f"{exp_id} was pushed ({run.get('status')}); resume it",
                        E.run(f"kx run {exp_id}", "Resumes polling; never re-pushes."))
         spec = read_json(d / "experiment.json") if (d / "experiment.json").exists() else {}
