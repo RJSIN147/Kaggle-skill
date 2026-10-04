@@ -104,6 +104,7 @@ def test_env_compares_runs_with_local(ready_ws, fake):
     assert row["docker_image"].startswith("gcr.io/kaggle-images/python@sha256")
     assert row["libraries"] == {"pandas": "2.3.3"}
     assert env["data"]["local"]["python"]
+    assert any(t.startswith("GPU quota: 29.0 h left of 30 h") for t in env["data"]["table"])
 
 
 def test_partial_file_download_is_bounded_and_listed(ready_ws, fake, tmp_path):
@@ -166,3 +167,66 @@ def test_new_attaches_models_and_datasets(ready_ws, fake):
     assert spec["sources"]["datasets"] == ["cdeotte/pip-install-lifelines"]
     env = kx(ready_ws, fake, "new", "--idea", "j", "--hypothesis", "h", "--model", "timm/x")
     assert env["status"] == "invalid" and env["errors"] == ["bad_model_handle"]
+
+
+def _dataset_fake(fake, versions):
+    """dataset_state answers from `versions` (None = HTTP 404); pushes are recorded."""
+    from kx.util import KxError
+
+    def state(ref):
+        v = versions[0]
+        if v is None:
+            raise KxError("invalid", "404", errors=["http_404:dataset_status"])
+        return {"status": "ready", "current_version_number": v}
+
+    def push(folder, *, new, notes):
+        fake.calls.append(("dataset_push", folder, new))
+        versions[0] = (versions[0] or 0) + 1
+        return {"ref": "x", "status": "ok", "error": ""}
+
+    fake.dataset_state, fake.dataset_push = state, push
+    fake.public = False
+    fake.my_datasets = lambda search: [] if versions[0] is None else [
+        {"ref": f"{fake.username}/{search}", "is_private": not fake.public}]
+
+
+def test_dataset_push_creates_a_private_dataset_and_refuses_credentials(ready_ws, fake, tmp_path):
+    folder = tmp_path / "wheels"
+    folder.mkdir()
+    (folder / "rdkit-2026.1-cp312.whl").write_bytes(b"PK\x03\x04")
+    _dataset_fake(fake, [None])
+    env = kx(ready_ws, fake, "dataset", "push", str(folder), "--slug", "rdkit-wheels")
+    assert env["status"] == "ok" and env["data"]["created"] and env["data"]["version"] == 1
+    meta = json.loads((folder / "dataset-metadata.json").read_text())
+    assert meta["id"] == f"{fake.username}/rdkit-wheels"
+    assert env["next_action"]["command"].startswith(f"kx new --dataset {fake.username}/rdkit-wheels")
+    env = kx(ready_ws, fake, "dataset", "push", str(folder), "--slug", "rdkit-wheels")
+    assert env["data"]["version"] == 2 and not env["data"]["created"]
+    fake.public = True  # never add a version (and these files) to a public dataset
+    pushes = len([c for c in fake.calls if c[0] == "dataset_push"])
+    env = kx(ready_ws, fake, "dataset", "push", str(folder), "--slug", "rdkit-wheels")
+    assert env["errors"] == ["dataset_not_private"]
+    assert len([c for c in fake.calls if c[0] == "dataset_push"]) == pushes
+    (folder / "kaggle.json").write_text("{}")
+    env = kx(ready_ws, fake, "dataset", "push", str(folder), "--slug", "rdkit-wheels")
+    assert env["errors"] == ["credential_in_folder"]
+
+
+def test_an_interrupted_dataset_push_is_read_back(ready_ws, fake, tmp_path):
+    folder = tmp_path / "w"
+    folder.mkdir()
+    (folder / "a.bin").write_bytes(b"x")
+    versions = [None]
+    _dataset_fake(fake, versions)
+
+    def interrupted(folder, *, new, notes):
+        versions[0] = 1  # Kaggle got it; kx died mid-call
+        raise KeyboardInterrupt
+
+    fake.dataset_push = interrupted
+    with pytest.raises(KeyboardInterrupt):
+        kx(ready_ws, fake, "dataset", "push", str(folder), "--slug", "probe-set")
+    _dataset_fake(fake, versions)
+    env = kx(ready_ws, fake, "dataset", "push", str(folder), "--slug", "probe-set")
+    assert "did not upload again" in env["summary"]
+    assert not [c for c in fake.calls if c[0] == "dataset_push"]

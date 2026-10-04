@@ -133,3 +133,10 @@ def test_every_documented_flag_exists_on_its_parser():
     assert seen > 30 and missing == [], missing
     for f in ("--parent", "--expect", "--expect-delta", "--cv-check", "--evidence"):
         assert f in flags["new"], f
+
+
+def test_bare_wait_means_540_seconds():
+    p = cli.build_parser()
+    assert p.parse_args(["run", "exp-001", "--wait"]).wait == 540.0
+    assert p.parse_args(["run", "exp-001"]).wait == 90.0
+    assert p.parse_args(["lb", "--wait"]).wait == 540.0

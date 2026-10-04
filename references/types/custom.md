@@ -17,15 +17,27 @@ fail-closed like any other.
 
 | You do in `run()` | Why |
 |---|---|
-| Train with CV and call `report(fold_scores)` once: `N_FOLDS` finite scores in `METRIC` | kx computes the mean and std; a missing or second call fails the run |
+| Train with CV and call `report(fold_scores)` once: `N_FOLDS` finite scores in `METRIC` (never in a `--no-cv` run) | kx computes the mean and std; a missing or second call fails the run |
 | Write `EXPECTED_OUTPUT` into `OUT` (the submission file or the artifact) | the harness fails the run when it is missing |
 | On `IS_RERUN` (a code competition's scoring rerun), only predict and write `EXPECTED_OUTPUT` | Kaggle reruns the submitted version on the hidden test set |
 | Optional: `write_preds(oof_rows, test_rows, classes)` before `report()` | kx-preds/1 files: `kx ensemble` can blend the run (row-level tasks only) |
+| Optional: `report(fold_scores, folds=[(row_id, fold), …])` | saves the fold assignment (`folds.csv`): kx compares this run with its parent fold by fold without `write_preds` |
 | Near the limit: `stop_incomplete({...})` and return, when `time_left()` runs low | recorded resumable; `kx run exp-NNN --resume` mounts the previous output: `previous_output()` |
 
-Helpers: `DATA_DIR` (competition data), `OUT` (the output dir), `model_dirs()` (Kaggle
+Helpers: `DATA_DIR` (competition data), `OUT` (the output dir), `SUBSAMPLE` (the
+`--local --subsample F` fraction, else None: a local smoke run loads only that share of the
+rows, so it fits in memory), `model_dirs()` (Kaggle
 Models from `kx new --model`), `upstream_dir()` (an `--after` upstream's output),
 `host_metric` (an adopted host metric kernel).
+
+## No honest CV
+
+When no CV can stand in for the leaderboard (a ported public engine, a rule-based
+submission tweak), scaffold it with `kx new --no-cv` (custom template; children of a no-CV
+run inherit it). `run()` then never calls `report()`; it only writes `EXPECTED_OUTPUT`. kx
+records SUCCESS with no score, keeps it out of CV rankings, the submit CV bar and the
+CV-vs-LB check, and its leaderboard score is the signal. Never invent a smoke-test "CV" to
+satisfy `report()`: a fake score poisons every comparison it touches.
 
 ## Metric
 

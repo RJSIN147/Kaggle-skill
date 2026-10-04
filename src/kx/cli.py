@@ -82,6 +82,9 @@ def build_parser() -> KxParser:
     s.add_argument("--template-reason")
     s.add_argument("--folds", type=int, help="CV folds (default: the parent's, else 5)")
     s.add_argument("--accelerator")
+    s.add_argument("--docker-image", help="pin a Kaggle image (gcr.io/kaggle-…/python@sha256:…)")
+    s.add_argument("--image-from", metavar="REF", help="pin the image an exp-NNN or a Kaggle "
+                   "notebook (owner/slug) ran on")
     s.add_argument("--limit", type=int, help="kernel runtime limit in seconds")
     s.add_argument("--local", action="store_true", help="run on this machine instead of a kernel")
     s.add_argument("--subsample", type=float, help="local runs: fraction of train rows")
@@ -102,6 +105,8 @@ def build_parser() -> KxParser:
     s.add_argument("--evidence", action="append", help="a fact this hypothesis rests on, read "
                    "by kx: facts:<path>, exp-NNN:<key> or idea:<n> (repeatable)")
 
+    s.add_argument("--no-cv", action="store_true",
+                   help="custom template: no CV, judged on the leaderboard only (inherited)")
     s.add_argument("--cv-check", action="store_true",
                    help="rerun the parent's model under a different CV scheme (copies its AI "
                         "block; change only assign_folds)")
@@ -119,8 +124,11 @@ def build_parser() -> KxParser:
 
     s = sub.add_parser("run", help="push, poll, pull and record an experiment")
     s.add_argument("exp_id")
-    s.add_argument("--wait", type=float, default=90.0,
-                   help="seconds to poll before returning status=running (default 90)")
+    s.add_argument("--wait", type=float, default=90.0, nargs="?", const=540.0,
+                   help="seconds to poll before returning status=running (default 90; "
+                        "a bare --wait is 540)")
+    s.add_argument("--re-record", action="store_true",
+                   help="classify the already-pulled output again (no push, no Kaggle call)")
     s.add_argument("--wait-local", type=float, default=3000.0,
                    help="local runs: timeout in seconds")
     s.add_argument("--rerun", action="store_true", help="push a new version even if recorded")
@@ -128,7 +136,8 @@ def build_parser() -> KxParser:
                    help="continue a run that stopped at its time budget from its checkpoints")
 
     s = sub.add_parser("strategy", help="regenerate strategy.md from the ledger + reasoning")
-    s.add_argument("--reasoning-file", required=True)
+    s.add_argument("--reasoning-file",
+                   help="default: the newest experiments/exp-NNN/reasoning.md")
 
     s = sub.add_parser("submit", help="validate a candidate; submit it after the user confirms")
     s.add_argument("exp_id", nargs="?")
@@ -141,7 +150,7 @@ def build_parser() -> KxParser:
                    help="submit the proposal the user just confirmed (token from `kx submit`)")
 
     s = sub.add_parser("lb", help="read back submissions and show LB next to CV")
-    s.add_argument("--wait", type=float, default=90.0)
+    s.add_argument("--wait", type=float, default=90.0, nargs="?", const=540.0)
 
     s = sub.add_parser("research", help="discussions, public notebooks and metric kernels")
     s.add_argument("what", nargs="?", default="all",
@@ -152,6 +161,13 @@ def build_parser() -> KxParser:
     s.add_argument("--use-metric", help="owner/slug of a metric kernel to adopt for CV")
 
     sub.add_parser("env", help="kernel image + library versions of each run vs this machine")
+
+    s = sub.add_parser("dataset", help="upload a folder as a private Kaggle dataset")
+    s.add_argument("action", choices=["push"])
+    s.add_argument("folder")
+    s.add_argument("--slug", required=True, help="the dataset's slug under your account")
+    s.add_argument("--title")
+    s.add_argument("--notes", help="version notes")
 
     s = sub.add_parser("ensemble", help="blend saved OOF predictions into a new experiment")
     s.add_argument("exp_ids", nargs="+")
@@ -170,7 +186,7 @@ def dispatch(argv, ws: Path, adapter) -> dict:
     if not args.command:
         return E.make("help", "ok", "kx usage", data={"usage": parser.format_help()},
                       next_action=E.run("kx status"))
-    from kx import commands, diagnose, ensemble, envinfo, research, submit, validation
+    from kx import commands, datasets, diagnose, ensemble, envinfo, research, submit, validation
 
     handlers = {
         "init": commands.cmd_init, "status": commands.cmd_status, "sync": commands.cmd_sync,
@@ -179,7 +195,7 @@ def dispatch(argv, ws: Path, adapter) -> dict:
         "submit": submit.cmd_submit, "lb": submit.cmd_lb,
         "research": research.cmd_research, "ensemble": ensemble.cmd_ensemble,
         "env": envinfo.cmd_env, "diagnose": diagnose.cmd_diagnose,
-        "validation": validation.cmd_validation,
+        "validation": validation.cmd_validation, "dataset": datasets.cmd_dataset,
     }
     try:
         return handlers[args.command](ws, args, adapter)

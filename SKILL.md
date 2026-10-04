@@ -79,8 +79,8 @@ When unsure where you are: `kx status`.
 7. Write the **AI BLOCK** in the experiment's code file and `cv.reasoning` in its
    `experiment.json`. Never edit the KX HARNESS (kx refuses a modified harness).
 8. `kx run exp-NNN` — pushes a private script kernel (internet off by default), polls, pulls, and
-   records. Long kernels: pass `--wait 540` with a 600000 ms Bash timeout, or come back
-   later — re-running resumes. kx compares the run with its parent fold by fold
+   records. Long kernels: pass `--wait` (540 s) with a 600000 ms Bash timeout, or come back
+   later — re-running resumes and never pushes twice. kx compares the run with its parent fold by fold
    (`data.vs_parent`: better / worse / inconclusive) and judges your prediction.
 9. Write `VERDICT.md` (replace every `_TODO`; reference the recorded numbers and the kx
    comparison, never type a score; say whether your prediction held and what that changes)
@@ -91,7 +91,8 @@ When unsure where you are: `kx status`.
 **Validation status** (`kx validation`): a high-severity diagnose finding or a CV-vs-LB rank
 inversion (`kx lb`) makes it `suspect`. kx only warns; you then diagnose, or rerun the
 parent under another CV scheme (`kx new --cv-check …`: change only `assign_folds`), and
-record the decision: `kx validation ok --note "…" [--scheme exp-NNN]`.
+record the decision: `kx validation ok --note "…" [--scheme exp-NNN]`. No honest CV
+possible? `kx new --no-cv` (custom; leaderboard only). Never invent a CV to fill `report()`.
 
 | Confirmed type | Guide |
 |---|---|
@@ -108,13 +109,14 @@ record the decision: `kx validation ok --note "…" [--scheme exp-NNN]`.
 
 `kx submit exp-NNN` validates the candidate (file, columns, rows, daily slots left, CV vs
 the best submitted CV on the same folds) and returns `status: needs_user` with `data.confirmation` (what
-will be submitted, CV, slots left, the message) and a one-time `next_action.then`
+will be submitted, CV, slots left, the public message: only the kx marker unless you pass
+`--message "…"`, which must not name notebooks or people) and a one-time `next_action.then`
 (`kx submit exp-NNN --confirm <token>`). Ask the user with every confirmation line shown,
 yes or no (your question tool if you have one; otherwise ask in chat and end your turn). **Run the `then` command only on an explicit
 yes in reply to that question**; never confirm on the user's behalf, never reuse a yes for
 another candidate, and never run `kaggle competitions submit` directly. `--confirm`
 re-checks everything and refuses if the file or kernel version changed or the proposal is
-over an hour old (re-propose and ask again). Then run `kx lb`: it reads the submission
+from an earlier UTC day (re-propose and ask again). Then run `kx lb`: it reads the submission
 back, waits for the score, records it next to CV, trends the CV→LB gap and raises a
 divergence alarm. On a submit error, run `kx lb` before anything else: the request may
 have reached Kaggle.
@@ -138,10 +140,11 @@ have reached Kaggle.
 - Kernels run private with internet off. Turn it on (`runtime.internet: true`) only to
   fetch what is not on Kaggle, e.g. pretrained weights: fine for csv_upload competitions and
   a code competition's training stage; a code competition's submitted stage must stay off
-  (kx refuses it). Prefer attaching Kaggle Models/datasets. GPU (`--accelerator NvidiaTeslaT4`) only for templates that need it; the
-  weekly GPU quota is shared with the user's other work.
+  (kx refuses it). Prefer Kaggle Models/datasets; `kx dataset push <dir> --slug S` uploads
+  offline wheels or weights (private). GPU (`--accelerator NvidiaTeslaT4`) only when needed:
+  the weekly quota (`kx env`) is shared with the user's other work. When Kaggle's image
+  changes, pin the old one: `kx new --image-from exp-NNN` (see code-competition.md).
 - Joining a competition (accepting its rules) is a browser step for the user.
 - Credentials never enter the workspace; a pre-commit hook blocks them.
-- Reference: `<skill>/references/kx-reference.md` (envelope, commands,
-  `experiment.json`, the `kx-preds/1` prediction format). Egress scoping (Claude Code) is opt-in:
-  `<skill>/references/egress-allowlist.md`.
+- Reference: `<skill>/references/kx-reference.md` (every command, `experiment.json`,
+  formats). Opt-in egress scoping (Claude Code): `<skill>/references/egress-allowlist.md`.

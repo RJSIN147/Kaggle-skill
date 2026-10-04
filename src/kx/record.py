@@ -3,8 +3,11 @@
 The classification ladder, in order (first hit wins, every miss is FAILED):
   1. status rung   kernel status ERROR -> kernel_error; CANCEL_ACKNOWLEDGED -> runtime_limit;
                    a local run with a non-zero exit -> kernel_error
-  2. log rung      the pulled log carries a traceback/OOM/kill marker -> kernel_error;
-                   a kernel run whose log cannot be read fails closed -> kernel_error
+  2. log rung      a kernel run whose log cannot be read fails closed -> kernel_error. A
+                   traceback/OOM/kill marker in the log fails the run (kernel_error) unless
+                   the run COMPLETEd (exit 0) and every rung below passes: the harness
+                   writes result.json last, so the script handled that error itself. Such
+                   a SUCCESS keeps the traceback and carries a warning (``log_markers``).
   3. result rung   result.json missing / malformed / non-finite / mean != mean(folds) /
                    wrong metric / out of the metric's range
   4. preds rung    OOF + test predictions invalid under kx-preds/1 -> predictions_invalid
@@ -146,15 +149,21 @@ def classify(run: dict, output_dir: Path, log_text: str | None, metric_cfg: dict
             return "FAILED", "kernel_error", None
         if isinstance(st, str) and st == "CANCEL_ACKNOWLEDGED":
             return "FAILED", "runtime_limit", None
-        if log_text is None or scan_log(log_text):
+        if log_text is None:
             return "FAILED", "kernel_error", None
     else:
         if run.get("timed_out"):
             return "FAILED", "runtime_limit", None
         if run.get("exit_code") not in (0, None):
             return "FAILED", "kernel_error", None
-        if log_text is not None and scan_log(log_text):
-            return "FAILED", "kernel_error", None
+    status, reason, result = _classify_outputs(output_dir, metric_cfg, require_predictions, kind)
+    if status == "FAILED" and log_text is not None and scan_log(log_text):
+        return "FAILED", "kernel_error", None  # the traceback is the likelier cause
+    return status, reason, result
+
+
+def _classify_outputs(output_dir: Path, metric_cfg: dict, require_predictions: bool,
+                      kind: str):
     if kind == "diagnostic":
         from kx import diagnose
 
@@ -165,6 +174,9 @@ def classify(run: dict, output_dir: Path, log_text: str | None, metric_cfg: dict
         return "FAILED", err, None
     if isinstance(result, dict) and result.get("incomplete") is True:
         return "FAILED", "runtime_limit", None  # stopped at its time budget (resumable)
+    if kind == "no_cv":  # the harness writes this marker last; there is no CV to check
+        ok = isinstance(result, dict) and result.get("no_cv") is True
+        return ("SUCCESS", None, result) if ok else ("FAILED", "schema_invalid", None)
     reason = validate_result(result, metric_cfg)
     if reason:
         return "FAILED", reason, None
@@ -252,8 +264,7 @@ def record(ws: Path, exp_dir: Path, spec: dict, run: dict, metric_cfg: dict,
             "agent_eval": {k: result[k] for k in ("validation", "opponents") if k in result}
             or None,
         })
-        oof = (result.get("predictions") or {}).get("oof")
-        meta["fold_hash"] = compare.fold_hash(output_dir / oof) if oof else None
+        meta["fold_hash"] = compare.run_fold_hash(output_dir, result)
         if meta["kind"] == "diagnostic":
             from kx import diagnose
 
@@ -273,6 +284,12 @@ def record(ws: Path, exp_dir: Path, spec: dict, run: dict, metric_cfg: dict,
         meta["failure_detail"] = detail
 
     meta["vs_parent"] = compare.versus_parent(ws, meta)
+    if status == "SUCCESS" and log_text is not None and scan_log(log_text):
+        meta["log_markers"] = True
+        tb = traceback_tail(log_text)
+        if tb:
+            output_dir.mkdir(parents=True, exist_ok=True)
+            (output_dir / "traceback.txt").write_text(tb + "\n")
     meta["prediction"] = compare.prediction_outcome(meta.get("expected_effect"),
                                                     meta["vs_parent"])
     write_json(exp_dir / "meta.json", meta)
@@ -286,4 +303,9 @@ def record(ws: Path, exp_dir: Path, spec: dict, run: dict, metric_cfg: dict,
         if fresh != text:
             verdict.write_text(fresh)
     _, warnings = rebuild_ledger_file(ws)
+    if meta.get("log_markers"):
+        warnings.insert(0, f"{meta['exp_id']}'s log shows an error the script handled (see "
+                           f"{rel}/output/traceback.txt); the run completed and its result is "
+                           "valid, so it is recorded SUCCESS. Check that the error did not "
+                           "change the result.")
     return meta, warnings

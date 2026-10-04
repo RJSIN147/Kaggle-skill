@@ -52,7 +52,19 @@ def cmd_env(ws: Path, args, adapter) -> dict:
                          for k in r["differs_from_local"]) or "same as local"
         lines.append(f"{r['exp_id']} [{r['backend']}] py {r['python']} "
                      f"image {(r['docker_image'] or '-')[-20:]}: {diff}")
+    from kx.util import KxError
+
+    try:  # the account's weekly accelerator quota (one read; optional)
+        quota = adapter.accelerator_quota()
+    except (KxError, AttributeError):
+        quota = None
+    if quota and isinstance((quota.get("gpu") or {}).get("allowed_s"), (int, float)):
+        g = quota["gpu"]
+        left = g["allowed_s"] - g["used_s"] - g["reserved_s"]
+        lines.append(f"GPU quota: {left / 3600:.1f} h left of {g['allowed_s'] / 3600:.0f} h "
+                     f"(running sessions hold {g['reserved_s'] / 3600:.1f} h); refresh "
+                     f"{quota.get('refresh')}")
     return E.make("env", "ok", f"environments of {len(rows)} recorded run(s) vs local",
-                  data={"local": local, "runs": rows, "table": lines},
+                  data={"local": local, "runs": rows, "table": lines, "accelerator_quota": quota},
                   next_action=E.run("kx status", "Version gaps are a CV→LB parity risk: prefer "
                                                  "APIs that behave the same on both."))

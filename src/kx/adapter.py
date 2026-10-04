@@ -364,6 +364,10 @@ class KaggleAdapter:
                 r.category_ids = []
                 if metadata.get("machine_shape"):
                     r.machine_shape = metadata["machine_shape"]
+                if metadata.get("docker_image"):
+                    r.docker_image = metadata["docker_image"]
+                if metadata.get("docker_image_pinning_type"):
+                    r.docker_image_pinning_type = metadata["docker_image_pinning_type"]
                 if timeout_s:
                     r.session_timeout_seconds = int(timeout_s)
                 return plain(client.kernels.kernels_api_client.save_kernel(r))
@@ -398,6 +402,68 @@ class KaggleAdapter:
                 return plain(client.kernels.kernels_api_client.get_kernel_session_status(r))
 
         return self._call("get_kernel_session_status", fn)
+
+    def dataset_state(self, ref: str) -> dict:
+        """{"status", "current_version_number"} of a dataset; HTTP 404 when it does not exist."""
+        def fn(api):
+            return json.loads(api.dataset_status(ref, format="json(status,current_version_number)"))
+
+        return self._call("dataset_status", fn)
+
+    def my_kernel_refs(self, search: str) -> list[str]:
+        """Refs of this account's kernels (private included) matching search."""
+        def fn(api):
+            return [str(getattr(k, "ref", "")) for k in
+                    api.kernels_list(mine=True, search=search, page_size=50) or []]
+
+        return self._call("kernels_list", fn)
+
+    def my_datasets(self, search: str) -> list[dict]:
+        """This account's datasets (private included) matching search: ref + is_private."""
+        def fn(api):
+            return [{"ref": str(getattr(d, "ref", "")),
+                     "is_private": getattr(d, "is_private", None)}
+                    for d in api.dataset_list(mine=True, search=search) or []]
+
+        return self._call("dataset_list", fn)
+
+    def dataset_push(self, folder: str, *, new: bool, notes: str) -> dict:
+        """Create a private dataset from folder (its dataset-metadata.json names it), or add a
+        version. Never retried: a failure after Kaggle received it may have created it."""
+        def fn(api):
+            if new:
+                r = api.dataset_create_new(folder, public=False, quiet=True,
+                                           convert_to_csv=False, dir_mode="zip")
+            else:
+                r = api.dataset_create_version(folder, notes, quiet=True, convert_to_csv=False,
+                                               dir_mode="zip")
+            return {"ref": getattr(r, "ref", None), "status": getattr(r, "status", None),
+                    "error": getattr(r, "error", None)}
+
+        return self._call("dataset_push", fn, timeout=3600, retries=0)
+
+    def accelerator_quota(self) -> dict:
+        """This account's weekly GPU/TPU quota: seconds used, reserved by running sessions,
+        and allowed, plus the refresh time (live-verified 2026-10-04)."""
+        from kagglesdk.kernels.types.kernels_api_service import (
+            ApiGetAcceleratorQuotaStatisticsRequest,
+        )
+
+        def secs(td):
+            return td.total_seconds() if hasattr(td, "total_seconds") else None
+
+        def fn(api):
+            with api.build_kaggle_client() as client:
+                r = client.kernels.kernels_api_client.get_accelerator_quota_statistics(
+                    ApiGetAcceleratorQuotaStatisticsRequest())
+                out = {"refresh": plain(r.quota_refresh_time)}
+                for name in ("gpu", "tpu"):
+                    q = getattr(r, f"{name}_quota")
+                    out[name] = {"used_s": secs(q.time_used), "reserved_s": secs(q.time_reserved),
+                                 "allowed_s": secs(q.total_time_allowed)}
+                return out
+
+        return self._call("get_accelerator_quota_statistics", fn)
 
     def get_kernel(self, owner: str, slug: str) -> dict:
         from kagglesdk.kernels.types.kernels_api_service import ApiGetKernelRequest

@@ -213,6 +213,7 @@ def render(name: str, spec: dict, profile: dict, metric_cfg: dict | None) -> str
         "METRIC_LIT": repr(metric_name),
         "METRIC_INFO_LIT": repr(metric_info),
         "N_FOLDS_LIT": repr(int((spec.get("cv") or {}).get("n_folds") or 5)),
+        "NO_CV_LIT": repr(spec.get("kind") == "no_cv"),
         "EXPECTED_OUTPUT_LIT": repr(eff.get("expected_output") or "submission.csv"),
         "API_SERVED_LIT": repr(bool(eff.get("api_served"))),
         # paths (stdlib) + the pandas helpers: composed, the text is unchanged since 0.3.

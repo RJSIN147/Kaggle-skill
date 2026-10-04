@@ -101,7 +101,13 @@ def rebuild_ledger_file(ws: Path) -> tuple[list[dict], list[str]]:
         if errors:
             warnings.append(f"ledger: skipped {folder} ({'; '.join(errors)})")
             continue
-        rows.append(to_ledger_row(meta))
+        row = to_ledger_row(meta)
+        if row.get("fold_hash") is None and meta.get("status") == "SUCCESS":
+            # recorded before fold hashes existed: hash its oof.csv, if it wrote one
+            from kx.compare import parent_fold_hash
+
+            row["fold_hash"] = parent_fold_hash(meta_path.parent, meta)
+        rows.append(row)
     lines = [json.dumps(row, separators=(",", ":")) for row in rows]
     atomic_write(ws / "control" / "ledger.jsonl", ("\n".join(lines) + "\n") if lines else "")
     return rows, warnings

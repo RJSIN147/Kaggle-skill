@@ -110,6 +110,8 @@ def join_cv_lb(sub_rows, ledger_rows) -> list[dict]:
             continue  # no CV to compare against.
 
         led = by_exp[exp_id]
+        if not _is_number(led.get("cv_mean")):
+            continue  # a no-CV or FAILED run: nothing to compare its score with
         cv_mean = float(led["cv_mean"])
         joined.append(
             {
@@ -118,6 +120,7 @@ def join_cv_lb(sub_rows, ledger_rows) -> list[dict]:
                 "cv_std": led.get("cv_std"),
                 "lb_score": float(lb_score),
                 "gap": float(lb_score) - cv_mean,
+                "scheme": led.get("fold_hash"),
                 "kaggle_ref": row.get("kaggle_ref"),
                 "scored_at": row.get("scored_at") or row.get("submitted_at"),
             }
@@ -128,14 +131,17 @@ def join_cv_lb(sub_rows, ledger_rows) -> list[dict]:
 
 
 def to_pairs(joined) -> list[tuple]:
-    """`join_cv_lb` output → the `[(exp_id, cv_mean, lb_score)]` shape the alarm consumes."""
-    return [(r["exp_id"], r["cv_mean"], r["lb_score"]) for r in joined]
+    """`join_cv_lb` output → the `[(exp_id, cv_mean, lb_score, scheme)]` shape the alarm
+    consumes; `scheme` is the run's fold_hash (None: no fold assignment)."""
+    return [(r["exp_id"], r["cv_mean"], r["lb_score"], r.get("scheme")) for r in joined]
 
 
 def rank_inversions(pairs, greater_is_better: bool) -> list[tuple]:
     """Every (CV-better, LB-worse) pair — the alarm. `[]` means CV still predicts LB.
 
-    `pairs` is `[(exp_id, cv_mean, lb_score)]`, SCORED submissions only. For each unordered pair
+    `pairs` is `[(exp_id, cv_mean, lb_score[, scheme])]`, SCORED submissions only. With a
+    scheme, only runs on the same folds are compared: a CV on other folds, or with no fold
+    assignment (scheme None), says nothing about another run's rank. For each unordered pair
     an INVERSION exists when CV says one experiment wins and the LEADERBOARD says the other does.
     Returns `(better_cv_id, better_lb_id, cv_delta, lb_delta, (cv, lb) of the CV-winner,
     (cv, lb) of the LB-winner)` so the renderer can name the actual numbers rather than assert a
@@ -155,13 +161,12 @@ def rank_inversions(pairs, greater_is_better: bool) -> list[tuple]:
     loop is empty by construction and this returns `[]`. Do NOT read that `[]` as an all-clear:
     ask :func:`alarm_state` whether the alarm CAN fire at all.
     """
-    clean = [
-        (i, cv, lb)
-        for i, cv, lb in pairs
-        if _is_number(cv) and _is_number(lb)
-    ]
+    clean = [(p[0], p[1], p[2], p[3] if len(p) > 3 else "") for p in pairs
+             if _is_number(p[1]) and _is_number(p[2])]
     inversions: list[tuple] = []
-    for (a_id, a_cv, a_lb), (b_id, b_cv, b_lb) in itertools.combinations(clean, 2):
+    for (a_id, a_cv, a_lb, a_s), (b_id, b_cv, b_lb, b_s) in itertools.combinations(clean, 2):
+        if a_s is None or b_s is None or a_s != b_s:
+            continue  # CVs on different folds (or none) are not comparable
         # CV says B wins, the leaderboard says A wins.
         if _better(b_cv, a_cv, greater_is_better) and _better(a_lb, b_lb, greater_is_better):
             inversions.append(
@@ -183,7 +188,7 @@ def alarm_state(pairs, greater_is_better: bool) -> dict:
     lets the renderer print the honest "needs >=2 scored submissions (have N)" line instead of a
     silent, fabricated all-clear that a user would reasonably read as "CV and LB agree".
     """
-    scored = [(i, cv, lb) for i, cv, lb in pairs if _is_number(cv) and _is_number(lb)]
+    scored = [p for p in pairs if _is_number(p[1]) and _is_number(p[2])]
     n_scored = len(scored)
     can_fire = n_scored >= 2
     return {

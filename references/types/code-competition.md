@@ -44,3 +44,21 @@ it on. The **training** stage is not submitted: if pretrained weights are not on
 (Models or a dataset), it may set `runtime.internet: true` to download them, and must save
 them into its output so the internet-off inference stage loads them through
 `kernel_sources`. A `--after` inference stage always starts with internet off.
+
+## Environment and the scoring rerun
+
+- Kaggle reruns the submitted version on the **same accelerator** it was committed with: a
+  CPU commit cannot be scored on a GPU. Commit the inference stage on the accelerator it
+  needs.
+- The rerun's logs are not visible. Make the inference stage defensive and deterministic,
+  and check it end to end on the visible test before submitting.
+- Kaggle's latest image changes (Python 3.12 → 3.13 on 2026-10-03). To reproduce a public
+  notebook's score, pin its environment: `kx new --image-from exp-NNN` (a run of yours on
+  that image) or `--docker-image gcr.io/…@sha256:…`. On a GPU, pin a GPU image
+  (`kaggle-private-byod/…`); a notebook's metadata may report the CPU image even when it
+  ran on a GPU, and kx refuses a CPU image on a GPU.
+- Wheels for an offline install: `pip download` them into a folder, `kx dataset push <folder>
+  --slug <name>` (private), then `kx new --dataset <you>/<name>` and install from it with
+  `pip install --no-index --find-links`.
+- A training stage (`--after` upstream of another experiment) is never a submission: `kx
+  submit` refuses it; submit the stage that predicts.

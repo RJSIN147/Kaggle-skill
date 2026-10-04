@@ -10,6 +10,7 @@ Facts this relies on (kaggle 2.2.3, live-verified in the spikes):
 
 from __future__ import annotations
 
+import json
 import random
 import re
 import time
@@ -57,12 +58,24 @@ def build_metadata(owner: str, slug: str, spec: dict, profile: dict) -> dict:
         "dataset_sources": list(src.get("datasets") or []),
         "kernel_sources": list(src.get("kernels") or []),
         "model_sources": list(src.get("models") or []),
+        **({"docker_image": rt["docker_image"]} if rt.get("docker_image") else {}),
     }
 
 
 def push_checked(adapter, meta: dict, code_text: str, limit_s: int) -> dict:
-    """Push, then fail closed on any error or server-flag mismatch. Returns read-back facts."""
+    """Push, then fail closed on any error or server-flag mismatch. Returns read-back facts.
+    A refusal raised after Kaggle answered carries ``answered = True``: that push did not
+    leave a usable version, so the caller may push again. Anything else (a timeout, a
+    dropped connection) may have landed and must be read back first."""
     resp = adapter.push(meta, code_text, limit_s) or {}
+    try:
+        return _check_push(adapter, meta, resp)
+    except KxError as exc:
+        exc.answered = True
+        raise
+
+
+def _check_push(adapter, meta: dict, resp: dict) -> dict:
     err = str(resp.get("error") or "")
     if "accept this competition's rules" in err:
         # Classified by pattern only; the server text itself is quarantined.
@@ -75,6 +88,23 @@ def push_checked(adapter, meta: dict, code_text: str, limit_s: int) -> dict:
                                                   f"competitions/{comps[0]}/rules and accept the "
                                                   "rules (a browser step), then say when done.",
                                    "then": "re-run the same kx run command"})
+    if "gpu session" in err.lower():
+        raise KxError("needs_user", f"Kaggle allows at most {GPU_SESSION_CAP} GPU sessions at "
+                      "once and that many are running", errors=["gpu_session_limit"],
+                      quarantine=err,
+                      next_action={"kind": "ask_user",
+                                   "instruction": "Tell the user Kaggle's GPU session cap is "
+                                                  "reached; wait for a running GPU kernel to "
+                                                  "finish (or stop one in the browser).",
+                                   "then": "re-run the same kx run command"})
+    if "quota" in err.lower():
+        raise KxError("needs_user", "Kaggle refused the push: the accelerator quota is used up",
+                      errors=["accelerator_quota"], quarantine=err,
+                      next_action={"kind": "ask_user",
+                                   "instruction": "Tell the user the weekly GPU quota is used "
+                                                  "up; run on CPU (--accelerator cpu) or wait "
+                                                  "for the refresh.",
+                                   "then": "re-run the same kx run command"})
     if resp.get("error"):
         raise KxError("error", "Kaggle rejected the kernel push (server message quarantined "
                       "in control/raw/last-error.txt)", errors=["push_error"],
@@ -86,9 +116,14 @@ def push_checked(adapter, meta: dict, code_text: str, limit_s: int) -> dict:
     if bad:
         raise KxError("invalid", "Kaggle says some sources are invalid", errors=["invalid_sources"],
                       data={"invalid_sources": bad})
+    return verify_pushed(adapter, meta, resp.get("version_number"))
+
+
+def verify_pushed(adapter, meta: dict, version_hint: int | None = None) -> dict:
+    """Read the pushed kernel back and fail closed on a server-flag mismatch."""
     owner, slug = meta["id"].split("/", 1)
     md = adapter.get_kernel(owner, slug)
-    version = resp.get("version_number") or md.get("current_version_number")
+    version = version_hint or md.get("current_version_number")
     if not isinstance(version, int):
         raise KxError("error", "could not read back the pushed kernel version",
                       errors=["version_unknown"])
@@ -97,6 +132,10 @@ def push_checked(adapter, meta: dict, code_text: str, limit_s: int) -> dict:
     if bool(md.get("enable_internet")) != bool(meta["enable_internet"]):
         raise KxError("error", "the pushed kernel's internet setting differs from the declaration",
                       errors=["server_flags_mismatch"])
+    if meta.get("docker_image") and md.get("docker_image") != meta["docker_image"]:
+        raise KxError("error", "Kaggle did not pin the requested docker image",
+                      errors=["server_flags_mismatch"],
+                      data={"requested": meta["docker_image"], "got": md.get("docker_image")})
     return {"kernel_version": version, "is_private": md.get("is_private"),
             "enable_internet": md.get("enable_internet"), "docker_image": md.get("docker_image"),
             "machine_shape": clean(md.get("machine_shape"))}
@@ -160,6 +199,75 @@ def pull(adapter, owner: str, slug: str, out: Path) -> dict:
         (out / "kernel.log").write_text(log_text)
         log_file = "kernel.log"
     return {"files": files, "refused": refused, "log_text": log_text, "log_file": log_file}
+
+
+GPU_SESSION_CAP = 2  # Kaggle runs at most 2 GPU batch sessions at once (seen live 2026-10)
+
+
+def gpu_check(ws: Path, adapter, spec: dict) -> tuple[dict, list[str]]:
+    """Before a GPU push: the account's weekly GPU quota and this workspace's running GPU
+    kernels. Informs and warns; Kaggle itself enforces both limits."""
+    warnings: list[str] = []
+    running = []
+    for rp in sorted((ws / "experiments").glob("exp-*/kernel_run.json")):
+        try:
+            r = json.loads(rp.read_text())
+        except (OSError, json.JSONDecodeError):
+            continue
+        if r.get("accelerator", "cpu") != "cpu" and not r.get("recorded") \
+                and r.get("status") not in TERMINAL and rp.parent.name != spec["exp_id"]:
+            running.append(rp.parent.name)
+    info: dict = {"running_gpu_kernels": running}
+    if len(running) >= GPU_SESSION_CAP:
+        warnings.append(f"Kaggle runs at most {GPU_SESSION_CAP} GPU sessions at once and "
+                        f"{', '.join(running)} may still be running; this push may be refused. "
+                        "Finish or poll those first (`kx run <exp>`).")
+    try:
+        q = adapter.accelerator_quota()
+    except KxError:
+        return info, warnings + ["could not read the GPU quota from Kaggle"]
+    g = q.get("gpu") or {}
+    if not all(isinstance(g.get(k), (int, float)) for k in ("used_s", "reserved_s", "allowed_s")):
+        return info, warnings
+    left = g["allowed_s"] - g["used_s"] - g["reserved_s"]
+    info |= {"gpu_hours_used": round(g["used_s"] / 3600, 1),
+             "gpu_hours_reserved": round(g["reserved_s"] / 3600, 1),
+             "gpu_hours_allowed": round(g["allowed_s"] / 3600, 1),
+             "gpu_hours_left": round(left / 3600, 1), "quota_refresh": q.get("refresh")}
+    limit = spec["runtime"]["limit_s"]
+    if left < limit:
+        warnings.append(f"GPU quota: {left / 3600:.1f} h left this week (refresh "
+                        f"{q.get('refresh')}), but this run may take up to {limit / 3600:.1f} h; "
+                        "Kaggle stops a kernel when the quota runs out")
+    return info, warnings
+
+
+def intent_record(meta: dict, spec: dict, prev_version: int | None, git_commit: str) -> dict:
+    """Saved before a push. If kx is interrupted mid-push, the next ``kx run`` finds this
+    and reads back whether the push landed (``landed_version``) instead of pushing again."""
+    return {"backend": "kernel", "kernel_ref": meta["id"], "status": "PUSHING",
+            "push_started": utc_now(), "prev_version": prev_version, "git_commit": git_commit,
+            "accelerator": spec["runtime"]["accelerator"], "limit_s": spec["runtime"]["limit_s"],
+            "recorded": False}
+
+
+def landed_version(adapter, meta: dict, prev_version: int | None) -> int | None:
+    """The version an interrupted push created, or None when Kaggle has no newer version
+    than ``prev_version`` (the push never landed). A failed read raises: never guess."""
+    owner, slug = meta["id"].split("/", 1)
+    try:
+        md = adapter.get_kernel(owner, slug)
+    except KxError as exc:
+        # Kaggle answers 403 (not 404) for a kernel that does not exist (live 2026-10-04):
+        # confirm with a listing of this account's own kernels before concluding that.
+        if any(e.startswith(("http_404", "http_403")) for e in exc.errors) and \
+                meta["id"].lower() not in {r.lower() for r in adapter.my_kernel_refs(slug)}:
+            return None
+        raise
+    v = md.get("current_version_number")
+    if isinstance(v, int) and (prev_version is None or v > prev_version):
+        return v
+    return None
 
 
 def new_run_record(meta: dict, spec: dict, pushed: dict, git_commit: str) -> dict:

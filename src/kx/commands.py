@@ -361,6 +361,38 @@ def _is_stage(template: str, spec: dict) -> bool:
     return template in ("deep-infer", "inference") or (template == "custom" and ups)
 
 
+def _docker_image(ws: Path, args, adapter) -> str | None:
+    """--docker-image as given, or --image-from: the image a recorded run (exp-NNN) or a
+    Kaggle notebook (owner/slug) ran on. Only Kaggle's own images are accepted."""
+    img, src = getattr(args, "docker_image", None), getattr(args, "image_from", None)
+    if img and src:
+        raise KxError("invalid", "pass --docker-image or --image-from, not both",
+                      errors=["bad_docker_image"])
+    if src and experiment.EXP_ID_RE.match(src):
+        mp = workspace.exp_dir(ws, src) / "meta.json"
+        img = ((read_json(mp) if mp.exists() else {}).get("environment") or {}).get("docker_image")
+    elif src and "/" in src:
+        owner, slug = src.split("/", 1)
+        img = adapter.get_kernel(owner, slug).get("docker_image")
+    elif src:
+        raise KxError("invalid", "--image-from takes exp-NNN or a notebook's owner/slug",
+                      errors=["bad_docker_image"])
+    if img is None:
+        if src:
+            raise KxError("invalid", f"{src} has no recorded docker image to pin",
+                          errors=["bad_docker_image"])
+        return None
+    if not experiment.DOCKER_IMAGE_RE.match(str(img)):
+        raise KxError("invalid", "only Kaggle's own images can be pinned "
+                      "(gcr.io/kaggle-…/python@sha256:… or :tag)", errors=["bad_docker_image"])
+    return str(img)
+
+
+def _kind_of(ws: Path, exp_id: str) -> str | None:
+    p = ws / "experiments" / exp_id / "experiment.json"
+    return read_json(p).get("kind") if p.exists() else None
+
+
 def _expected_effect(args, parent: str | None, template: str) -> dict | None:
     """The pre-registered prediction; required whenever there is a parent to compare with."""
     direction = getattr(args, "expect", None)
@@ -399,6 +431,8 @@ def cmd_new(ws: Path, args, adapter) -> dict:
             picked, why = "inference", f"inference stage for {args.after[0]} ({up_t})"
         elif up_t == "custom":
             picked, why = "custom", f"next stage of {args.after[0]} (custom)"
+    if getattr(args, "no_cv", False) and not args.template:
+        picked, why = "custom", "--no-cv: a pipeline judged on the leaderboard only"
     cv_check_of = None
     if getattr(args, "cv_check", False):
         if args.after or args.template:
@@ -413,7 +447,7 @@ def cmd_new(ws: Path, args, adapter) -> dict:
             raise KxError("invalid", f"{cv_check_of} ({up.get('template')}) has no CV scheme "
                           "to re-check", errors=["bad_cv_check"])
         picked, why = up["template"], f"CV-scheme check of {cv_check_of}"
-    if not (args.after or cv_check_of or args.template):
+    if not (args.after or cv_check_of or args.template or getattr(args, "no_cv", False)):
         parent_id, _ = _pick_parent(ws, args, _metric_cfg(ws))
         if parent_id:
             p_t = read_json(ws / "experiments" / parent_id / "experiment.json").get("template")
@@ -454,8 +488,15 @@ def cmd_new(ws: Path, args, adapter) -> dict:
     for flag in ("idea", "hypothesis"):
         if not (getattr(args, flag) or "").strip():
             raise KxError("invalid", f"--{flag} is required", errors=[f"{flag}_required"])
+    if getattr(args, "no_cv", False) and not args.parent and not args.after:
+        args.parent = "none"  # the current best is a CV run: no comparable default parent
     parent, parent_reason = _pick_parent(ws, args, metric_cfg)
-    expected = _expected_effect(args, parent, name)
+    no_cv = bool(getattr(args, "no_cv", False)) or any(
+        _kind_of(ws, e) == "no_cv" for e in [parent, *(args.after or [])] if e)
+    if no_cv and (name != "custom" or cv_check_of):
+        raise KxError("invalid", "a no-CV experiment uses the custom template (and is not a "
+                      "--cv-check): pass --template custom", errors=["bad_no_cv"])
+    expected = None if no_cv else _expected_effect(args, parent, name)
     evidence = None
     if getattr(args, "evidence", None):
         from kx import diagnose
@@ -494,6 +535,12 @@ def cmd_new(ws: Path, args, adapter) -> dict:
                            for k, v in base_spec["sources"].items()}
         if base_spec.get("local") and rt["target"] == "local":
             spec["local"] = dict(base_spec["local"])
+    image = _docker_image(ws, args, adapter)
+    if image:
+        spec["runtime"]["docker_image"] = image
+    pin_warnings = [experiment.CPU_IMAGE_ON_GPU] if spec["runtime"].get("docker_image") and \
+        spec["runtime"]["accelerator"] != "cpu" and \
+        experiment.is_cpu_image(spec["runtime"]["docker_image"]) else []
     if cv_check_of:
         spec["kind"] = "cv_check"
     if not info.get("needs_cv", True):
@@ -515,8 +562,14 @@ def cmd_new(ws: Path, args, adapter) -> dict:
                               errors=[f"bad_{key[:-1]}_handle"])
             if v not in spec["sources"][key]:
                 spec["sources"][key].append(v)
+    if no_cv:
+        spec["kind"] = "no_cv"
+        spec["cv"] = {"n_folds": n_folds, "reasoning": "n/a: no CV, judged on the leaderboard only"}
     code = templates_registry.render(name, spec, profile | {"effective": eff, "_ws": ws}, metric_cfg)
     carry = args.after[0] if _is_stage(name, spec) else base
+    if _is_stage(name, spec) and parent and parent not in args.after and \
+            read_json(ws / "experiments" / parent / "experiment.json").get("template") == name:
+        carry = parent  # this stage changes one thing in its parent; the upstream gives inputs
     if carry:
         # An inference stage rebuilds the upstream's exact model; a CV-scheme check reruns the
         # parent's model; a child changes one thing in its parent's: carry the AI block over.
@@ -557,10 +610,12 @@ def cmd_new(ws: Path, args, adapter) -> dict:
         data={"exp_id": exp_id, "template": name, "template_reason": reason,
               "parent": parent, "parent_reason": parent_reason, "expected_effect": expected,
               "evidence": evidence, "ai_block_from": carry,
+              "docker_image": spec["runtime"].get("docker_image"),
               "files": [f"experiments/{exp_id}/experiment.json",
                         f"experiments/{exp_id}/{spec['code_file']}"],
               "tried": tried},
-        warnings=warnings, next_action=E.edit(instruction, then=f"kx run {exp_id}"))
+        warnings=pin_warnings + warnings,
+        next_action=E.edit(instruction, then=f"kx run {exp_id}"))
 
 
 # --------------------------------------------------------------------------- #
@@ -609,7 +664,10 @@ def _record_and_envelope(ws: Path, exp_dir: Path, spec: dict, run: dict, log_tex
              "fold_scores": meta["fold_scores"], "failure_detail": meta.get("failure_detail"),
              "subsample": meta.get("subsample"), "parent": meta.get("parent"),
              "vs_parent": meta.get("vs_parent"), "prediction": meta.get("prediction")}
-    if meta["status"] == "SUCCESS":
+    if meta["status"] == "SUCCESS" and meta.get("kind") == "no_cv":
+        summary = (f"{exp_id} recorded SUCCESS (no CV: it is judged on the leaderboard only; "
+                   "submit it to score it)")
+    elif meta["status"] == "SUCCESS":
         summary = (f"{exp_id} recorded SUCCESS: {metric_cfg.get('label') or meta['metric']} "
                    f"{strategy.fmt_score(meta['cv_mean'], meta['cv_std'])} ({meta['n_folds']} folds)")
         line = compare.summary(meta.get("vs_parent"))
@@ -679,6 +737,8 @@ def cmd_run(ws: Path, args, adapter) -> dict:
     run_path = exp_dir / "kernel_run.json"
     existing = read_json(run_path) if run_path.exists() else None
 
+    if getattr(args, "re_record", False):
+        return _re_record(ws, exp_dir, spec)
     resume = getattr(args, "resume", False)
     if resume:
         if not existing or existing.get("status") != "COMPLETE" or not existing.get("resumable"):
@@ -718,7 +778,9 @@ def cmd_run(ws: Path, args, adapter) -> dict:
                                     {"backend": "local", "seconds": run["seconds"]})
 
     warnings: list[str] = []
-    if existing is None or args.rerun:
+    gpu_info = None
+    pending_push = bool(existing) and existing.get("status") == "PUSHING"
+    if existing is None or args.rerun or pending_push:
         _validate_spec(ws, exp_dir, spec, profile)
         _require_confirmed(profile)
         if templates_registry.TEMPLATES.get(spec["template"], {}).get("needs_metric", True):
@@ -759,14 +821,40 @@ def cmd_run(ws: Path, args, adapter) -> dict:
                                    f"experiments/{exp_dir.name}/kernel-metadata.json"]) \
             or git_head(ws)
         code_text = (exp_dir / spec["code_file"]).read_text()
-        try:
-            pushed = kernel.push_checked(adapter, meta, code_text, spec["runtime"]["limit_s"])
-        except KxError as exc:
-            if exc.status == "error" and exc.next_action is None:
-                # A push can fail client-side after Kaggle accepted it; a retry makes the
-                # next version and kx polls whichever version it reads back.
-                exc.next_action = E.run(f"kx run {exp_dir.name}", "Retry once.")
-            raise
+        pushed = None
+        prev = existing.get("prev_version") if pending_push else (existing or {}).get("kernel_version")
+        if pending_push:
+            # An earlier kx run was interrupted mid-push: read back, never push twice.
+            landed = kernel.landed_version(adapter, meta, prev)
+            if landed is not None:
+                pushed = kernel.verify_pushed(adapter, meta, landed)
+                warnings.append(f"an interrupted push of {exp_dir.name} reached Kaggle as version "
+                                f"{landed}; kx read it back and did not push again")
+        if pushed is None:
+            if spec["runtime"]["accelerator"] != "cpu":
+                gpu_info, gw = kernel.gpu_check(ws, adapter, spec)
+                warnings += gw
+            kernel.save_run(exp_dir, kernel.intent_record(meta, spec, prev, commit or "uncommitted"))
+            try:
+                pushed = kernel.push_checked(adapter, meta, code_text, spec["runtime"]["limit_s"])
+            except KxError as exc:
+                if getattr(exc, "answered", False):  # refused: nothing usable landed
+                    if existing and not pending_push:
+                        kernel.save_run(exp_dir, existing)
+                    else:
+                        run_path.unlink(missing_ok=True)
+                    if exc.next_action is None:
+                        exc.next_action = E.ask_user(
+                            "Kaggle refused the push; its message is in control/raw/"
+                            "last-error.txt (read it, never paste it into Kaggle). Fix the cause "
+                            "or tell the user, then run again.", then=f"kx run {exp_dir.name}")
+                elif exc.status == "error" and exc.next_action is None:
+                    # A push can fail client-side after Kaggle accepted it. The intent record
+                    # makes the next kx run read back first and push only if nothing landed.
+                    exc.next_action = E.run(f"kx run {exp_dir.name}",
+                                            "Run it once more: kx reads back whether the push "
+                                            "reached Kaggle and pushes only if it did not.")
+                raise
         run = kernel.new_run_record(meta, spec, pushed, commit or "uncommitted")
         if upstream:
             run["upstream"] = upstream["used"]
@@ -802,7 +890,8 @@ def cmd_run(ws: Path, args, adapter) -> dict:
                       f"{run['kernel_ref']} v{run['kernel_version']} is {run.get('status')}; "
                       "re-run to keep waiting (it is never re-pushed)",
                       data={"exp_id": exp_dir.name, "kernel": run["kernel_ref"],
-                            "version": run["kernel_version"], "kernel_status": run.get("status")},
+                            "version": run["kernel_version"], "kernel_status": run.get("status"),
+                            **({"gpu_quota": gpu_info} if gpu_info else {})},
                       warnings=warnings,
                       next_action=E.run(f"kx run {exp_dir.name}",
                                         "Re-run to resume polling. For long kernels pass "
@@ -839,7 +928,23 @@ def cmd_run(ws: Path, args, adapter) -> dict:
                                 {"backend": "kernel", "kernel": run["kernel_ref"],
                                  "kernel_version": run["kernel_version"],
                                  "kernel_status": run["status"],
-                                 "docker_image": run.get("docker_image")})
+                                 "docker_image": run.get("docker_image"),
+                                 **({"gpu_quota": gpu_info} if gpu_info else {})})
+
+
+def _re_record(ws: Path, exp_dir: Path, spec: dict) -> dict:
+    """Classify an already-pulled run again under the current rules: no push, no Kaggle call.
+    The score still comes only from what the kernel wrote into output/."""
+    local = spec.get("runtime", {}).get("target") == "local"
+    run_path = exp_dir / ("local_run.json" if local else "kernel_run.json")
+    run = read_json(run_path) if run_path.exists() else None
+    if not run or not run.get("recorded"):
+        raise KxError("invalid", f"{exp_dir.name} has no recorded run to classify again",
+                      errors=["nothing_to_re_record"], next_action=E.run(f"kx run {exp_dir.name}"))
+    log_path = exp_dir / "output" / ("local.log" if local else "kernel.log")
+    log_text = log_path.read_text() if log_path.is_file() else None
+    summary_data = {"backend": run.get("backend", "kernel"), "re_recorded": True}
+    return _record_and_envelope(ws, exp_dir, spec, run, log_text, [], summary_data)
 
 
 def _quarantine(ws: Path, text: str) -> None:
@@ -854,6 +959,16 @@ def _quarantine(ws: Path, text: str) -> None:
 def cmd_strategy(ws: Path, args, adapter) -> dict:
     workspace.require_workspace(ws)
     metric_cfg = _require_metric(ws)
+    if not args.reasoning_file:
+        newest = [f"experiments/{e}/reasoning.md" for e in workspace.list_experiments(ws)
+                  if (ws / "experiments" / e / "reasoning.md").is_file()]
+        if not newest:
+            raise KxError("invalid", "no experiments/exp-NNN/reasoning.md yet",
+                          errors=["reasoning_missing"],
+                          next_action=E.edit("Write the hypothesis queue + next action as "
+                                             "markdown in experiments/<exp>/reasoning.md.",
+                                             then="kx strategy"))
+        args.reasoning_file = newest[-1]
     reasoning_path = (ws / args.reasoning_file).resolve() if not Path(args.reasoning_file) \
         .is_absolute() else Path(args.reasoning_file)
     if not reasoning_path.is_file():
@@ -983,6 +1098,10 @@ def cmd_status(ws: Path, args, adapter) -> dict:
             break
         if run_path.exists():
             run = read_json(run_path)
+            if run.get("status") == "PUSHING":
+                return out(f"{exp_id}'s push was interrupted; resume it",
+                           E.run(f"kx run {exp_id}", "Reads back whether the push reached "
+                                                     "Kaggle; pushes only if it did not."))
             return out(f"{exp_id} was pushed ({run.get('status')}); resume it",
                        E.run(f"kx run {exp_id}", "Resumes polling; never re-pushes."))
         spec = read_json(d / "experiment.json") if (d / "experiment.json").exists() else {}

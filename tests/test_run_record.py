@@ -160,8 +160,8 @@ def test_budget_expiry_returns_running_and_resume_never_repushes(ready_ws, fake)
 @pytest.mark.parametrize("setup,reason", [
     (lambda f: f.statuses.__setitem__(slice(None), ["ERROR"]), "kernel_error"),
     (lambda f: f.statuses.__setitem__(slice(None), ["CANCEL_ACKNOWLEDGED"]), "runtime_limit"),
-    (lambda f: setattr(f, "log", (FIXTURES / "kernel_logs/titanic_error.json").read_text()),
-     "kernel_error"),
+    (lambda f: (setattr(f, "log", (FIXTURES / "kernel_logs/titanic_error.json").read_text()),
+                f.outputs.pop("result.json")), "kernel_error"),
     (lambda f: setattr(f, "log", None), "kernel_error"),
     (lambda f: f.outputs.pop("result.json"), "missing_result"),
     (lambda f: f.outputs.update(make_outputs(mean=0.99)), "schema_invalid"),
@@ -337,3 +337,147 @@ def test_preds_validator_accepts_walk_forward_and_multiclass(tmp_path):
     assert preds.validate(tmp_path, block, 2) == []
     block["oof"] = "../oof.csv"
     assert preds.validate(tmp_path, block, 2)
+
+
+def test_handled_traceback_in_a_complete_run_is_a_warning_and_re_record_needs_no_push(ready_ws,
+                                                                                      fake):
+    exp, d = scaffold(ready_ws, fake)
+    fake.outputs = make_outputs()
+    fake.log = (FIXTURES / "kernel_logs/titanic_error.json").read_text()
+    env = kx(ready_ws, fake, "run", exp, "--wait", "5")
+    assert env["data"]["result"] == "SUCCESS" and env["data"]["cv_mean"] == pytest.approx(0.85)
+    assert any("handled" in w and "traceback.txt" in w for w in env["warnings"])
+    assert json.loads((d / "meta.json").read_text())["log_markers"] is True
+    assert (d / "output" / "traceback.txt").exists()
+    # a run recorded under older rules is classified again from its pulled output
+    meta = json.loads((d / "meta.json").read_text())
+    meta.update({"status": "FAILED", "failure_reason": "kernel_error", "cv_mean": None})
+    (d / "meta.json").write_text(json.dumps(meta))
+    calls = len(fake.calls)
+    env = kx(ready_ws, fake, "run", exp, "--re-record")
+    assert env["data"]["result"] == "SUCCESS" and env["data"]["re_recorded"] is True
+    assert len(fake.calls) == calls  # no Kaggle call at all
+    assert kx(ready_ws, fake, "run", "exp-999", "--re-record")["status"] == "invalid"
+
+
+def test_interrupted_push_is_read_back_never_pushed_twice(ready_ws, fake):
+    exp, d = scaffold(ready_ws, fake)
+
+    def interrupted(meta, code_text, timeout_s=None):  # Kaggle got it; kx died mid-call
+        fake.calls.append(("push", meta, timeout_s))
+        raise KeyboardInterrupt
+
+    fake.push = interrupted
+    with pytest.raises(KeyboardInterrupt):
+        kx(ready_ws, fake, "run", exp, "--wait", "0")
+    intent = json.loads((d / "kernel_run.json").read_text())
+    assert intent["status"] == "PUSHING" and intent["prev_version"] is None
+    assert "resume" in kx(ready_ws, fake, "status")["summary"]
+    del fake.push
+    fake.kernel_meta["current_version_number"] = 1  # the push landed as v1
+    fake.outputs = make_outputs()
+    env = kx(ready_ws, fake, "run", exp, "--wait", "5")
+    assert env["data"]["result"] == "SUCCESS" and env["data"]["kernel_version"] == 1
+    assert len(fake.pushed()) == 1
+    assert any("did not push again" in w for w in env["warnings"])
+
+
+def test_interrupted_push_that_never_landed_is_pushed_once(ready_ws, fake):
+    exp, d = scaffold(ready_ws, fake)
+    from kx import kernel as K
+
+    K.save_run(d, {"backend": "kernel", "kernel_ref": "kxuser/never-landed", "status": "PUSHING",
+                   "prev_version": None, "recorded": False})
+    from kx.util import KxError
+
+    def missing(owner, slug):
+        fake.calls.append(("get_kernel", owner, slug))
+        if not fake.pushed():  # Kaggle answers 403 for a kernel that does not exist
+            raise KxError("needs_user", "403", errors=["http_403:get_kernel"])
+        return dict(fake.kernel_meta)
+
+    fake.get_kernel = missing
+    fake.outputs = make_outputs()
+    env = kx(ready_ws, fake, "run", exp, "--wait", "5")
+    assert env["data"]["result"] == "SUCCESS" and len(fake.pushed()) == 1
+
+
+def test_gpu_push_shows_the_quota_and_warns_before_kaggle_refuses(ready_ws, fake):
+    exp, d = scaffold(ready_ws, fake)
+    spec = json.loads((d / "experiment.json").read_text())
+    spec["runtime"].update({"accelerator": "NvidiaTeslaT4", "limit_s": 7200})
+    (d / "experiment.json").write_text(json.dumps(spec))
+    fake.quota = {"refresh": "2026-10-10T00:00:00",
+                  "gpu": {"used_s": 100000.0, "reserved_s": 3600.0, "allowed_s": 108000.0}}
+    for other in ("exp-090", "exp-091"):  # two GPU kernels still running in this workspace
+        od = ready_ws / "experiments" / other
+        od.mkdir()
+        (od / "kernel_run.json").write_text(json.dumps(
+            {"accelerator": "NvidiaTeslaT4", "status": "RUNNING", "recorded": False}))
+    fake.statuses = ["RUNNING"]
+    env = kx(ready_ws, fake, "run", exp, "--wait", "0")
+    assert env["data"]["gpu_quota"]["gpu_hours_left"] == 1.2
+    assert env["data"]["gpu_quota"]["running_gpu_kernels"] == ["exp-090", "exp-091"]
+    assert any("GPU quota: 1.2 h left" in w for w in env["warnings"])
+    assert any("at most 2 GPU sessions" in w for w in env["warnings"])
+
+
+def test_the_gpu_session_cap_is_a_clear_refusal_and_leaves_no_push_record(ready_ws, fake):
+    exp, d = scaffold(ready_ws, fake)
+    fake.push_response = {"error": "Maximum batch GPU session count of 2 reached.",
+                          "version_number": None}
+    env = kx(ready_ws, fake, "run", exp)
+    assert env["status"] == "needs_user" and env["errors"] == ["gpu_session_limit"]
+    assert not (d / "kernel_run.json").exists()
+
+
+IMG = "gcr.io/kaggle-images/python@sha256:" + "d" * 64
+
+
+def test_a_pinned_docker_image_is_pushed_inherited_and_verified(ready_ws, fake):
+    env = kx(ready_ws, fake, "new", "--idea", "x", "--hypothesis", "h", "--docker-image",
+             "docker.io/evil/image:latest")
+    assert env["errors"] == ["bad_docker_image"]
+    fake.get_kernel = lambda owner, slug: {"docker_image": IMG}  # a public notebook's image
+    env = kx(ready_ws, fake, "new", "--idea", "x", "--hypothesis", "h",
+             "--image-from", "someone/top-notebook")
+    assert env["data"]["docker_image"] == IMG
+    del fake.get_kernel
+    exp, d = env["data"]["exp_id"], ready_ws / "experiments" / env["data"]["exp_id"]
+    spec = json.loads((d / "experiment.json").read_text())
+    assert spec["runtime"]["docker_image"] == IMG
+    spec["cv"]["reasoning"] = "iid"
+    (d / "experiment.json").write_text(json.dumps(spec))
+    fake.kernel_meta["docker_image"] = "gcr.io/kaggle-images/python@sha256:" + "0" * 64
+    assert kx(ready_ws, fake, "run", exp)["errors"] == ["server_flags_mismatch"]  # not pinned
+    fake.kernel_meta["docker_image"] = IMG
+    fake.outputs = make_outputs()
+    env = kx(ready_ws, fake, "run", exp, "--wait", "5")
+    assert env["data"]["result"] == "SUCCESS" and fake.pushed()[-1][1]["docker_image"] == IMG
+    child = kx(ready_ws, fake, "new", "--idea", "y", "--hypothesis", "h", "--expect", "better")
+    assert child["data"]["docker_image"] == IMG  # a child keeps its parent's environment
+
+
+def test_a_cpu_image_is_refused_on_a_gpu(ready_ws, fake):
+    env = kx(ready_ws, fake, "new", "--idea", "x", "--hypothesis", "h", "--docker-image", IMG,
+             "--accelerator", "NvidiaTeslaT4")
+    assert any("no NVIDIA driver" in w for w in env["warnings"])
+    d = ready_ws / "experiments" / env["data"]["exp_id"]
+    spec = json.loads((d / "experiment.json").read_text())
+    spec["cv"]["reasoning"] = "iid"
+    (d / "experiment.json").write_text(json.dumps(spec))
+    env = kx(ready_ws, fake, "run", env["data"]["exp_id"])
+    assert env["status"] == "invalid" and any("no NVIDIA driver" in e for e in env["errors"])
+    assert not fake.pushed()
+
+
+def test_strategy_defaults_to_the_newest_reasoning_file(ready_ws, fake):
+    exp, d = scaffold(ready_ws, fake)
+    fake.outputs = make_outputs()
+    kx(ready_ws, fake, "run", exp, "--wait", "5")
+    assert kx(ready_ws, fake, "strategy")["errors"] == ["reasoning_missing"]
+    v = d / "VERDICT.md"
+    v.write_text(v.read_text().replace("_TODO", "done"))
+    (d / "reasoning.md").write_text("next: more features\n")
+    env = kx(ready_ws, fake, "strategy")
+    assert env["status"] == "ok", env

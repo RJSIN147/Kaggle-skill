@@ -114,3 +114,56 @@ def test_submit_cv_bar_only_compares_the_same_scheme(ready_ws, fake):
     env, _ = _propose(ready_ws, fake, b)
     assert any(line.startswith("WARNING: validation is SUSPECT")
                for line in env["data"]["confirmation"])
+
+
+def _without_folds(d):
+    """Make a recorded run look like one with no fold assignment (no oof.csv)."""
+    from kx.ledger import rebuild_ledger_file
+
+    meta = json.loads((d / "meta.json").read_text())
+    meta.update({"fold_hash": None, "predictions": None})
+    (d / "meta.json").write_text(json.dumps(meta))
+    (d / "output" / "oof.csv").unlink()
+    rebuild_ledger_file(d.parent.parent)
+
+
+def test_a_run_without_folds_never_sets_the_bar_or_inverts(ready_ws, fake):
+    fake.submissions = lambda slug, page_size=50: []
+    leaky, d = _recorded(ready_ws, fake, idea="smoke CV", scores=(0.96, 0.96))
+    _without_folds(d)
+    ml = _confirmed(ready_ws, fake, leaky)
+    honest, _ = _recorded(ready_ws, fake, idea="honest CV", scores=(0.50, 0.52))
+    env, _ = _propose(ready_ws, fake, honest)  # no --force-cv needed
+    assert any("CV bar skipped" in line for line in env["data"]["confirmation"])
+    mh = _confirmed(ready_ws, fake, honest)
+    fake.submissions = lambda slug, page_size=50: [
+        {"ref": 1, "date": _now(), "description": f"{ml} a", "status": "COMPLETE",
+         "public_score": "0.30", "private_score": "", "team_name": "t"},
+        {"ref": 2, "date": _now(), "description": f"{mh} b", "status": "COMPLETE",
+         "public_score": "0.40", "private_score": "", "team_name": "t"}]
+    env = kx(ready_ws, fake, "lb", "--wait", "0")
+    assert env["data"]["validation"] != "suspect"
+
+
+def test_an_acknowledged_pair_never_reopens_only_a_new_pair_does(ready_ws, fake):
+    fake.submissions = lambda slug, page_size=50: []
+    runs = [_recorded(ready_ws, fake, idea=i, scores=s)[0]
+            for i, s in (("a", (0.80, 0.82)), ("b", (0.84, 0.86)), ("c", (0.88, 0.90)))]
+    marks = [_confirmed(ready_ws, fake, e) for e in runs]
+
+    def lb(*scores):
+        fake.submissions = lambda slug, page_size=50: [
+            {"ref": i, "date": _now(), "description": f"{m} x", "status": "COMPLETE",
+             "public_score": s, "private_score": "", "team_name": "t"}
+            for i, (m, s) in enumerate(zip(marks, scores))]
+        return kx(ready_ws, fake, "lb", "--wait", "0")["data"]["validation"]
+
+    assert lb("0.80", "0.75", "0.70") == "suspect"  # every pair inverted
+    kx(ready_ws, fake, "validation", "ok", "--note", "noise")
+    # a smaller set of already-acknowledged pairs (c now agrees) does not re-open it
+    assert lb("0.80", "0.75", "0.90") == "ok"
+    assert lb("0.80", "0.75", "0.70") == "ok"
+    kx(ready_ws, fake, "validation", "ok", "--note", "n2")
+    d = _recorded(ready_ws, fake, idea="d", scores=(0.92, 0.94))[0]
+    marks.append(_confirmed(ready_ws, fake, d))
+    assert lb("0.80", "0.75", "0.70", "0.60") == "suspect"  # d inverts: a new pair

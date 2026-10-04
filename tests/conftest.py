@@ -148,6 +148,18 @@ class FakeAdapter:
     def submitted(self):
         return [c for c in self.calls if c[0] == "submit"]
 
+    quota = {"refresh": "2026-10-10T00:00:00",
+             "gpu": {"used_s": 3600.0, "reserved_s": 0.0, "allowed_s": 108000.0},
+             "tpu": {"used_s": 0.0, "reserved_s": 0.0, "allowed_s": 72000.0}}
+
+    def my_kernel_refs(self, search):
+        self.calls.append(("my_kernel_refs", search))
+        return []
+
+    def accelerator_quota(self):
+        self.calls.append(("accelerator_quota",))
+        return self.quota
+
     def get_kernel(self, owner, slug):
         self.calls.append(("get_kernel", owner, slug))
         return dict(self.kernel_meta)

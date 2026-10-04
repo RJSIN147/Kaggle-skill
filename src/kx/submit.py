@@ -6,7 +6,8 @@ max_daily_submissions) and its CV against the best submitted CV, then records a
 PROPOSED row and returns needs_user with the details to show the user and a one-time
 confirm token. Only `kx submit exp-NNN --confirm <token>`, run after the user said yes,
 submits: it re-runs every check, refuses if the candidate changed (file sha256 / kernel
-version) or the proposal is over an hour old, and submits once (never retried).
+version) or the proposal is from an earlier UTC day (daily slots reset at UTC midnight), and
+submits once (never retried).
 `kx lb` reads back by marker, polls scoring within a budget, records public/private
 scores (or the agent rating and W/L/D from replays) and shows LB next to CV with the
 gap trend and the divergence alarm.
@@ -15,6 +16,7 @@ gap trend and the divergence alarm.
 from __future__ import annotations
 
 import csv
+import re
 import secrets
 import shlex
 import time
@@ -29,11 +31,17 @@ from kx.strategy import tried_lines
 from kx.util import KxError, read_json, utc_now
 
 LB_POLL_S = 20
-PROPOSAL_TTL_S = 3600
 # A confirmed submit that Kaggle still does not list after this long never landed.
 NOT_LANDED_S = 600
 # Rows that occupy (or may occupy) a leaderboard slot: they set the CV bar to beat.
 SUBMITTED_STATES = ("HANDED_OVER", "SUBMITTING", "SUBMITTED", "PENDING", "SCORED")
+
+
+def _expired(proposed_at) -> bool:
+    """A proposal holds until the daily slots reset (UTC midnight of the day it was made):
+    the slot count it showed the user is only true for that day."""
+    t = subs.parse_utc(proposed_at)
+    return t is None or t.date() != datetime.now(timezone.utc).date()
 
 
 def _age_s(stamp) -> float:
@@ -71,9 +79,28 @@ def _check_file(path: Path, result: dict, errors: list[str]) -> None:
             pass  # existence checked; the kernel's own local-gateway run validated the shape
 
 
-def _best_submitted_cv(ws: Path, gib: bool, fold_hash: str | None = None) -> dict | None:
-    """The best CV among submitted runs. With the candidate's fold_hash, only runs on the
-    same folds count (runs recorded before fold hashes existed count as the same)."""
+# owner/slug handles, URLs and @mentions: what a public submission description should not carry
+_PUBLIC_LEAK_RE = re.compile(r"https?://\S+|@[\w-]{2,}|\b[A-Za-z0-9][\w-]*/[A-Za-z0-9][\w.-]*")
+
+
+def _downstream_stages(ws: Path, exp_id: str) -> list[str]:
+    """Experiments that read exp_id's kernel output (kx new --after exp_id)."""
+    out = []
+    for sp in sorted((ws / "experiments").glob("exp-*/experiment.json")):
+        try:
+            kernels = (read_json(sp).get("sources") or {}).get("kernels") or []
+        except KxError:
+            continue
+        if f"@{exp_id}" in kernels:
+            out.append(sp.parent.name)
+    return out
+
+
+def _best_submitted_cv(ws: Path, gib: bool, fold_hash: str | None = None,
+                       any_scheme: bool = False) -> dict | None:
+    """The best CV among submitted runs on the candidate's folds (same fold_hash). A run with
+    no fold assignment (no oof.csv) is comparable to nothing, so it never sets the bar.
+    ``any_scheme`` finds the best across schemes (to say why the bar was skipped)."""
     ledger = {r["exp_id"]: r for r in read_ledger(ws)}
     cands = []
     for s in subs.read(ws):
@@ -81,8 +108,8 @@ def _best_submitted_cv(ws: Path, gib: bool, fold_hash: str | None = None) -> dic
             row = ledger.get(s.get("exp_id"))
             if row and isinstance(row.get("cv_mean"), (int, float)):
                 cands.append(row)
-    if fold_hash:
-        cands = [r for r in cands if r.get("fold_hash") in (None, fold_hash)]
+    if not any_scheme:
+        cands = [r for r in cands if fold_hash and r.get("fold_hash") == fold_hash]
     if not cands:
         return None
     return (max if gib else min)(cands, key=lambda r: r["cv_mean"])
@@ -158,6 +185,12 @@ def cmd_submit(ws: Path, args, adapter) -> dict:
         errors.append(f"{args.exp_id} is {meta.get('status')}: only a SUCCESS with a CV is submitted")
     if meta.get("subsample"):
         errors.append("a subsample run is not a submission candidate")
+    if mode == "code_kernel":
+        stages = _downstream_stages(ws, args.exp_id)
+        if stages:
+            errors.append(f"{args.exp_id} is the upstream (training) stage of "
+                          f"{', '.join(stages)}: Kaggle reruns the submitted kernel on the "
+                          "hidden test, so submit the stage that predicts")
     if eff.get("closed") and eff.get("late_submissions_open") is False:
         errors.append("the competition is closed and late submissions are disabled")
 
@@ -169,8 +202,10 @@ def cmd_submit(ws: Path, args, adapter) -> dict:
         errors.append(f"no submission slots left today (UTC): {charged}/{limit} used")
 
     gib = bool(meta.get("greater_is_better", True))
-    best = _best_submitted_cv(ws, gib, meta.get("fold_hash"))
-    other_scheme = _best_submitted_cv(ws, gib) if best is None else None
+    cand_hash = next((r.get("fold_hash") for r in read_ledger(ws) if r["exp_id"] == exp_dir.name),
+                     meta.get("fold_hash"))
+    best = _best_submitted_cv(ws, gib, cand_hash)
+    other_scheme = _best_submitted_cv(ws, gib, any_scheme=True) if best is None else None
     cand = meta.get("cv_mean")
     if best and isinstance(cand, (int, float)) and not args.force_cv:
         better = cand > best["cv_mean"] if gib else cand < best["cv_mean"]
@@ -182,8 +217,11 @@ def cmd_submit(ws: Path, args, adapter) -> dict:
         (exp_dir / "output" / "result.json").exists() else {}
     canonical = profile["canonical_ref"]
     marker = f"kx:{args.exp_id}:{secrets.token_hex(3)}"
-    text = args.message[:200] if args.message else str(meta.get("idea") or "")[:60]
+    # The description is public on Kaggle: by default only the marker. The idea often names
+    # sources (a notebook's owner/slug), so it is never sent unless the user writes --message.
+    text = (args.message or "")[:200]
     msg = f"{marker} {text}".strip()
+    leaky = _PUBLIC_LEAK_RE.findall(text)
     row = {"marker": marker, "exp_id": args.exp_id, "mode": mode, "status": "PROPOSED",
            "proposed_at": utc_now(), "cv_mean": cand, "message": msg}
     what: list[str] = []
@@ -233,7 +271,7 @@ def cmd_submit(ws: Path, args, adapter) -> dict:
         return _submit_confirmed(ws, args, adapter, profile, rows, row, remote)
 
     rows = [r for r in rows if r.get("status") != "PROPOSED" or  # drop expired proposals
-            _age_s(r.get("proposed_at")) <= PROPOSAL_TTL_S]
+            not _expired(r.get("proposed_at"))]
     row["confirm_token"] = secrets.token_hex(4)
     rows.append(row)
     subs.write(ws, rows)
@@ -245,15 +283,18 @@ def cmd_submit(ws: Path, args, adapter) -> dict:
         f"experiment: {args.exp_id} — {meta.get('idea') or ''}",
         *[f"submits: {w}" for w in what],
         f"CV: {metric} {cand:g}" if isinstance(cand, (int, float)) else "CV: none (agent)"
-        if mode == "agent" else "CV: none",
+        if mode == "agent" else "CV: none (a no-CV experiment: the leaderboard is its score)",
         f"best submitted CV so far: {best['cv_mean']:g} ({best['exp_id']})" if best
-        else (f"CV bar skipped: the best submitted CV ({other_scheme['cv_mean']:g}, "
-              f"{other_scheme['exp_id']}) used a different CV scheme" if other_scheme
+        else (f"CV bar skipped: no submitted run shares this run's folds (best submitted CV "
+              f"{other_scheme['cv_mean']:g}, {other_scheme['exp_id']}, is on other folds or has "
+              "no fold assignment)" if other_scheme
               else "best submitted CV so far: none"),
         *[f"WARNING: {w}" for w in validation.warnings(ws)],
         f"daily slots: {remaining} of {limit} left today (UTC); this uses one"
         if remaining is not None else "daily slots: limit unknown",
         f"message: {msg}",
+        *([f"WARNING: the message names {', '.join(dict.fromkeys(leaky))}; it will be public "
+           "on Kaggle"] if leaky else []),
     ]
     confirm_cmd = f"kx submit {args.exp_id} --confirm {row['confirm_token']}" + \
         (" --force-cv" if args.force_cv else "") + \
@@ -281,8 +322,9 @@ def _submit_confirmed(ws: Path, args, adapter, profile: dict, rows: list[dict], 
         raise KxError("invalid", f"no pending proposal for {args.exp_id} with that token "
                       "(already submitted, or never proposed)", errors=["no_proposal"],
                       next_action=again)
-    if _age_s(prop.get("proposed_at")) > PROPOSAL_TTL_S:
-        raise KxError("invalid", "the confirmed proposal is older than an hour",
+    if _expired(prop.get("proposed_at")):
+        raise KxError("invalid", "the confirmed proposal is from an earlier UTC day (the daily "
+                      "slots have reset since)",
                       errors=["proposal_expired"], next_action=again)
     if prop.get("fingerprint") != fresh.get("fingerprint"):
         raise KxError("invalid", f"{args.exp_id} changed since the user confirmed it "
@@ -380,6 +422,9 @@ def cmd_lb(ws: Path, args, adapter) -> dict:
     joined = lb_gap.join_cv_lb([r for r in rows if r.get("mode") != "agent"], ledger)
     table = [f"{r['exp_id']}: CV {r['cv_mean']:g} | LB {r['lb_score']:g} | gap {r['gap']:+g}"
              for r in joined]
+    no_cv = {r["exp_id"] for r in ledger if r.get("kind") == "no_cv"}
+    table += [f"{r['exp_id']}: no CV | LB {r['public_score']}" for r in rows
+              if r.get("exp_id") in no_cv and r.get("status") == "SCORED"]
     for r in rows:
         if r.get("mode") == "agent":
             e = r.get("episodes") or {}

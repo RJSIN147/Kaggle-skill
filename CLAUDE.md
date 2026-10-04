@@ -32,6 +32,7 @@ This file is for working ON the skill. Users clone it into their agent's skills 
 | `src/kx/kernel.py`, `record.py`, `pipeline.py` | Push and read back, bounded poll, pull, the fail-closed recorder, upstream chaining. |
 | `src/kx/submit.py`, `subs.py`, `lb_gap.py` | Propose, then confirm and submit, read back, and the CV→LB gap with its divergence alarm. |
 | `src/kx/research.py`, `ensemble.py`, `local.py`, `agent_eval.py` | Research ingestion, OOF blending, local runs, the simulation-agent evaluator. |
+| `src/kx/datasets.py` | `kx dataset push`: a private dataset from a folder (credential refusal, read-back of an interrupted upload). |
 | `src/kx/experiment.py`, `templates_registry.py`, `workspace.py` | `experiment.json` schema and validation, template selection and rendering, the workspace layout and scaffold. |
 | `src/kx/ledger.py`, `strategy.py`, `preds.py` | The ledger rebuilt from `meta.json`, `strategy.md` rendering, the `kx-preds/1` validator. |
 | `src/kx/credentials.py`, `leak_scan.py`, `untrusted.py`, `safe_extract.py`, `data.py`, `envinfo.py`, `util.py` | Masked credential discovery, the pre-commit leak hook, untrusted-text fences, zip-slip-safe extraction, data downloads, `kx env`, shared helpers. |
@@ -70,7 +71,9 @@ login). Continue with `--session <id>`. Without `</dev/null`, `opencode run` wai
 - **Every kx output is one JSON envelope** whose `next_action` is run / edit / ask_user / done.
   Add new behaviour as envelope fields, not printed text.
 - **Kaggle calls.** Import the SDK lazily: importing it authenticates and can exit. Every call
-  runs under a deadline, and reads may retry. Never retry a push or a submit; read back instead.
+  runs under a deadline, and reads may retry. Never retry a push or a submit; read back instead
+  (kernel and dataset pushes save a PUSHING record first). Everything kx creates on Kaggle
+  is private; it never adds a version to a public dataset.
 - **Internet is off by default.** It may be on for csv_upload competitions or a code
   competition's training stage. A code competition's submitted stage must be off: `kx run`
   and `kx submit` refuse it.
@@ -104,6 +107,18 @@ login). Continue with `--session <id>`. Without `</dev/null`, `opencode run` wai
 - **Code-competition submit** = kernel ref + version + output file name. API-served
   competitions (`kaggle_evaluation`) score in about 10–20 minutes.
 - **Agents.** A simulation agent's local win rate does not predict its ladder rating.
+- **Images (2026-10-04).** Kaggle's latest image moved from Python 3.12.13 to 3.13.15 on
+  2026-10-03. `docker_image` on push pins any earlier digest (read back exactly; the run
+  reports that Python). CPU images are `gcr.io/kaggle-images/python`, GPU images
+  `gcr.io/kaggle-private-byod/python`; a CPU image on a T4 runs without an NVIDIA driver. A
+  public notebook's metadata can report the CPU image even when it ran on a GPU.
+- **GPU limits.** `get_accelerator_quota_statistics` gives the weekly quota (30 h GPU, 20 h
+  TPU on this account). At most 2 GPU batch sessions run at once; a third push is refused
+  ("Maximum batch GPU session count of 2").
+- **Missing resources.** `get_kernel` and `dataset_status` answer HTTP 403 (not 404) for a
+  kernel or dataset that does not exist; `kernels_list(mine=True)` and
+  `dataset_list(mine=True)` include private ones. `dataset_create_new(public=False)`
+  then `dataset_create_version` work on the same folder (2026-10-04).
 
 ## Harness facts (OpenCode 1.18, 2026-10-02)
 

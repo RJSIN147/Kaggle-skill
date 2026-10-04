@@ -97,6 +97,13 @@ def parent_fold_hash(parent_dir: Path, parent_meta: dict) -> str | None:
     return fold_hash(parent_dir / "output" / oof) if oof else None
 
 
+def run_fold_hash(output_dir: Path, result: dict) -> str | None:
+    """The fold hash of a recorded result: its oof.csv, else the folds.csv a custom run
+    saved with report(folds=...), else None (no fold assignment)."""
+    name = (result.get("predictions") or {}).get("oof") or result.get("folds")
+    return fold_hash(output_dir / name) if isinstance(name, str) and name else None
+
+
 def versus_parent(ws: Path, meta: dict) -> dict | None:
     """The child's comparison with ``meta['parent']`` (None when it has no parent)."""
     parent = meta.get("parent")
@@ -108,6 +115,8 @@ def versus_parent(ws: Path, meta: dict) -> dict | None:
     ups = [u.get("exp_id") for u in (meta.get("kernel") or {}).get("upstream") or []]
     if parent in ups:
         return base | _not(f"an inference stage: it carries {parent}'s CV")
+    if meta.get("kind") == "no_cv":
+        return base | _not("a no-CV experiment: judged on the leaderboard only")
     pdir = ws / "experiments" / parent
     try:
         pmeta = json.loads((pdir / "meta.json").read_text())
@@ -116,13 +125,16 @@ def versus_parent(ws: Path, meta: dict) -> dict | None:
     base |= {"parent_cv_mean": pmeta.get("cv_mean"), "parent_cv_std": pmeta.get("cv_std")}
     if pmeta.get("status") != "SUCCESS":
         return base | _not(f"{parent} is {pmeta.get('status')}")
+    if pmeta.get("kind") == "no_cv" or pmeta.get("cv_mean") is None:
+        return base | _not(f"{parent} has no CV (leaderboard only)")
     if pmeta.get("metric") != meta.get("metric"):
         return base | _not(f"{parent} used another metric ({pmeta.get('metric')})")
     if (pmeta.get("subsample") or None) != (meta.get("subsample") or None):
         return base | _not("the two runs used different subsamples")
     mine, theirs = meta.get("fold_hash"), parent_fold_hash(pdir, pmeta)
     if not mine or not theirs:
-        return base | _not("no out-of-fold predictions to check that the folds match")
+        return base | _not("no fold assignment to check that the folds match (write_preds() "
+                           "or report(folds=...) in a custom run)")
     if mine != theirs:
         return base | _not("CV scheme changed: the folds differ")
     gib = meta.get("greater_is_better")
