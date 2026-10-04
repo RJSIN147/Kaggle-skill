@@ -24,7 +24,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from kx import envelope as E
-from kx import lb_gap, subs, validation, workspace
+from kx import lb_gap, provenance, subs, validation, workspace
 from kx.ledger import read_ledger
 from kx.profile import effective
 from kx.strategy import tried_lines
@@ -292,6 +292,8 @@ def cmd_submit(ws: Path, args, adapter) -> dict:
         *[f"WARNING: {w}" for w in validation.warnings(ws)],
         f"daily slots: {remaining} of {limit} left today (UTC); this uses one"
         if remaining is not None else "daily slots: limit unknown",
+        *([("WARNING: " if provenance.unconfirmed(spec.get("third_party")) else "")
+           + provenance.line(spec.get("third_party"))] if spec.get("third_party") else []),
         f"message: {msg}",
         *([f"WARNING: the message names {', '.join(dict.fromkeys(leaky))}; it will be public "
            "on Kaggle"] if leaky else []),

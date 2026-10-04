@@ -32,6 +32,7 @@ This file is for working ON the skill. Users clone it into their agent's skills 
 | `src/kx/kernel.py`, `record.py`, `pipeline.py` | Push and read back, bounded poll, pull, the fail-closed recorder, upstream chaining. |
 | `src/kx/submit.py`, `subs.py`, `lb_gap.py` | Propose, then confirm and submit, read back, and the CV→LB gap with its divergence alarm. |
 | `src/kx/research.py`, `ensemble.py`, `local.py`, `agent_eval.py` | Research ingestion, OOF blending, local runs, the simulation-agent evaluator. |
+| `src/kx/provenance.py` | Ported third-party code: cited public notebooks, the user's confirmation before the first push, inheritance. |
 | `src/kx/datasets.py` | `kx dataset push`: a private dataset from a folder (credential refusal, read-back of an interrupted upload). |
 | `src/kx/experiment.py`, `templates_registry.py`, `workspace.py` | `experiment.json` schema and validation, template selection and rendering, the workspace layout and scaffold. |
 | `src/kx/ledger.py`, `strategy.py`, `preds.py` | The ledger rebuilt from `meta.json`, `strategy.md` rendering, the `kx-preds/1` validator. |

@@ -70,6 +70,9 @@ kx init → kx sync <comp> → kx confirm → kx metric → kx diagnose → kx n
   - GPU pushes show the weekly quota left and Kaggle's 2-session cap.
   - An interrupted push is read back, never pushed twice.
   - `kx dataset push` uploads offline wheels or weights as a private dataset.
+- **Ported code is marked.** An experiment that cites a public notebook (or whose code links
+  one) is marked as containing third-party code, and kx asks you to confirm (license, the
+  competition's rules on external code, credit) before its first push.
 - **Research and blending.** `kx research` turns top discussions, public notebooks and the
   host's metric into untrusted, summarized notes. `kx ensemble` blends out-of-fold
   predictions into a new experiment and compares it with its best member.
