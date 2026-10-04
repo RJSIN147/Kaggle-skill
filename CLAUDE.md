@@ -32,6 +32,7 @@ This file is for working ON the skill. Users clone it into their agent's skills 
 | `src/kx/kernel.py`, `record.py`, `pipeline.py` | Push and read back, bounded poll, pull, the fail-closed recorder, upstream chaining. |
 | `src/kx/submit.py`, `subs.py`, `lb_gap.py` | Propose, then confirm and submit, read back, and the CV→LB gap with its divergence alarm. |
 | `src/kx/research.py`, `ensemble.py`, `local.py`, `agent_eval.py` | Research ingestion, OOF blending, local runs, the simulation-agent evaluator. |
+| `src/kx/datasets.py` | `kx dataset push`: a private dataset from a folder (credential refusal, read-back of an interrupted upload). |
 | `src/kx/experiment.py`, `templates_registry.py`, `workspace.py` | `experiment.json` schema and validation, template selection and rendering, the workspace layout and scaffold. |
 | `src/kx/ledger.py`, `strategy.py`, `preds.py` | The ledger rebuilt from `meta.json`, `strategy.md` rendering, the `kx-preds/1` validator. |
 | `src/kx/credentials.py`, `leak_scan.py`, `untrusted.py`, `safe_extract.py`, `data.py`, `envinfo.py`, `util.py` | Masked credential discovery, the pre-commit leak hook, untrusted-text fences, zip-slip-safe extraction, data downloads, `kx env`, shared helpers. |
@@ -112,6 +113,9 @@ login). Continue with `--session <id>`. Without `</dev/null`, `opencode run` wai
 - **GPU limits.** `get_accelerator_quota_statistics` gives the weekly quota (30 h GPU, 20 h
   TPU on this account). At most 2 GPU batch sessions run at once; a third push is refused
   ("Maximum batch GPU session count of 2").
+- **Datasets.** `dataset_status` answers HTTP 403 (not 404) for a dataset that does not
+  exist; `dataset_list(mine=True)` includes private ones. `dataset_create_new(public=False)`
+  then `dataset_create_version` work on the same folder (2026-10-04).
 
 ## Harness facts (OpenCode 1.18, 2026-10-02)
 

@@ -959,6 +959,16 @@ def _quarantine(ws: Path, text: str) -> None:
 def cmd_strategy(ws: Path, args, adapter) -> dict:
     workspace.require_workspace(ws)
     metric_cfg = _require_metric(ws)
+    if not args.reasoning_file:
+        newest = [f"experiments/{e}/reasoning.md" for e in workspace.list_experiments(ws)
+                  if (ws / "experiments" / e / "reasoning.md").is_file()]
+        if not newest:
+            raise KxError("invalid", "no experiments/exp-NNN/reasoning.md yet",
+                          errors=["reasoning_missing"],
+                          next_action=E.edit("Write the hypothesis queue + next action as "
+                                             "markdown in experiments/<exp>/reasoning.md.",
+                                             then="kx strategy"))
+        args.reasoning_file = newest[-1]
     reasoning_path = (ws / args.reasoning_file).resolve() if not Path(args.reasoning_file) \
         .is_absolute() else Path(args.reasoning_file)
     if not reasoning_path.is_file():

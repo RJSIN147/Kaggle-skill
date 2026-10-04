@@ -189,6 +189,11 @@ def test_custom_stages_chain_and_refuse_internet_when_submitted(tmp_path, token_
     assert env["status"] == "ok", env
     assert env["data"]["ai_block_from"] == down.name
     assert "# stage marker" in (ws / "experiments" / env["data"]["exp_id"] / "main.py").read_text()
+    # the training stage is not what Kaggle reruns: never a code-competition submission
+    fake.submissions = lambda slug, page_size=50: []
+    env = kx(ws, fake, "submit", up)
+    assert env["status"] == "invalid" and any("upstream (training) stage" in e
+                                              for e in env["errors"]), env
 
 
 def test_report_folds_gives_a_fold_hash_and_a_paired_comparison(titanic_custom):

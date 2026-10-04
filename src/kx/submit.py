@@ -83,6 +83,19 @@ def _check_file(path: Path, result: dict, errors: list[str]) -> None:
 _PUBLIC_LEAK_RE = re.compile(r"https?://\S+|@[\w-]{2,}|\b[A-Za-z0-9][\w-]*/[A-Za-z0-9][\w.-]*")
 
 
+def _downstream_stages(ws: Path, exp_id: str) -> list[str]:
+    """Experiments that read exp_id's kernel output (kx new --after exp_id)."""
+    out = []
+    for sp in sorted((ws / "experiments").glob("exp-*/experiment.json")):
+        try:
+            kernels = (read_json(sp).get("sources") or {}).get("kernels") or []
+        except KxError:
+            continue
+        if f"@{exp_id}" in kernels:
+            out.append(sp.parent.name)
+    return out
+
+
 def _best_submitted_cv(ws: Path, gib: bool, fold_hash: str | None = None,
                        any_scheme: bool = False) -> dict | None:
     """The best CV among submitted runs on the candidate's folds (same fold_hash). A run with
@@ -172,6 +185,12 @@ def cmd_submit(ws: Path, args, adapter) -> dict:
         errors.append(f"{args.exp_id} is {meta.get('status')}: only a SUCCESS with a CV is submitted")
     if meta.get("subsample"):
         errors.append("a subsample run is not a submission candidate")
+    if mode == "code_kernel":
+        stages = _downstream_stages(ws, args.exp_id)
+        if stages:
+            errors.append(f"{args.exp_id} is the upstream (training) stage of "
+                          f"{', '.join(stages)}: Kaggle reruns the submitted kernel on the "
+                          "hidden test, so submit the stage that predicts")
     if eff.get("closed") and eff.get("late_submissions_open") is False:
         errors.append("the competition is closed and late submissions are disabled")
 

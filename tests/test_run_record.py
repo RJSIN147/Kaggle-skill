@@ -469,3 +469,15 @@ def test_a_cpu_image_is_refused_on_a_gpu(ready_ws, fake):
     env = kx(ready_ws, fake, "run", env["data"]["exp_id"])
     assert env["status"] == "invalid" and any("no NVIDIA driver" in e for e in env["errors"])
     assert not fake.pushed()
+
+
+def test_strategy_defaults_to_the_newest_reasoning_file(ready_ws, fake):
+    exp, d = scaffold(ready_ws, fake)
+    fake.outputs = make_outputs()
+    kx(ready_ws, fake, "run", exp, "--wait", "5")
+    assert kx(ready_ws, fake, "strategy")["errors"] == ["reasoning_missing"]
+    v = d / "VERDICT.md"
+    v.write_text(v.read_text().replace("_TODO", "done"))
+    (d / "reasoning.md").write_text("next: more features\n")
+    env = kx(ready_ws, fake, "strategy")
+    assert env["status"] == "ok", env

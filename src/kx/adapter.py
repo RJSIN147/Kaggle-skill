@@ -403,6 +403,36 @@ class KaggleAdapter:
 
         return self._call("get_kernel_session_status", fn)
 
+    def dataset_state(self, ref: str) -> dict:
+        """{"status", "current_version_number"} of a dataset; HTTP 404 when it does not exist."""
+        def fn(api):
+            return json.loads(api.dataset_status(ref, format="json(status,current_version_number)"))
+
+        return self._call("dataset_status", fn)
+
+    def my_dataset_refs(self, search: str) -> list[str]:
+        """Refs of this account's datasets (private included) matching search."""
+        def fn(api):
+            return [str(getattr(d, "ref", "")) for d in api.dataset_list(mine=True, search=search)
+                    or []]
+
+        return self._call("dataset_list", fn)
+
+    def dataset_push(self, folder: str, *, new: bool, notes: str) -> dict:
+        """Create a private dataset from folder (its dataset-metadata.json names it), or add a
+        version. Never retried: a failure after Kaggle received it may have created it."""
+        def fn(api):
+            if new:
+                r = api.dataset_create_new(folder, public=False, quiet=True,
+                                           convert_to_csv=False, dir_mode="zip")
+            else:
+                r = api.dataset_create_version(folder, notes, quiet=True, convert_to_csv=False,
+                                               dir_mode="zip")
+            return {"ref": getattr(r, "ref", None), "status": getattr(r, "status", None),
+                    "error": getattr(r, "error", None)}
+
+        return self._call("dataset_push", fn, timeout=3600, retries=0)
+
     def accelerator_quota(self) -> dict:
         """This account's weekly GPU/TPU quota: seconds used, reserved by running sessions,
         and allowed, plus the refresh time (live-verified 2026-10-04)."""

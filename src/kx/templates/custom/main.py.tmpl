@@ -17,7 +17,8 @@ The contract:
 - a time-budget stop: stop_incomplete({...}) and return; `kx run --resume` continues and
   previous_output() finds this kernel's earlier output (checkpoints);
 - a code competition's scoring rerun (IS_RERUN): only predict and write EXPECTED_OUTPUT;
-- an inference stage (`kx new --after exp-NNN`): read upstream_dir() and call report_upstream().
+- an inference stage (`kx new --after exp-NNN`): read upstream_dir() and call report_upstream();
+- a local smoke run (`kx new --local --subsample F`): SUBSAMPLE is F; load only that fraction.
 
 Edit ONLY the AI BLOCK. The KX HARNESS is hashed at `kx new`; `kx run` refuses a modified
 harness. Exceptions are never caught: a throw ends the kernel in ERROR and kx records FAILED.
@@ -68,6 +69,8 @@ $PATHS
 DATA_DIR = None
 OUT = None
 IS_RERUN = bool(os.getenv("KAGGLE_IS_COMPETITION_RERUN"))
+# kx new --local --subsample F: train on this fraction of the rows (None = all); run() applies it
+SUBSAMPLE = float(os.environ["KX_SUBSAMPLE"]) if os.environ.get("KX_SUBSAMPLE") else None
 _STARTED = time.time()
 _REPORTED = []
 _PREDS = []

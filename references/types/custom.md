@@ -24,7 +24,9 @@ fail-closed like any other.
 | Optional: `report(fold_scores, folds=[(row_id, fold), …])` | saves the fold assignment (`folds.csv`): kx compares this run with its parent fold by fold without `write_preds` |
 | Near the limit: `stop_incomplete({...})` and return, when `time_left()` runs low | recorded resumable; `kx run exp-NNN --resume` mounts the previous output: `previous_output()` |
 
-Helpers: `DATA_DIR` (competition data), `OUT` (the output dir), `model_dirs()` (Kaggle
+Helpers: `DATA_DIR` (competition data), `OUT` (the output dir), `SUBSAMPLE` (the
+`--local --subsample F` fraction, else None: a local smoke run loads only that share of the
+rows, so it fits in memory), `model_dirs()` (Kaggle
 Models from `kx new --model`), `upstream_dir()` (an `--after` upstream's output),
 `host_metric` (an adopted host metric kernel).
 

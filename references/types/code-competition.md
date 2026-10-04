@@ -57,4 +57,8 @@ them into its output so the internet-off inference stage loads them through
   that image) or `--docker-image gcr.io/…@sha256:…`. On a GPU, pin a GPU image
   (`kaggle-private-byod/…`); a notebook's metadata may report the CPU image even when it
   ran on a GPU, and kx refuses a CPU image on a GPU.
-- Wheels for an offline install go in a private dataset attached with `--dataset`.
+- Wheels for an offline install: `pip download` them into a folder, `kx dataset push <folder>
+  --slug <name>` (private), then `kx new --dataset <you>/<name>` and install from it with
+  `pip install --no-index --find-links`.
+- A training stage (`--after` upstream of another experiment) is never a submission: `kx
+  submit` refuses it; submit the stage that predicts.

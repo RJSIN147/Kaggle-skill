@@ -79,7 +79,7 @@ When unsure where you are: `kx status`.
 7. Write the **AI BLOCK** in the experiment's code file and `cv.reasoning` in its
    `experiment.json`. Never edit the KX HARNESS (kx refuses a modified harness).
 8. `kx run exp-NNN` — pushes a private script kernel (internet off by default), polls, pulls, and
-   records. Long kernels: pass `--wait 540` with a 600000 ms Bash timeout, or come back
+   records. Long kernels: pass `--wait` (540 s) with a 600000 ms Bash timeout, or come back
    later — re-running resumes and never pushes twice. kx compares the run with its parent fold by fold
    (`data.vs_parent`: better / worse / inconclusive) and judges your prediction.
 9. Write `VERDICT.md` (replace every `_TODO`; reference the recorded numbers and the kx
