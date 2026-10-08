@@ -17,7 +17,7 @@ import time
 from pathlib import Path
 
 from kx.adapter import safe_join
-from kx.experiment import MACHINE_SHAPES
+from kx.experiment import GPU_QUOTA_RATE, MACHINE_SHAPES
 from kx.util import KxError, utc_now, write_json
 
 TERMINAL = {"COMPLETE", "ERROR", "CANCEL_ACKNOWLEDGED"}
@@ -240,11 +240,16 @@ def gpu_check(ws: Path, adapter, spec: dict) -> tuple[dict, list[str]]:
              "gpu_hours_reserved": round(g["reserved_s"] / 3600, 1),
              "gpu_hours_allowed": round(g["allowed_s"] / 3600, 1),
              "gpu_hours_left": round(left / 3600, 1), "quota_refresh": q.get("refresh")}
-    limit = spec["runtime"]["limit_s"]
-    if left < limit:
+    acc = spec["runtime"]["accelerator"]
+    rate = GPU_QUOTA_RATE.get(acc, 1)
+    billed = spec["runtime"]["limit_s"] * rate
+    if rate != 1:
+        info["quota_rate"] = rate
+    if left < billed:
+        rated = f" ({acc} bills the quota at {rate}x)" if rate != 1 else ""
         warnings.append(f"GPU quota: {left / 3600:.1f} h left this week (refresh "
-                        f"{q.get('refresh')}), but this run may take up to {limit / 3600:.1f} h; "
-                        "Kaggle stops a kernel when the quota runs out")
+                        f"{q.get('refresh')}), but this run may use up to {billed / 3600:.1f} h"
+                        f"{rated}; Kaggle stops a kernel when the quota runs out")
     return info, warnings
 
 

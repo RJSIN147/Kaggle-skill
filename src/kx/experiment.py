@@ -20,6 +20,7 @@ PLACEHOLDER = "<TODO>"
 # (the 4 x L4 machine some competitions unlock; it bills GPU quota at 2x).
 ACCELERATORS = ("cpu", "NvidiaTeslaT4", "NvidiaL4")
 MACHINE_SHAPES = ("NvidiaL4",)  # accelerators pushed as an explicit machine_shape
+GPU_QUOTA_RATE = {"NvidiaL4": 2}  # GPU-quota hours billed per hour run (default 1)
 TARGETS = ("kernel", "local")
 MAX_LIMIT_S = 12 * 3600  # Kaggle's 12 h session maximum
 

@@ -422,6 +422,22 @@ def test_gpu_push_shows_the_quota_and_warns_before_kaggle_refuses(ready_ws, fake
     assert any("at most 2 GPU sessions" in w for w in env["warnings"])
 
 
+def test_an_l4_run_counts_twice_its_limit_against_the_gpu_quota(ready_ws, fake):
+    exp, d = scaffold(ready_ws, fake)
+    spec = json.loads((d / "experiment.json").read_text())
+    spec["runtime"].update({"accelerator": "NvidiaL4", "limit_s": 3600})
+    (d / "experiment.json").write_text(json.dumps(spec))
+    # 1.5 h left: enough for a 1 h T4 run, not for a 1 h L4 run billed at 2x
+    fake.quota = {"refresh": "2026-10-10T00:00:00",
+                  "gpu": {"used_s": 102600.0, "reserved_s": 0.0, "allowed_s": 108000.0}}
+    fake.kernel_meta["machine_shape"] = "NvidiaL4"
+    fake.statuses = ["RUNNING"]
+    env = kx(ready_ws, fake, "run", exp, "--wait", "0")
+    assert env["data"]["gpu_quota"]["quota_rate"] == 2
+    assert any("may use up to 2.0 h (NvidiaL4 bills the quota at 2x)" in w
+               for w in env["warnings"])
+
+
 def test_the_gpu_session_cap_is_a_clear_refusal_and_leaves_no_push_record(ready_ws, fake):
     exp, d = scaffold(ready_ws, fake)
     fake.push_response = {"error": "Maximum batch GPU session count of 2 reached.",
