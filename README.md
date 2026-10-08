@@ -67,7 +67,7 @@ kx init → kx sync <comp> → kx confirm → kx metric → kx diagnose → kx n
 - **Reproducible and quota-aware.**
   - A kernel can be pinned to an earlier Kaggle image (`--image-from` a run or a notebook) when
     Kaggle's latest image changes.
-  - GPU pushes show the weekly quota left and Kaggle's 2-session cap.
+  - GPU pushes show the weekly quota left and Kaggle's 2-session cap. The 4 × L4 machine (`--accelerator NvidiaL4`, where a competition unlocks it) counts double against the quota.
   - An interrupted push is read back, never pushed twice.
   - `kx dataset push` uploads offline wheels or weights as a private dataset.
 - **Ported code is marked.** An experiment that cites a public notebook (or whose code links

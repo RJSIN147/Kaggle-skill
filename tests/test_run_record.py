@@ -422,6 +422,22 @@ def test_gpu_push_shows_the_quota_and_warns_before_kaggle_refuses(ready_ws, fake
     assert any("at most 2 GPU sessions" in w for w in env["warnings"])
 
 
+def test_an_l4_run_counts_twice_its_limit_against_the_gpu_quota(ready_ws, fake):
+    exp, d = scaffold(ready_ws, fake)
+    spec = json.loads((d / "experiment.json").read_text())
+    spec["runtime"].update({"accelerator": "NvidiaL4", "limit_s": 3600})
+    (d / "experiment.json").write_text(json.dumps(spec))
+    # 1.5 h left: enough for a 1 h T4 run, not for a 1 h L4 run billed at 2x
+    fake.quota = {"refresh": "2026-10-10T00:00:00",
+                  "gpu": {"used_s": 102600.0, "reserved_s": 0.0, "allowed_s": 108000.0}}
+    fake.kernel_meta["machine_shape"] = "NvidiaL4"
+    fake.statuses = ["RUNNING"]
+    env = kx(ready_ws, fake, "run", exp, "--wait", "0")
+    assert env["data"]["gpu_quota"]["quota_rate"] == 2
+    assert any("may use up to 2.0 h (NvidiaL4 bills the quota at 2x)" in w
+               for w in env["warnings"])
+
+
 def test_the_gpu_session_cap_is_a_clear_refusal_and_leaves_no_push_record(ready_ws, fake):
     exp, d = scaffold(ready_ws, fake)
     fake.push_response = {"error": "Maximum batch GPU session count of 2 reached.",
@@ -481,3 +497,33 @@ def test_strategy_defaults_to_the_newest_reasoning_file(ready_ws, fake):
     (d / "reasoning.md").write_text("next: more features\n")
     env = kx(ready_ws, fake, "strategy")
     assert env["status"] == "ok", env
+
+
+def test_an_l4x4_push_sends_and_verifies_the_machine_shape(ready_ws, fake):
+    env = kx(ready_ws, fake, "new", "--idea", "x", "--hypothesis", "h",
+             "--accelerator", "NvidiaL4")
+    exp, d = env["data"]["exp_id"], ready_ws / "experiments" / env["data"]["exp_id"]
+    spec = json.loads((d / "experiment.json").read_text())
+    assert spec["runtime"]["accelerator"] == "NvidiaL4"
+    spec["cv"]["reasoning"] = "iid"
+    (d / "experiment.json").write_text(json.dumps(spec))
+    fake.kernel_meta["machine_shape"] = "NvidiaTeslaT4"  # Kaggle assigned another machine
+    assert kx(ready_ws, fake, "run", exp)["errors"] == ["server_flags_mismatch"]
+    fake.kernel_meta["machine_shape"] = "NvidiaL4"
+    fake.outputs = make_outputs()
+    env = kx(ready_ws, fake, "run", exp, "--wait", "5")
+    meta = fake.pushed()[-1][1]
+    assert env["data"]["result"] == "SUCCESS"
+    assert meta["enable_gpu"] is True and meta["machine_shape"] == "NvidiaL4"
+
+
+def test_a_t4_push_sends_no_machine_shape(ready_ws, fake):
+    env = kx(ready_ws, fake, "new", "--idea", "x", "--hypothesis", "h",
+             "--accelerator", "NvidiaTeslaT4")
+    d = ready_ws / "experiments" / env["data"]["exp_id"]
+    spec = json.loads((d / "experiment.json").read_text())
+    spec["cv"]["reasoning"] = "iid"
+    (d / "experiment.json").write_text(json.dumps(spec))
+    fake.outputs = make_outputs()
+    kx(ready_ws, fake, "run", env["data"]["exp_id"], "--wait", "5")
+    assert "machine_shape" not in fake.pushed()[-1][1]

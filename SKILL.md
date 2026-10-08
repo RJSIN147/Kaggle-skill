@@ -141,9 +141,9 @@ have reached Kaggle.
   fetch what is not on Kaggle, e.g. pretrained weights: fine for csv_upload competitions and
   a code competition's training stage; a code competition's submitted stage must stay off
   (kx refuses it). Prefer Kaggle Models/datasets; `kx dataset push <dir> --slug S` uploads
-  offline wheels or weights (private). GPU (`--accelerator NvidiaTeslaT4`) only when needed:
-  the weekly quota (`kx env`) is shared with the user's other work. When Kaggle's image
-  changes, pin the old one: `kx new --image-from exp-NNN` (see code-competition.md).
+  offline wheels or weights (private). GPU (`--accelerator NvidiaTeslaT4`, or `NvidiaL4` where
+  unlocked, billed 2×) only when needed: the weekly quota (`kx env`) is shared with the user's
+  other work. When Kaggle's image changes, pin the old one: `kx new --image-from exp-NNN`.
 - Joining a competition (accepting its rules) is a browser step for the user.
 - Credentials never enter the workspace; a pre-commit hook blocks them.
 - Reference: `<skill>/references/kx-reference.md` (every command, `experiment.json`,
